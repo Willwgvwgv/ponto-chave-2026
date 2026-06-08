@@ -66,7 +66,7 @@ export const resolvedFirebaseConfig = hasEnvConfig ? {
   storageBucket: firebaseConfig.storageBucket,
   messagingSenderId: firebaseConfig.messagingSenderId,
   appId: firebaseConfig.appId,
-  firestoreDatabaseId: firebaseConfig.firestoreDatabaseId
+  firestoreDatabaseId: getSanitizedDatabaseId()
 };
 
 // Detect if Firebase has mock placeholder credentials or if the user forced demo mode

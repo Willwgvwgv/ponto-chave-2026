@@ -51,7 +51,7 @@ service cloud.firestore {
 
     function incoming() { return request.resource.data; }
     function existing() { return resource.data; }
-    function isValidId(id) { return id is string && id.size() >= 5 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function isValidId(id) { return id is string && id.size() >= 2 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
     function isValidEmail(email) { return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"); }
 
     // ===============================================================
@@ -64,8 +64,8 @@ service cloud.firestore {
              data.companyId is string && data.companyId.size() <= 100 &&
              isValidEmail(data.email) &&
              (!data.keys().hasAll(['displayName']) || (data.displayName is string && data.displayName.size() <= 100)) &&
-             (!data.keys().hasAll(['role']) || (data.role == 'admin' || data.role == 'collaborator' || data.role == 'manager' || data.role == 'user' || data.role == 'none')) &&
-             (!data.keys().hasAll(['status']) || (data.status == 'active' || data.status == 'blocked')) &&
+             (!data.keys().hasAll(['role']) || (data.role == 'admin' || data.role == 'collaborator' || data.role == 'manager' || data.role == 'user' || data.role == 'none' || data.role == 'gerente')) &&
+             (!data.keys().hasAll(['status']) || (data.status == 'active' || data.status == 'blocked' || data.status == 'pending')) &&
              (!data.keys().hasAll(['isPending']) || data.isPending is bool) &&
              (!data.keys().hasAll(['createdAt']) || (data.createdAt is timestamp || data.createdAt == null)) &&
              (!data.keys().hasAll(['updatedAt']) || (data.updatedAt is timestamp || data.updatedAt == null)) &&
