@@ -1,0 +1,7 @@
+{
+  "name": "Remix: Ponto Chave",
+  "description": "Sistema universal de gestão de fluxos imobiliários, contratos, checklists e operação de equipes em tempo real.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

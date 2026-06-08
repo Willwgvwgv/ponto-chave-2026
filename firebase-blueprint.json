@@ -1,0 +1,294 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Unique user ID from Firebase Auth" },
+        "displayName": { "type": "string", "description": "User's full name" },
+        "email": { "type": "string", "format": "email", "description": "User's email address" },
+        "photoURL": { "type": "string", "description": "User's profile picture URL" },
+        "role": { "type": "string", "enum": ["admin", "user", "none"], "description": "User's access level" },
+        "status": { "type": "string", "enum": ["active", "blocked"], "description": "Account status" },
+        "isPending": { "type": "boolean", "description": "Whether the profile is a placeholder for a future signup" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the user account was created" }
+      },
+      "required": ["uid", "email"]
+    },
+    "Task": {
+      "title": "Task",
+      "description": "A task for the real estate management checklist",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Owner's user ID" },
+        "title": { "type": "string", "description": "Task title" },
+        "description": { "type": "string", "description": "Detailed instructions" },
+        "completed": { "type": "boolean", "description": "Completion status" },
+        "actionLabel": { "type": "string", "description": "Label for the action button" },
+        "priority": { "type": "string", "enum": ["low", "medium", "high"], "description": "Task priority" },
+        "date": { "type": "string", "format": "date", "description": "Due date (YYYY-MM-DD)" },
+        "time": { "type": "string", "description": "Optional due time" },
+        "recurrence": { "type": "string", "enum": ["none", "daily", "weekdays", "weekly"], "description": "Recurrence pattern" },
+        "recurrenceDays": { "type": "array", "items": { "type": "integer" }, "description": "Days of week for weekly recurrence" },
+        "companyId": { "type": "string", "description": "Company ID reference" },
+        "authorId": { "type": "string", "description": "Who created the task" },
+        "attachments": { "type": "array", "items": { "type": "object" }, "description": "List of attached files" },
+        "proofUrl": { "type": "string", "description": "URL of the first proof for backward compatibility" },
+        "proofName": { "type": "string", "description": "Name of the first proof" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last update timestamp" }
+      },
+      "required": ["uid", "title", "completed", "priority", "date", "companyId"]
+    },
+    "Tool": {
+      "title": "Tool",
+      "description": "A quick access tool for the team",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Tool name" },
+        "description": { "type": "string", "description": "Tool description" },
+        "url": { "type": "string", "description": "Tool URL" }
+      },
+      "required": ["name", "url"]
+    },
+    "ProcessInstance": {
+      "title": "Process Instance",
+      "description": "A specific instance of a real estate process (e.g., Locação casa Maria Nadir)",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Owner's user ID" },
+        "title": { "type": "string", "description": "Process instance title" },
+        "type": { "type": "string", "description": "Type of process (matches ProcessTemplate type)" },
+        "status": { "type": "string", "enum": ["active", "completed", "archived"], "description": "Overall status" },
+        "completedSteps": { "type": "array", "items": { "type": "string" }, "description": "List of completed step labels" },
+        "stepHistory": { "type": "array", "items": { "type": "object" }, "description": "History of step completions" },
+        "stepProofs": { "type": "object", "description": "Map of step labels to proof URLs" },
+        "notes": { "type": "string", "description": "Process notes" },
+        "assignedTo": { "type": "string", "description": "User ID assigned to this process" },
+        "dueDate": { "type": "string", "format": "date", "description": "Target completion date (YYYY-MM-DD)" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last update timestamp" },
+        "completedAt": { "type": "string", "format": "date-time", "description": "Completion timestamp" }
+      },
+      "required": ["uid", "title", "type", "status", "completedSteps"]
+    },
+    "ProcessTemplate": {
+      "title": "Process Template",
+      "description": "A template for a real estate process",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "Template title" },
+        "type": { "type": "string", "description": "Unique identifier for this template type" },
+        "icon": { "type": "string", "description": "Lucide icon name" },
+        "color": { "type": "string", "description": "Tailwind color class" },
+        "steps": { "type": "array", "items": { "type": "object" }, "description": "List of steps in the checklist" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last update timestamp" }
+      },
+      "required": ["title", "type", "icon", "color", "steps"]
+    },
+    "CompanySettings": {
+      "title": "Company Settings",
+      "description": "Global settings for the company identity",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Company name" },
+        "subtitle": { "type": "string", "description": "Company subtitle or slogan" },
+        "logoUrl": { "type": "string", "description": "URL of the company logo" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last update timestamp" }
+      },
+      "required": ["name", "subtitle"]
+    },
+    "Vistoria": {
+      "title": "Vistoria",
+      "description": "Property inspection contract",
+      "type": "object",
+      "properties": {
+        "corretorId": { "type": "string" },
+        "locatario": { "type": "object" },
+        "imovel": { "type": "object" },
+        "locador": { "type": "object" },
+        "comodos": { "type": "array" },
+        "status": { "type": "string" },
+        "data": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["corretorId", "locatario", "imovel", "status"]
+    },
+    "Comissao": {
+      "title": "Comissao",
+      "description": "Rental commission and distribution",
+      "type": "object",
+      "properties": {
+        "companyId": { "type": "string" },
+        "imovel": { "type": "string" },
+        "inquilino": { "type": "string" },
+        "aluguelMensal": { "type": "number" },
+        "primeiroAluguel": { "type": "number" },
+        "porcentagemFidelite": { "type": "number" },
+        "valorFidelite": { "type": "number" },
+        "valorRepasseCorretores": { "type": "number" },
+        "vencimento": { "type": "string", "format": "date" },
+        "mesReferencia": { "type": "string" },
+        "status": { "type": "string", "enum": ["pendente", "pago", "atraso"] },
+        "rateio": { "type": "array" },
+        "criadoPor": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["companyId", "imovel", "primeiroAluguel", "status"]
+    },
+    "Sale": {
+      "title": "Sale",
+      "description": "Property sale transactions",
+      "type": "object",
+      "properties": {
+        "agency_id": { "type": "string" },
+        "sale_date": { "type": "string", "format": "date" },
+        "property_address": { "type": "string" },
+        "sale_value": { "type": "number" },
+        "commission_percentage": { "type": "number" },
+        "total_commission": { "type": "number" },
+        "client_name": { "type": "string" },
+        "status": { "type": "string", "enum": ["ACTIVE", "CANCELLED"] },
+        "created_at": { "type": "string" }
+      },
+      "required": ["agency_id", "sale_value", "commission_percentage"]
+    },
+    "BrokerSplit": {
+      "title": "BrokerSplit",
+      "description": "Broker splits from commissions",
+      "type": "object",
+      "properties": {
+        "sale_id": { "type": "string" },
+        "agency_id": { "type": "string" },
+        "broker_id": { "type": "string" },
+        "broker_name": { "type": "string" },
+        "role": { "type": "string", "enum": ["CAPTADOR", "VENDEDOR", "GESTOR"] },
+        "percentage": { "type": "number" },
+        "calculated_value": { "type": "number" },
+        "status": { "type": "string", "enum": ["PENDING", "PARTIAL", "PAID"] },
+        "forecast_date": { "type": "string", "format": "date" },
+        "payment_date": { "type": "string", "format": "date" },
+        "payment_method": { "type": "string", "enum": ["PIX", "TED", "CHEQUE"] },
+        "receipt_data": { "type": "string" },
+        "notes": { "type": "string" },
+        "discount_value": { "type": "number" },
+        "installment_number": { "type": "number" },
+        "created_at": { "type": "string" }
+      },
+      "required": ["sale_id", "agency_id", "broker_id", "percentage", "calculated_value"]
+    },
+    "BankAccount": {
+      "title": "BankAccount",
+      "description": "Company bank account structure",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "companyId": { "type": "string" },
+        "name": { "type": "string" },
+        "bank": { "type": "string", "enum": ["SICOOB", "CRESOL", "INTER", "OUTRO"] },
+        "agency": { "type": "string" },
+        "account": { "type": "string" },
+        "balance": { "type": "number" },
+        "lastSync": { "type": "string" },
+        "createdAt": { "type": "object" }
+      },
+      "required": ["companyId", "name", "bank", "agency", "account", "balance"]
+    },
+    "FinancialCategory": {
+      "title": "FinancialCategory",
+      "description": "Financial category configuration",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "companyId": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "type": "string", "enum": ["RECEITA", "DESPESA"] },
+        "group": { "type": "string" },
+        "color": { "type": "string" },
+        "icon": { "type": "string" },
+        "isDefault": { "type": "boolean" },
+        "createdAt": { "type": "object" }
+      },
+      "required": ["companyId", "name", "type", "group", "color", "icon", "isDefault"]
+    },
+    "FinancialTransaction": {
+      "title": "FinancialTransaction",
+      "description": "A single financial revenue or expense record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "companyId": { "type": "string" },
+        "accountId": { "type": "string" },
+        "date": { "type": "string", "format": "date" },
+        "description": { "type": "string" },
+        "amount": { "type": "number" },
+        "type": { "type": "string", "enum": ["RECEITA", "DESPESA", "TRANSFERENCIA"] },
+        "categoryId": { "type": "string" },
+        "categoryName": { "type": "string" },
+        "status": { "type": "string", "enum": ["PENDENTE", "CONCILIADO", "IGNORADO"] },
+        "origin": { "type": "string", "enum": ["MANUAL", "IMPORTADO", "AUTOMATICO"] },
+        "commissionRef": { "type": "string" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "object" },
+        "reconciledAt": { "type": "string" }
+      },
+      "required": ["companyId", "accountId", "date", "description", "amount", "type", "status", "origin"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile documents"
+    },
+    "/tasks/{taskId}": {
+      "schema": "Task",
+      "description": "Checklist tasks"
+    },
+    "/tools/{toolId}": {
+      "schema": "Tool",
+      "description": "Quick access tools"
+    },
+    "/processes/{processId}": {
+      "schema": "ProcessInstance",
+      "description": "Real estate process instances"
+    },
+    "/process_templates/{templateId}": {
+      "schema": "ProcessTemplate",
+      "description": "Real estate process templates"
+    },
+    "/settings/{settingId}": {
+      "schema": "CompanySettings",
+      "description": "Company global settings"
+    },
+    "/vistorias/{vistoriaId}": {
+      "schema": "Vistoria",
+      "description": "Property inspections"
+    },
+    "/comissoes/{comissaoId}": {
+      "schema": "Comissao",
+      "description": "Rental commissions and distribution"
+    },
+    "/sales/{saleId}": {
+      "schema": "Sale",
+      "description": "Property sales for commissions module"
+    },
+    "/broker_splits/{splitId}": {
+      "schema": "BrokerSplit",
+      "description": "Split details for brokers"
+    },
+    "/bank_accounts/{accountId}": {
+      "schema": "BankAccount",
+      "description": "Company bank accounts"
+    },
+    "/financial_categories/{catId}": {
+      "schema": "FinancialCategory",
+      "description": "Financial categories configuration"
+    },
+    "/financial_transactions/{txId}": {
+      "schema": "FinancialTransaction",
+      "description": "Financial revenue or expense transactions"
+    }
+  }
+}
