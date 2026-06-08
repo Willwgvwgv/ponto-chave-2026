@@ -37,16 +37,48 @@ import { sanitizeForFirestore } from './lib/utils';
 // Import the Firebase configuration
 import firebaseConfig from '../firebase-applet-config.json';
 
+// Detect if virtual environment defines VITE_FIREBASE_* environment variables (e.g. Vercel)
+const env = (import.meta as any).env || {};
+
+const hasEnvConfig = !!env.VITE_FIREBASE_API_KEY;
+
+// Clean up database ID if it was misconfigured with placeholder URLs
+const getSanitizedDatabaseId = () => {
+  const envId = env.VITE_FIREBASE_DATABASE_ID;
+  if (envId && (envId.startsWith("http") || envId.includes("example.com") || envId.trim() === "")) {
+    return firebaseConfig.firestoreDatabaseId || "(default)";
+  }
+  return envId || firebaseConfig.firestoreDatabaseId || "(default)";
+};
+
+export const resolvedFirebaseConfig = hasEnvConfig ? {
+  apiKey: env.VITE_FIREBASE_API_KEY,
+  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: env.VITE_FIREBASE_APP_ID,
+  firestoreDatabaseId: getSanitizedDatabaseId()
+} : {
+  apiKey: firebaseConfig.apiKey,
+  authDomain: firebaseConfig.authDomain,
+  projectId: firebaseConfig.projectId,
+  storageBucket: firebaseConfig.storageBucket,
+  messagingSenderId: firebaseConfig.messagingSenderId,
+  appId: firebaseConfig.appId,
+  firestoreDatabaseId: firebaseConfig.firestoreDatabaseId
+};
+
 // Detect if Firebase has mock placeholder credentials or if the user forced demo mode
 const isLocalOverride = typeof window !== 'undefined' && localStorage.getItem("pc_force_demo_mode") === "true";
 
 export const isDemoMode = isLocalOverride || 
-                          !firebaseConfig.apiKey || 
-                          firebaseConfig.apiKey.includes("remixed") || 
-                          firebaseConfig.projectId.includes("remixed");
+                          !resolvedFirebaseConfig.apiKey || 
+                          resolvedFirebaseConfig.apiKey.includes("remixed") || 
+                          resolvedFirebaseConfig.projectId.includes("remixed");
 
 // Initialize Firebase SDK or Mocks gracefully
-const app = initializeApp(firebaseConfig);
+const app = initializeApp(resolvedFirebaseConfig);
 
 export const auth = isDemoMode ? (() => {
   const defaultUser = {
@@ -89,7 +121,7 @@ export const auth = isDemoMode ? (() => {
   return mockAuthObj as any;
 })() : getAuth(app);
 
-export const db = isDemoMode ? { _type: 'db_mock' } as any : getFirestore(app, firebaseConfig.firestoreDatabaseId);
+export const db = isDemoMode ? { _type: 'db_mock' } as any : getFirestore(app, resolvedFirebaseConfig.firestoreDatabaseId);
 export const storage = isDemoMode ? null as any : getStorage(app);
 export const googleProvider = new GoogleAuthProvider();
 
