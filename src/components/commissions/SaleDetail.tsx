@@ -9,6 +9,7 @@ import { db } from "../../firebase";
 import { getContaPrincipal, getCategoriaId } from "../../hooks/useQueries";
 import { toast } from "sonner";
 import jsPDF from "jspdf";
+import { ConfirmModal } from "../ui/ConfirmModal";
 
 interface SaleDetailProps {
   sale: Sale;
@@ -62,6 +63,19 @@ export const SaleDetail: React.FC<SaleDetailProps> = ({
   const round2 = (num: number) => Math.round((num + Number.EPSILON) * 100) / 100;
 
   const [financialTransactions, setFinancialTransactions] = useState<any[]>([]);
+  const [confirmState, setConfirmState] = useState<{
+    open: boolean;
+    title: string;
+    message: string;
+    confirmColor?: "red" | "blue" | "green";
+    onConfirm: () => void;
+  }>({
+    open: false,
+    title: "",
+    message: "",
+    confirmColor: "red",
+    onConfirm: () => {}
+  });
 
   // Escuta em tempo real as transações financeiras automáticas vinculadas a esta venda
   useEffect(() => {
@@ -89,40 +103,45 @@ export const SaleDetail: React.FC<SaleDetailProps> = ({
   }, [sale.id]);
 
   const handleCancelSale = async () => {
-    if (!window.confirm("Deseja realmente cancelar esta venda? O status será alterado para Cancelada, os splits serão invalidados e um lançamento financeiro de estorno será gerado automaticamente.")) {
-      return;
-    }
+    setConfirmState({
+      open: true,
+      title: "Cancelar venda",
+      message: "Deseja realmente cancelar esta venda? O status será alterado para Cancelada, os splits serão invalidados e um lançamento financeiro de estorno será gerado automaticamente.",
+      confirmColor: "red",
+      onConfirm: async () => {
+        setConfirmState(prev => ({ ...prev, open: false }));
+        try {
+          const companyId = sale.agency_id || "default_agency";
+          const contaPrincipal = await getContaPrincipal(companyId);
+          const catId = await getCategoriaId(companyId, "Outras Despesas");
 
-    try {
-      const companyId = sale.agency_id || "default_agency";
-      const contaPrincipal = await getContaPrincipal(companyId);
-      const catId = await getCategoriaId(companyId, "Outras Despesas");
+          // 1. Atualizar o status da venda para CANCELLED (como no types.ts)
+          await updateDoc(doc(db, "sales", sale.id), { status: "CANCELLED" });
 
-      // 1. Atualizar o status da venda para CANCELLED (como no types.ts)
-      await updateDoc(doc(db, "sales", sale.id), { status: "CANCELLED" });
+          // 2. Criar o lançamento de estorno no financeiro
+          const estornoTxId = `tx_estorno_sale_${sale.id}`;
+          await setDoc(doc(db, "financial_transactions", estornoTxId), {
+            companyId,
+            accountId: contaPrincipal,
+            date: new Date().toISOString().split("T")[0],
+            description: `Estorno — Comissão cancelada — ${sale.property_address}`,
+            amount: -sale.total_commission,
+            type: 'DESPESA',
+            categoryId: catId || undefined,
+            categoryName: 'Outras Despesas',
+            status: 'CONCILIADO',
+            origin: 'AUTOMATICO',
+            commissionRef: sale.id,
+            createdAt: new Date().toISOString()
+          });
 
-      // 2. Criar o lançamento de estorno no financeiro
-      const estornoTxId = `tx_estorno_sale_${sale.id}`;
-      await setDoc(doc(db, "financial_transactions", estornoTxId), {
-        companyId,
-        accountId: contaPrincipal,
-        date: new Date().toISOString().split("T")[0],
-        description: `Estorno — Comissão cancelada — ${sale.property_address}`,
-        amount: -sale.total_commission,
-        type: 'DESPESA',
-        categoryId: catId || undefined,
-        categoryName: 'Outras Despesas',
-        status: 'CONCILIADO',
-        origin: 'AUTOMATICO',
-        commissionRef: sale.id,
-        createdAt: new Date().toISOString()
-      });
-
-      toast.success("Venda cancelada e estorno gerado no financeiro com sucesso!");
-    } catch (err) {
-      console.error("Erro ao cancelar venda:", err);
-      toast.error("Erro ao cancelar venda.");
-    }
+          toast.success("Venda cancelada e estorno gerado no financeiro com sucesso!");
+        } catch (err) {
+          console.error("Erro ao cancelar venda:", err);
+          toast.error("Erro ao cancelar venda.");
+        }
+      }
+    });
   };
 
   // Escuta em tempo real os splits desta venda
@@ -1527,6 +1546,14 @@ export const SaleDetail: React.FC<SaleDetailProps> = ({
         </div>
       )}
 
+      <ConfirmModal
+        isOpen={confirmState.open}
+        title={confirmState.title}
+        message={confirmState.message}
+        confirmColor={confirmState.confirmColor}
+        onConfirm={confirmState.onConfirm}
+        onCancel={() => setConfirmState(prev => ({ ...prev, open: false }))}
+      />
     </div>
   );
 };

@@ -264,24 +264,27 @@ service cloud.firestore {
     }
 
     match /bank_accounts/{accountId} {
-      allow read: if isUserActive() && resource.data.companyId == getUserData().companyId;
-      allow create: if isUserActive() && isValidId(accountId) && isCompanyAdmin(incoming().companyId) && incoming().companyId == getUserData().companyId;
-      allow update: if isUserActive() && isValidId(accountId) && isCompanyAdmin(incoming().companyId) && incoming().companyId == getUserData().companyId;
-      allow delete: if isUserActive() && isValidId(accountId) && isCompanyAdmin(existing().companyId);
+      allow get: if isUserActive() && resource.data.companyId == getUserData().companyId;
+      allow list: if isUserActive() && resource.data.companyId == getUserData().companyId;
+      allow create: if isUserActive() && isCompanyAdmin(incoming().companyId) && incoming().companyId == getUserData().companyId;
+      allow update: if isUserActive() && isCompanyAdmin(existing().companyId) && existing().companyId == getUserData().companyId;
+      allow delete: if isUserActive() && existing().companyId == getUserData().companyId;
     }
 
     match /financial_transactions/{txId} {
-      allow read: if isUserActive() && resource.data.companyId == getUserData().companyId;
-      allow create: if isUserActive() && isValidId(txId) && incoming().companyId == getUserData().companyId && incoming().amount != 0;
-      allow update: if isUserActive() && isValidId(txId) && existing().companyId == getUserData().companyId && incoming().companyId == existing().companyId;
-      allow delete: if isUserActive() && isValidId(txId) && isCompanyAdmin(existing().companyId) && existing().origin != 'AUTOMATICO';
+      allow get: if isUserActive() && resource.data.companyId == getUserData().companyId;
+      allow list: if isUserActive() && resource.data.companyId == getUserData().companyId;
+      allow create: if isUserActive() && incoming().companyId == getUserData().companyId && incoming().amount != 0;
+      allow update: if isUserActive() && existing().companyId == getUserData().companyId && incoming().companyId == existing().companyId;
+      allow delete: if isUserActive() && existing().companyId == getUserData().companyId;
     }
 
     match /financial_categories/{catId} {
-      allow read: if isUserActive() && resource.data.companyId == getUserData().companyId;
-      allow create: if isUserActive() && isValidId(catId) && isCompanyAdmin(incoming().companyId);
-      allow update: if isUserActive() && isValidId(catId) && isCompanyAdmin(incoming().companyId);
-      allow delete: if isUserActive() && isValidId(catId) && isCompanyAdmin(existing().companyId) && existing().isDefault == false;
+      allow get: if isUserActive() && resource.data.companyId == getUserData().companyId;
+      allow list: if isUserActive() && resource.data.companyId == getUserData().companyId;
+      allow create: if isUserActive() && isCompanyAdmin(incoming().companyId);
+      allow update: if isUserActive() && isCompanyAdmin(existing().companyId);
+      allow delete: if isUserActive() && isCompanyAdmin(existing().companyId) && existing().isDefault == false;
     }
   }
 }

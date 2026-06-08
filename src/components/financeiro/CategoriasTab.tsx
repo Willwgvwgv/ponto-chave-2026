@@ -9,6 +9,7 @@ import {
   FolderDot
 } from 'lucide-react';
 import { FinancialCategory } from '../../types';
+import { ConfirmModal } from '../ui/ConfirmModal';
 
 interface CategoriasTabProps {
   categories: FinancialCategory[];
@@ -25,6 +26,19 @@ export const CategoriasTab: React.FC<CategoriasTabProps> = ({
 }) => {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<FinancialCategory | null>(null);
+  const [confirmState, setConfirmState] = useState<{
+    open: boolean;
+    title: string;
+    message: string;
+    confirmColor?: "red" | "blue" | "green";
+    onConfirm: () => void;
+  }>({
+    open: false,
+    title: "",
+    message: "",
+    confirmColor: "red",
+    onConfirm: () => {}
+  });
 
   // States for new category
   const [name, setName] = useState('');
@@ -183,9 +197,16 @@ export const CategoriasTab: React.FC<CategoriasTabProps> = ({
                               </button>
                               <button
                                 onClick={() => {
-                                  if (confirm(`Deseja realmente remover a categoria "${cat.name}"?`)) {
-                                    onDeleteCategory(cat.id);
-                                  }
+                                  setConfirmState({
+                                    open: true,
+                                    title: "Remover categoria",
+                                    message: `Deseja realmente remover a categoria "${cat.name}"? Esta ação não pode ser desfeita e não alterará os lançamentos passados.`,
+                                    confirmColor: "red",
+                                    onConfirm: () => {
+                                      setConfirmState(prev => ({ ...prev, open: false }));
+                                      onDeleteCategory(cat.id);
+                                    }
+                                  });
                                 }}
                                 className="p-1 text-slate-400 hover:text-rose-500 rounded transition-colors"
                                 title="Excluir"
@@ -256,9 +277,16 @@ export const CategoriasTab: React.FC<CategoriasTabProps> = ({
                               </button>
                               <button
                                 onClick={() => {
-                                  if (confirm(`Deseja realmente remover a categoria "${cat.name}"?`)) {
-                                    onDeleteCategory(cat.id);
-                                  }
+                                  setConfirmState({
+                                    open: true,
+                                    title: "Remover categoria",
+                                    message: `Deseja realmente remover a categoria "${cat.name}"? Esta ação não pode ser desfeita e não alterará os lançamentos passados.`,
+                                    confirmColor: "red",
+                                    onConfirm: () => {
+                                      setConfirmState(prev => ({ ...prev, open: false }));
+                                      onDeleteCategory(cat.id);
+                                    }
+                                  });
                                 }}
                                 className="p-1 text-slate-400 hover:text-rose-500 rounded transition-colors"
                                 title="Excluir"
@@ -460,6 +488,15 @@ export const CategoriasTab: React.FC<CategoriasTabProps> = ({
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={confirmState.open}
+        title={confirmState.title}
+        message={confirmState.message}
+        confirmColor={confirmState.confirmColor}
+        onConfirm={confirmState.onConfirm}
+        onCancel={() => setConfirmState(prev => ({ ...prev, open: false }))}
+      />
     </div>
   );
 };

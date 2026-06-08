@@ -18,6 +18,7 @@ import {
   Briefcase 
 } from "lucide-react";
 import { Comissao, RateioComissao, PagamentoCorretor, ComissoneUser, UserProfile } from "../../types";
+import { ConfirmModal } from "../ui/ConfirmModal";
 
 export const formatCurrency = (val: number) => {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(val);
@@ -99,6 +100,19 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
 
   // Modal de pagamento
   const [isPayModalOpen, setIsPayModalOpen] = useState(false);
+  const [confirmState, setConfirmState] = useState<{
+    open: boolean;
+    title: string;
+    message: string;
+    confirmColor?: "red" | "blue" | "green";
+    onConfirm: () => void;
+  }>({
+    open: false,
+    title: "",
+    message: "",
+    confirmColor: "red",
+    onConfirm: () => {}
+  });
   const [payBrokerId, setPayBrokerId] = useState("");
   const [payBrokerName, setPayBrokerName] = useState("");
   const [payValue, setPayValue] = useState(0);
@@ -1038,9 +1052,16 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                             </button>
                             <button
                               onClick={() => {
-                                if (confirm("Tem certeza que deseja apagar esta comissão de locação?")) {
-                                  onDeleteRental(r.id);
-                                }
+                                setConfirmState({
+                                  open: true,
+                                  title: "Apagar comissão de locação",
+                                  message: "Tem certeza que deseja apagar esta comissão de locação? Esta ação não pode ser desfeita.",
+                                  confirmColor: "red",
+                                  onConfirm: () => {
+                                    setConfirmState(prev => ({ ...prev, open: false }));
+                                    onDeleteRental(r.id);
+                                  }
+                                });
                               }}
                               className="p-1.5 hover:bg-red-50 text-red-500 rounded-xl transition-all"
                             >
@@ -1135,6 +1156,14 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
         </div>
       )}
 
+      <ConfirmModal
+        isOpen={confirmState.open}
+        title={confirmState.title}
+        message={confirmState.message}
+        confirmColor={confirmState.confirmColor}
+        onConfirm={confirmState.onConfirm}
+        onCancel={() => setConfirmState(prev => ({ ...prev, open: false }))}
+      />
     </div>
   );
 };

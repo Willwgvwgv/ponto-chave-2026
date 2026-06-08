@@ -12,7 +12,9 @@ import {
   deleteDoc, 
   serverTimestamp,
   getDoc,
-  getDocs
+  getDocs,
+  handleFirestoreError,
+  OperationType
 } from '../firebase';
 import { 
   BankAccount, 
@@ -260,6 +262,7 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
   };
 
   const handleDeleteAccount = async (id: string) => {
+    console.log('Deletando conta ID:', id);
     try {
       const linkedTxs = transactions.filter(t => t.accountId === id && t.status !== 'IGNORADO');
       if (linkedTxs.length > 0) {
@@ -267,9 +270,12 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
         return;
       }
       await deleteDoc(doc(db, "bank_accounts", id));
+      console.log('Conta deletada com sucesso');
       toast.success("Conta bancária excluída com sucesso.");
     } catch (err) {
+      console.error('Erro ao deletar:', err);
       toast.error("Erro ao excluir conta bancária.");
+      handleFirestoreError(err, OperationType.DELETE, `bank_accounts/${id}`);
     }
   };
 

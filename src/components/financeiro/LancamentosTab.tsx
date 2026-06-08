@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Building, 
   Search, 
@@ -19,6 +19,9 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { BankAccount, FinancialCategory, FinancialTransaction } from '../../types';
+import { db, doc, deleteDoc } from '../../firebase';
+import { toast } from 'sonner';
+import { ConfirmModal } from '../ui/ConfirmModal';
 
 interface LancamentosTabProps {
   accounts: BankAccount[];
@@ -139,10 +142,101 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
   const [currentPeriodDate, setCurrentPeriodDate] = useState<Date>(() => {
     const hoje = new Date();
     const primeiroDia = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
-    const ultimoDia = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0);
     return primeiroDia;
   });
   const [viewAll, setViewAll] = useState(false);
+
+  // Novos filtros e estados de selação customizados
+  const [filterMode, setFilterMode] = useState<'MONTH' | 'RANGE' | 'ALL'>('MONTH');
+  const [startDateStr, setStartDateStr] = useState<string>(() => {
+    const hoje = new Date();
+    const y = hoje.getFullYear();
+    const m = String(hoje.getMonth() + 1).padStart(2, '0');
+    return `${y}-${m}-01`;
+  });
+  const [endDateStr, setEndDateStr] = useState<string>(() => {
+    const hoje = new Date();
+    const y = hoje.getFullYear();
+    const m = String(hoje.getMonth() + 1).padStart(2, '0');
+    const lastDay = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0).getDate();
+    return `${y}-${m}-${String(lastDay).padStart(2, '0')}`;
+  });
+  const [selectedTxIds, setSelectedTxIds] = useState<Set<string>>(new Set());
+  const [confirmState, setConfirmState] = useState<{
+    open: boolean;
+    title: string;
+    message: string;
+    confirmColor?: 'red' | 'blue' | 'green';
+    onConfirm: () => void;
+  }>({
+    open: false,
+    title: '',
+    message: '',
+    confirmColor: 'red',
+    onConfirm: () => {}
+  });
+
+  // Sincronizar datas quando escolher o mês
+  useEffect(() => {
+    if (filterMode === 'MONTH') {
+      const y = currentPeriodDate.getFullYear();
+      const m = String(currentPeriodDate.getMonth() + 1).padStart(2, '0');
+      const lastDay = new Date(currentPeriodDate.getFullYear(), currentPeriodDate.getMonth() + 1, 0).getDate();
+      setStartDateStr(`${y}-${m}-01`);
+      setEndDateStr(`${y}-${m}-${String(lastDay).padStart(2, '0')}`);
+    }
+  }, [currentPeriodDate, filterMode]);
+
+  const handleSelectAllToggle = () => {
+    if (selectedTxIds.size === filteredTransactions.length) {
+      setSelectedTxIds(new Set());
+    } else {
+      setSelectedTxIds(new Set(filteredTransactions.map(t => t.id)));
+    }
+  };
+
+  const handleSelectTxToggle = (id: string) => {
+    setSelectedTxIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const handleBulkDelete = async () => {
+    console.log('=== BULK DELETE ===');
+    console.log('IDs selecionados:', Array.from(selectedTxIds));
+    console.log('Total:', selectedTxIds.size);
+    
+    setConfirmState({
+      open: true,
+      title: 'Confirmar exclusão em massa',
+      message: `Excluir ${selectedTxIds.size} lançamentos selecionados? Esta ação não pode ser desfeita e irá recalcular os saldos das contas correspondentes.`,
+      confirmColor: 'red',
+      onConfirm: async () => {
+        setConfirmState(prev => ({ ...prev, open: false }));
+        try {
+          if (onDeleteTransactions) {
+            onDeleteTransactions(Array.from(selectedTxIds));
+          } else {
+            const deletePromises = Array.from(selectedTxIds).map((id: string) =>
+              deleteDoc(doc(db, 'financial_transactions', id))
+            );
+            await Promise.all(deletePromises);
+            toast.success(`${deletePromises.length} lançamentos excluídos com sucesso`);
+          }
+          setSelectedTxIds(new Set());
+        } catch (error) {
+          console.error('Erro ao excluir:', error);
+          toast.error('Erro ao excluir lançamentos');
+        }
+      }
+    });
+  };
 
   // Modal para lançamento normal
   const [isAddOpen, setIsAddOpen] = useState(false);
@@ -198,17 +292,11 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
   // Lista de lançamentos com filtros
   const filteredTransactions = useMemo(() => {
     return transactions.filter(t => {
-      // Filtro de data / período do mês
+      // Filtro de data / período do mês ou datas personalizadas
       const matchPeriod = (() => {
-        if (viewAll) return true;
+        if (filterMode === 'ALL') return true;
         if (!t.date) return false;
-        const parts = t.date.split('-');
-        if (parts.length >= 2) {
-          const y = parseInt(parts[0], 10);
-          const m = parseInt(parts[1], 10) - 1; // 0-indexed
-          return y === currentPeriodDate.getFullYear() && m === currentPeriodDate.getMonth();
-        }
-        return false;
+        return t.date >= startDateStr && t.date <= endDateStr;
       })();
 
       const matchSearch = t.description.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -224,7 +312,7 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
       const bTime = b.date ? new Date(b.date + 'T00:00:00').getTime() : 0;
       return sortAscending ? aTime - bTime : bTime - aTime;
     });
-  }, [transactions, searchTerm, selectedAccount, selectedCategory, selectedType, selectedStatus, sortAscending, currentPeriodDate, viewAll]);
+  }, [transactions, searchTerm, selectedAccount, selectedCategory, selectedType, selectedStatus, sortAscending, startDateStr, endDateStr, filterMode]);
 
   const handleCreateTransaction = (e: React.FormEvent) => {
     e.preventDefault();
@@ -380,9 +468,16 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
       setRecurrencePromptType('DELETE');
       setRecurrencePromptOpen(true);
     } else {
-      if (window.confirm("Deseja realmente excluir este lançamento?")) {
-        onDeleteTransaction(t.id);
-      }
+      setConfirmState({
+        open: true,
+        title: 'Confirmar exclusão',
+        message: 'Deseja realmente excluir este lançamento? Esta ação irá alterar o saldo da conta correspondente.',
+        confirmColor: 'red',
+        onConfirm: () => {
+          setConfirmState(prev => ({ ...prev, open: false }));
+          onDeleteTransaction(t.id);
+        }
+      });
     }
   };
 
@@ -436,6 +531,7 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
     if (!valStr) return;
     const [year, month] = valStr.split('-').map(Number);
     setCurrentPeriodDate(new Date(year, month - 1, 1));
+    setFilterMode('MONTH');
     setViewAll(false);
   };
 
@@ -476,9 +572,16 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
         {isAdmin && errorTransactionsToDelete.length > 0 && (
           <button
             onClick={() => {
-              if (window.confirm(`Deseja realmente excluir todos os ${errorTransactionsToDelete.length} lançamentos recorrentes criados incorretamente hoje?`)) {
-                onDeleteTransactions(errorTransactionsToDelete.map(t => t.id));
-              }
+              setConfirmState({
+                open: true,
+                title: 'Excluir lançamentos recorrentes',
+                message: `Deseja realmente excluir todos os ${errorTransactionsToDelete.length} lançamentos recorrentes criados incorretamente hoje?`,
+                confirmColor: 'red',
+                onConfirm: () => {
+                  setConfirmState(prev => ({ ...prev, open: false }));
+                  onDeleteTransactions(errorTransactionsToDelete.map(t => t.id));
+                }
+              });
             }}
             className="flex items-center gap-1.5 px-4 py-2.5 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-xl font-bold text-xs transition-colors mr-auto"
             title="Excluir lançamentos recorrentes com erro criados hoje"
@@ -516,63 +619,128 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
       {/* Seletor de Período */}
       <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-1.5 border border-slate-200 rounded-xl p-1 bg-slate-50/50">
-            {/* Seta esquerda */}
-            <button
-              onClick={() => {
-                const prev = new Date(currentPeriodDate.getFullYear(), currentPeriodDate.getMonth() - 1, 1);
-                setCurrentPeriodDate(prev);
-                setViewAll(false);
-              }}
-              className="p-2 text-slate-500 hover:text-slate-800 hover:bg-white rounded-lg transition-colors border-0"
-              title="Mês anterior"
-            >
-              <ChevronLeft className="w-5 h-5" />
-            </button>
-            
-            <div className="h-6 w-px bg-slate-200" />
-
-            {/* Mês/Ano clicável */}
-            <div className="relative px-3 py-1 hover:bg-white rounded-lg transition-colors cursor-pointer flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-slate-400" />
-              <span className="font-extrabold text-sm text-slate-700">
-                {formatMonthLabel(currentPeriodDate)}
-              </span>
-              <input
-                type="month"
-                value={`${currentPeriodDate.getFullYear()}-${String(currentPeriodDate.getMonth() + 1).padStart(2, '0')}`}
-                onChange={(e) => handleMonthChange(e.target.value)}
-                className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-              />
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Toggles de Modo de Filtro */}
+            <div className="flex items-center bg-slate-100 p-1 rounded-xl">
+              <button
+                type="button"
+                onClick={() => {
+                  setFilterMode('MONTH');
+                  setViewAll(false);
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  filterMode === 'MONTH'
+                    ? 'bg-white text-blue-650 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Mensal
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setFilterMode('RANGE');
+                  setViewAll(false);
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  filterMode === 'RANGE'
+                    ? 'bg-white text-blue-650 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Por Datas
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setFilterMode('ALL');
+                  setViewAll(true);
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  filterMode === 'ALL'
+                    ? 'bg-white text-blue-650 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Ver tudo
+              </button>
             </div>
 
-            <div className="h-6 w-px bg-slate-200" />
+            {/* Seletor de Mês (Visível no modo MONTH) */}
+            {filterMode === 'MONTH' && (
+              <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl p-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const prev = new Date(currentPeriodDate.getFullYear(), currentPeriodDate.getMonth() - 1, 1);
+                    setCurrentPeriodDate(prev);
+                    setFilterMode('MONTH');
+                    setViewAll(false);
+                  }}
+                  className="p-1 px-1.5 text-slate-500 hover:text-slate-800 hover:bg-white rounded-lg transition-colors border-0"
+                  title="Mês anterior"
+                >
+                  <ChevronLeft className="w-5 h-5" />
+                </button>
+                
+                <div className="h-6 w-px bg-slate-200" />
 
-            {/* Seta direita */}
-            <button
-              onClick={() => {
-                const next = new Date(currentPeriodDate.getFullYear(), currentPeriodDate.getMonth() + 1, 1);
-                setCurrentPeriodDate(next);
-                setViewAll(false);
-              }}
-              className="p-2 text-slate-500 hover:text-slate-800 hover:bg-white rounded-lg transition-colors border-0 animate-none"
-              title="Mês posterior"
-            >
-              <ChevronRight className="w-5 h-5" />
-            </button>
-          </div>
+                <div className="relative px-3 py-1 hover:bg-white rounded-lg transition-colors cursor-pointer flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-slate-400" />
+                  <span className="font-extrabold text-sm text-slate-700">
+                    {formatMonthLabel(currentPeriodDate)}
+                  </span>
+                  <input
+                    type="month"
+                    value={`${currentPeriodDate.getFullYear()}-${String(currentPeriodDate.getMonth() + 1).padStart(2, '0')}`}
+                    onChange={(e) => handleMonthChange(e.target.value)}
+                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                  />
+                </div>
 
-          <div>
-            <button
-              onClick={() => setViewAll(!viewAll)}
-              className={`px-4 py-2 rounded-xl font-bold text-xs transition-all border ${
-                viewAll
-                  ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
-                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-              }`}
-            >
-              {viewAll ? 'Filtrar por Mês' : 'Ver tudo'}
-            </button>
+                <div className="h-6 w-px bg-slate-200" />
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = new Date(currentPeriodDate.getFullYear(), currentPeriodDate.getMonth() + 1, 1);
+                    setCurrentPeriodDate(next);
+                    setFilterMode('MONTH');
+                    setViewAll(false);
+                  }}
+                  className="p-2 text-slate-500 hover:text-slate-800 hover:bg-white rounded-lg transition-colors border-0"
+                  title="Mês posterior"
+                >
+                  <ChevronRight className="w-5 h-5" />
+                </button>
+              </div>
+            )}
+
+            {/* Filtros por Datas (Visíveis nos modos RANGE ou MONTH) */}
+            {(filterMode === 'RANGE' || filterMode === 'MONTH') && (
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 font-semibold text-slate-600">
+                  <span className="text-slate-400">De:</span>
+                  <input
+                    type="date"
+                    disabled={filterMode === 'MONTH'}
+                    value={startDateStr}
+                    onChange={(e) => setStartDateStr(e.target.value)}
+                    className={`bg-transparent outline-none font-bold text-slate-705 ${filterMode === 'MONTH' ? 'cursor-not-allowed opacity-80' : ''}`}
+                  />
+                </div>
+                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 font-semibold text-slate-600">
+                  <span className="text-slate-400">Até:</span>
+                  <input
+                    type="date"
+                    disabled={filterMode === 'MONTH'}
+                    value={endDateStr}
+                    onChange={(e) => setEndDateStr(e.target.value)}
+                    className={`bg-transparent outline-none font-bold text-slate-705 ${filterMode === 'MONTH' ? 'cursor-not-allowed opacity-80' : ''}`}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -605,7 +773,7 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
             </span>
           </div>
 
-          {viewAll && (
+          {filterMode === 'ALL' && (
             <div className="text-[11px] font-bold text-blue-600 bg-blue-50 border border-blue-100 px-3 py-2 rounded-xl flex items-center gap-1.5">
               <AlertCircle className="w-4 h-4 text-blue-500" />
               Mostrando todos os lançamentos — {transactions.length} no total
@@ -613,6 +781,34 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
           )}
         </div>
       </div>
+
+      {selectedTxIds.size > 0 && (
+        <div className="bg-rose-50 border border-rose-105 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3 animate-fadeIn">
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse" />
+            <span className="text-xs font-bold text-rose-700">
+              {selectedTxIds.size} {selectedTxIds.size === 1 ? 'lançamento selecionado' : 'lançamentos selecionados'}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setSelectedTxIds(new Set())}
+              className="px-3 py-1.5 bg-white border border-rose-200 text-rose-700 hover:bg-rose-100 rounded-xl font-bold text-xs transition-colors"
+            >
+              Limpar Seleção
+            </button>
+            <button
+              type="button"
+              onClick={handleBulkDelete}
+              className="flex items-center gap-1.5 px-4 py-1.5 bg-rose-600 text-white hover:bg-rose-700 rounded-xl font-bold text-xs transition-colors shadow-sm"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Excluir selecionados em massa
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Filtros */}
       <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-sm grid grid-cols-1 md:grid-cols-5 gap-3 items-center">
@@ -674,6 +870,14 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50/75 border-b border-slate-100">
+                <th className="px-4 py-4 w-12 text-center">
+                  <input
+                    type="checkbox"
+                    checked={filteredTransactions.length > 0 && selectedTxIds.size === filteredTransactions.length}
+                    onChange={handleSelectAllToggle}
+                    className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                  />
+                </th>
                 <th 
                   className="px-6 py-4 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest cursor-pointer select-none hover:text-slate-600 transition-colors"
                   onClick={() => setSortAscending(!sortAscending)}
@@ -694,7 +898,7 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
             <tbody className="divide-y divide-slate-100 text-xs">
               {filteredTransactions.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-slate-400 font-medium">
+                  <td colSpan={8} className="px-6 py-12 text-center text-slate-400 font-medium">
                     Nenhum lançamento no período filtrado.
                   </td>
                 </tr>
@@ -703,6 +907,14 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
                   const account = accounts.find(a => a.id === t.accountId);
                   return (
                     <tr key={t.id} className="hover:bg-slate-50/50 transition-colors group">
+                      <td className="px-4 py-4 text-center">
+                        <input
+                          type="checkbox"
+                          checked={selectedTxIds.has(t.id)}
+                          onChange={() => handleSelectTxToggle(t.id)}
+                          className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                        />
+                      </td>
                       <td className="px-6 py-4 font-bold text-slate-500 font-mono">
                         {new Date(t.date + 'T00:00:00').toLocaleDateString('pt-BR')}
                       </td>
@@ -1384,6 +1596,15 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
           </div>
         </div>
       )}
+      
+      <ConfirmModal
+        isOpen={confirmState.open}
+        title={confirmState.title}
+        message={confirmState.message}
+        confirmColor={confirmState.confirmColor}
+        onConfirm={confirmState.onConfirm}
+        onCancel={() => setConfirmState(prev => ({ ...prev, open: false }))}
+      />
     </div>
   );
 };

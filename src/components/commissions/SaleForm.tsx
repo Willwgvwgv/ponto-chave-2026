@@ -4,6 +4,7 @@ import { ComissoneUser, Sale, BrokerSplit } from "../../types";
 import { useAutoSave, decodeDraft } from "../../hooks/useAutoSave";
 import { round2 } from "../../hooks/useQueries";
 import { stripDoc, isValidCPF, isValidCNPJ, isValidDoc, maskDoc, getDocType } from "../../lib/utils";
+import { ConfirmModal } from "../ui/ConfirmModal";
 
 interface SaleFormProps {
   agencyId: string;
@@ -239,6 +240,7 @@ export const SaleForm: React.FC<SaleFormProps> = ({
 
   const [buyerDocError, setBuyerDocError] = useState("");
   const [sellerDocError, setSellerDocError] = useState("");
+  const [draftToRestore, setDraftToRestore] = useState<any | null>(null);
 
   const [tempSplits, setTempSplits] = useState<TempSplit[]>(
     editingSale?.splits 
@@ -311,46 +313,46 @@ export const SaleForm: React.FC<SaleFormProps> = ({
         }>(stored);
 
         if (draft && (draft.propertyAddress || draft.clientName || draft.sellerName || draft.saleValue > 0 || draft.dataVencimentoNf || draft.buyerDoc || draft.sellerDoc)) {
-          if (window.confirm("Você tem um rascunho não finalizado. Deseja restaurar as informações?")) {
-            setPropertyAddress(draft.propertyAddress || "");
-            setSaleDate(draft.saleDate || new Date().toISOString().split("T")[0]);
-            setDataVencimentoNf(draft.dataVencimentoNf || "");
-            
-            const sVal = draft.saleValue || 0;
-            setSaleValue(sVal);
-            if (sVal > 0) {
-              const formatted = new Intl.NumberFormat("pt-BR", {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              }).format(sVal);
-              setSaleValueDisplay(formatted);
-            } else {
-              setSaleValueDisplay("");
-            }
-
-            setCommissionPercentage(draft.commissionPercentage || 6);
-            setClientName(draft.clientName || "");
-            setSellerName(draft.sellerName || "");
-            setTempSplits(draft.tempSplits || []);
-            if (draft.splitDivisionType) {
-              setSplitDivisionType(draft.splitDivisionType);
-            }
-            if (draft.activeQuickDist) {
-              setActiveQuickDist(draft.activeQuickDist);
-            }
-            setBuyerDocType(draft.buyerDocType || 'CPF');
-            setBuyerDoc(draft.buyerDoc || "");
-            setSellerDocType(draft.sellerDocType || 'CPF');
-            setSellerDoc(draft.sellerDoc || "");
-          } else {
-            localStorage.removeItem("comissone_sale_draft");
-          }
+          setDraftToRestore(draft);
         }
       }
     } catch (e) {
       console.error("Erro ao ler rascunho de comissão:", e);
     }
-  }, []);
+  }, [editingSale]);
+
+  const handleApplyDraft = (draft: any) => {
+    setPropertyAddress(draft.propertyAddress || "");
+    setSaleDate(draft.saleDate || new Date().toISOString().split("T")[0]);
+    setDataVencimentoNf(draft.dataVencimentoNf || "");
+    
+    const sVal = draft.saleValue || 0;
+    setSaleValue(sVal);
+    if (sVal > 0) {
+      const formatted = new Intl.NumberFormat("pt-BR", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }).format(sVal);
+      setSaleValueDisplay(formatted);
+    } else {
+      setSaleValueDisplay("");
+    }
+
+    setCommissionPercentage(draft.commissionPercentage || 6);
+    setClientName(draft.clientName || "");
+    setSellerName(draft.sellerName || "");
+    setTempSplits(draft.tempSplits || []);
+    if (draft.splitDivisionType) {
+      setSplitDivisionType(draft.splitDivisionType);
+    }
+    if (draft.activeQuickDist) {
+      setActiveQuickDist(draft.activeQuickDist);
+    }
+    setBuyerDocType(draft.buyerDocType || 'CPF');
+    setBuyerDoc(draft.buyerDoc || "");
+    setSellerDocType(draft.sellerDocType || 'CPF');
+    setSellerDoc(draft.sellerDoc || "");
+  };
 
   // Hook do AutoSave ativo a cada 2000ms
   useAutoSave({
@@ -1808,6 +1810,23 @@ export const SaleForm: React.FC<SaleFormProps> = ({
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={draftToRestore !== null}
+        title="Restaurar rascunho"
+        message="Você tem um rascunho de venda não finalizado. Deseja restaurar as informações preenchidas anteriormente?"
+        confirmText="Restaurar"
+        cancelText="Descartar"
+        confirmColor="blue"
+        onConfirm={() => {
+          handleApplyDraft(draftToRestore);
+          setDraftToRestore(null);
+        }}
+        onCancel={() => {
+          localStorage.removeItem("comissone_sale_draft");
+          setDraftToRestore(null);
+        }}
+      />
     </div>
   );
 };

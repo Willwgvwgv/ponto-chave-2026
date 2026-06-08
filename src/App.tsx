@@ -82,6 +82,7 @@ import { VistoriaView } from './components/VistoriaView';
 import { ComissoesView } from './components/ComissoesView';
 import { SimuladorView } from './components/SimuladorView';
 import { FinanceiroView } from './components/FinanceiroView';
+import { ConfirmModal } from './components/ui/ConfirmModal';
 import { Task, Priority, Tool, RecurrenceType, UserProfile, ProcessInstance, CompanySettings, ProcessTemplate, ProcessStep, KanbanColumn } from "./types";
 import { 
   auth, 
@@ -190,6 +191,21 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({ user: null, profile: null, loading: true, isAdmin: false, companySettings: null });
 
 const useAuth = () => useContext(AuthContext);
+
+interface ConfirmContextType {
+  confirm: (options: {
+    title: string;
+    message: string;
+    confirmColor?: "red" | "blue" | "green";
+    onConfirm: () => void;
+  }) => void;
+}
+
+const ConfirmContext = createContext<ConfirmContextType>({
+  confirm: () => {}
+});
+
+export const useConfirm = () => useContext(ConfirmContext);
 
 // --- Error Boundary ---
 
@@ -1590,6 +1606,8 @@ function AppContent() {
 
   // Fetch Process Templates
   useEffect(() => {
+    if (!user || !profile) return;
+    
     // Optimization: Templates don't change often, use a regular fetch instead of snapshot if possible,
     // or keep snapshot but it's small. Let's keep snapshot for now but note it's a small collection.
     const unsubscribe = onSnapshot(collection(db, "process_templates"), (snapshot) => {
@@ -1651,7 +1669,7 @@ function AppContent() {
       handleFirestoreError(error, OperationType.LIST, "process_templates");
     });
     return () => unsubscribe();
-  }, []);
+  }, [user, profile]);
 
   const toggleTask = async (id: string) => {
     const task = tasks.find(t => t.id === id);
@@ -5718,6 +5736,7 @@ const GCAL_SCOPES = 'https://www.googleapis.com/auth/calendar.events';
 declare const google: any;
 
 const ProfileView = ({ profile, user, onOpenSettings, onNavigate, tasks }: { profile: UserProfile | null, user: User | null, onOpenSettings: () => void, onNavigate: (tab: any) => void, tasks: Task[] }) => {
+  const { confirm } = useConfirm();
   const [isSyncing, setIsSyncing] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
   const [newName, setNewName] = useState(profile?.displayName || "");
@@ -6031,21 +6050,26 @@ const ProfileView = ({ profile, user, onOpenSettings, onNavigate, tasks }: { pro
                         Caso seu banco de dados Firebase esteja vazio, clique abaixo para carregar os dados sementes originais da imobiliária (vendas, corretores, locações, vistorias e tarefas).
                       </p>
                       <button 
-                        onClick={async () => {
-                          if (confirm("Deseja inicializar o banco de dados Firebase com os dados semente da Fidelité Imobiliária? Isso criará os dados de teste no seu Firestore real.")) {
-                            toast.loading("Inicializando dados semente no Firebase...", { id: "firebase-seed" });
-                            try {
-                              if (profile?.companyId) {
-                                await seedDatabaseForCompany(profile.companyId);
-                              } else {
-                                await seedDatabaseForCompany("company");
+                        onClick={() => {
+                          confirm({
+                            title: "Inicializar Banco de Dados",
+                            message: "Deseja inicializar o banco de dados Firebase com os dados semente da Fidelité Imobiliária? Isso criará os dados de teste no seu Firestore real.",
+                            confirmColor: "green",
+                            onConfirm: async () => {
+                              toast.loading("Inicializando dados semente no Firebase...", { id: "firebase-seed" });
+                              try {
+                                if (profile?.companyId) {
+                                  await seedDatabaseForCompany(profile.companyId);
+                                } else {
+                                  await seedDatabaseForCompany("company");
+                                }
+                              } catch (e) {
+                                console.error(e);
+                              } finally {
+                                toast.dismiss("firebase-seed");
                               }
-                            } catch (e) {
-                              console.error(e);
-                            } finally {
-                              toast.dismiss("firebase-seed");
                             }
-                          }
+                          });
                         }}
                         className="mt-3 flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all shadow-sm cursor-pointer"
                       >
@@ -6853,6 +6877,37 @@ export default function App() {
   const [quotaExceeded, setQuotaExceeded] = useState(false);
   const [naoAutorizadoEmail, setNaoAutorizadoEmail] = useState<string | null>(null);
   const [aguardandoAprovacaoEmail, setAguardandoAprovacaoEmail] = useState<string | null>(null);
+  const [confirmState, setConfirmState] = useState<{
+    open: boolean;
+    title: string;
+    message: string;
+    confirmColor?: "red" | "blue" | "green";
+    onConfirm: () => void;
+  }>({
+    open: false,
+    title: "",
+    message: "",
+    confirmColor: "red",
+    onConfirm: () => {}
+  });
+
+  const confirm = React.useCallback((options: {
+    title: string;
+    message: string;
+    confirmColor?: "red" | "blue" | "green";
+    onConfirm: () => void;
+  }) => {
+    setConfirmState({
+      open: true,
+      title: options.title,
+      message: options.message,
+      confirmColor: options.confirmColor || "red",
+      onConfirm: () => {
+        options.onConfirm();
+        setConfirmState(prev => ({ ...prev, open: false }));
+      }
+    });
+  }, []);
 
   // Fetch Company Settings based on profile
   useEffect(() => {
@@ -7152,32 +7207,43 @@ export default function App() {
 
   return (
     <AuthContext.Provider value={{ user, profile, loading, isAdmin: profile?.role === "admin", companySettings }}>
-      <ErrorBoundary>
-        {!user ? (
-          <Login />
-        ) : profile ? (
-          <AppContent />
-        ) : (
-          <div className="min-h-screen flex items-center justify-center bg-[#F8FAFC] p-4 text-center">
-            <div className="max-w-md w-full bg-white p-10 rounded-[40px] shadow-2xl border border-red-50">
-              <div className="w-20 h-20 bg-red-50 text-red-500 rounded-3xl flex items-center justify-center mx-auto mb-6">
-                <Shield className="w-10 h-10" />
+      <ConfirmContext.Provider value={{ confirm }}>
+        <ErrorBoundary>
+          {!user ? (
+            <Login />
+          ) : profile ? (
+            <AppContent />
+          ) : (
+            <div className="min-h-screen flex items-center justify-center bg-[#F8FAFC] p-4 text-center">
+              <div className="max-w-md w-full bg-white p-10 rounded-[40px] shadow-2xl border border-red-50">
+                <div className="w-20 h-20 bg-red-50 text-red-500 rounded-3xl flex items-center justify-center mx-auto mb-6">
+                  <Shield className="w-10 h-10" />
+                </div>
+                <h2 className="text-2xl font-bold text-slate-900 mb-3">Acesso Não Autorizado</h2>
+                <p className="text-slate-500 mb-8 leading-relaxed">
+                  Sua conta não possui permissão para acessar este sistema ou seu acesso foi revogado.
+                  Entre em contato com o administrador.
+                </p>
+                <button 
+                  onClick={() => auth.signOut()}
+                  className="w-full py-4 bg-slate-900 text-white rounded-2xl font-bold uppercase tracking-widest text-xs shadow-lg hover:bg-slate-800 transition-all"
+                >
+                  Voltar para o Login
+                </button>
               </div>
-              <h2 className="text-2xl font-bold text-slate-900 mb-3">Acesso Não Autorizado</h2>
-              <p className="text-slate-500 mb-8 leading-relaxed">
-                Sua conta não possui permissão para acessar este sistema ou seu acesso foi revogado.
-                Entre em contato com o administrador.
-              </p>
-              <button 
-                onClick={() => auth.signOut()}
-                className="w-full py-4 bg-slate-900 text-white rounded-2xl font-bold uppercase tracking-widest text-xs shadow-lg hover:bg-slate-800 transition-all"
-              >
-                Voltar para o Login
-              </button>
             </div>
-          </div>
-        )}
-      </ErrorBoundary>
+          )}
+        </ErrorBoundary>
+
+        <ConfirmModal
+          isOpen={confirmState.open}
+          title={confirmState.title}
+          message={confirmState.message}
+          confirmColor={confirmState.confirmColor}
+          onConfirm={confirmState.onConfirm}
+          onCancel={() => setConfirmState(prev => ({ ...prev, open: false }))}
+        />
+      </ConfirmContext.Provider>
     </AuthContext.Provider>
   );
 }
