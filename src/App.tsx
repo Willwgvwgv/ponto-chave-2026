@@ -899,22 +899,6 @@ const UserManagement = ({
         <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto">
           <button 
             onClick={() => {
-              setAddUserModalType('register');
-              setIsInviteSuccess(false);
-              setIsRegisterSuccess(false);
-              setGeneratedInviteMessage('');
-              setNewUserEmail('');
-              setNewUserName('');
-              setNewUserRole('user');
-              setIsAddUserOpen(true);
-            }}
-            className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-2xl font-bold text-sm hover:bg-blue-700 transition-all w-full sm:w-auto shadow-lg shadow-blue-200"
-          >
-            <UserPlus className="w-5 h-5" />
-            Cadastrar Manual
-          </button>
-          <button 
-            onClick={() => {
               setAddUserModalType('invite');
               setIsInviteSuccess(false);
               setIsRegisterSuccess(false);
@@ -927,7 +911,7 @@ const UserManagement = ({
               setInviteUrlGenerated('');
               setIsAddUserOpen(true);
             }}
-            className="flex items-center gap-2 px-6 py-3 bg-white border border-slate-200 text-slate-600 rounded-2xl font-bold text-sm hover:bg-slate-50 transition-all w-full sm:w-auto"
+            className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-2xl font-bold text-sm hover:bg-blue-700 transition-all w-full sm:w-auto shadow-lg shadow-blue-200 cursor-pointer"
           >
             <Send className="w-5 h-5" />
             Convidar por Link
@@ -1351,116 +1335,47 @@ const UserManagement = ({
                   <div>
                     <div className="flex justify-between items-center mb-6">
                       <h3 className="text-xl font-bold text-slate-900">
-                        {addUserModalType === 'register' ? 'Cadastrar Usuário' : 'Convidar Usuário por Link'}
+                        Convidar Usuário por Link
                       </h3>
                       <button onClick={() => setIsAddUserOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition-all">
                         <X className="w-5 h-5 text-slate-400" />
                       </button>
                     </div>
 
-                    {addUserModalType === 'invite' ? (
-                      <div className="space-y-6 text-left">
-                        <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 space-y-2.5">
-                          <p className="text-sm text-slate-700 leading-relaxed font-semibold">
-                            Como funciona o convite?
-                          </p>
-                          <ul className="text-xs text-slate-600 space-y-1.5 list-disc list-inside">
-                            <li>Copie o link abaixo e envie para o novo membro da equipe.</li>
-                            <li>Ele fará o cadastro preenchendo o próprio e-mail, nome e senha.</li>
-                            <li>Por segurança, a conta entrará como <strong className="text-amber-600 font-bold">Pendente</strong> e ele não verá os dados do sistema.</li>
-                            <li>Você receberá o cadastro na tabela e poderá <strong className="text-emerald-600 font-bold">Aprovar</strong> e definir o cargo desejado.</li>
-                          </ul>
-                        </div>
-
-                        <div className="space-y-2">
-                          <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest">Link de Cadastro Único</label>
-                          <input 
-                            type="text"
-                            readOnly
-                            value={`${window.location.origin}/?invite=${companySettings?.id || 'company'}`}
-                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none text-xs font-mono text-slate-600"
-                            onClick={(e) => (e.target as HTMLInputElement).select()}
-                          />
-                        </div>
-
-                        <div className="pt-2">
-                          <button 
-                            type="button"
-                            onClick={() => handleGenerateInviteLink()}
-                            className="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold uppercase tracking-widest text-xs shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all active:scale-95 duration-100 cursor-pointer"
-                          >
-                            Copiar Link de Convite
-                          </button>
-                        </div>
+                    <div className="space-y-6 text-left">
+                      <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 space-y-2.5">
+                        <p className="text-sm text-slate-700 leading-relaxed font-semibold">
+                          Como funciona o convite?
+                        </p>
+                        <ul className="text-xs text-slate-600 space-y-1.5 list-disc list-inside">
+                          <li>Copie o link abaixo e envie para o novo membro da equipe.</li>
+                          <li>Ele fará o cadastro preenchendo o próprio e-mail, nome e senha.</li>
+                          <li>Por segurança, a conta entrará como <strong className="text-amber-600 font-bold">Pendente</strong> e ele não verá os dados do sistema.</li>
+                          <li>Você receberá o cadastro na tabela e poderá <strong className="text-emerald-600 font-bold">Aprovar</strong> e definir o cargo desejado.</li>
+                        </ul>
                       </div>
-                    ) : (
-                      <form onSubmit={handleManualRegister} className="space-y-4">
-                        <div>
-                          <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Nome Completo</label>
-                          <div className="relative">
-                            <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                            <input 
-                              type="text"
-                              required
-                              value={newUserName}
-                              onChange={(e) => setNewUserName(e.target.value)}
-                              placeholder="Ex: Ana Maria"
-                              className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm"
-                            />
-                          </div>
-                        </div>
 
-                        <div>
-                          <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">E-mail</label>
-                          <div className="relative">
-                            <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                            <input 
-                              type="email"
-                              required
-                              value={newUserEmail}
-                              onChange={(e) => setNewUserEmail(e.target.value)}
-                              placeholder="ana@exemplo.com"
-                              className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm"
-                            />
-                          </div>
-                        </div>
+                      <div className="space-y-2">
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest">Link de Cadastro Único</label>
+                        <input 
+                          type="text"
+                          readOnly
+                          value={`${window.location.origin}/?invite=${companySettings?.id || 'company'}`}
+                          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none text-xs font-mono text-slate-600"
+                          onClick={(e) => (e.target as HTMLInputElement).select()}
+                        />
+                      </div>
 
-                        <div>
-                          <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Cargo Inicial</label>
-                          <div className="grid grid-cols-2 gap-3">
-                            <button
-                              type="button"
-                              onClick={() => setNewUserRole("user")}
-                              className={cn(
-                                "py-3 rounded-2xl font-bold text-xs uppercase tracking-widest border transition-all",
-                                newUserRole === "user" ? "bg-blue-50 text-blue-600 border-blue-200" : "bg-white text-slate-400 border-slate-200"
-                              )}
-                            >
-                              Colaborador
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setNewUserRole("admin")}
-                              className={cn(
-                                "py-3 rounded-2xl font-bold text-xs uppercase tracking-widest border transition-all",
-                                newUserRole === "admin" ? "bg-purple-50 text-purple-600 border-purple-200" : "bg-white text-slate-400 border-slate-200"
-                              )}
-                            >
-                              Administrador
-                            </button>
-                          </div>
-                        </div>
-
-                        <div className="pt-4">
-                          <button 
-                            type="submit"
-                            className="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold uppercase tracking-widest text-xs shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all active:scale-95 duration-100"
-                          >
-                            Salvar Cadastro
-                          </button>
-                        </div>
-                      </form>
-                    )}
+                      <div className="pt-2">
+                        <button 
+                          type="button"
+                          onClick={() => handleGenerateInviteLink()}
+                          className="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold uppercase tracking-widest text-xs shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all active:scale-95 duration-100 cursor-pointer"
+                        >
+                          Copiar Link de Convite
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
