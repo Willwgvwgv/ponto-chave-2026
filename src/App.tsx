@@ -7107,6 +7107,14 @@ export default function App() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [companySettings, setCompanySettings] = useState<CompanySettings | null>(null);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const safetyTimer = setTimeout(() => {
+      setLoading(false);
+    }, 4000);
+    return () => clearTimeout(safetyTimer);
+  }, []);
+
   const [quotaExceeded, setQuotaExceeded] = useState(false);
   const [naoAutorizadoEmail, setNaoAutorizadoEmail] = useState<string | null>(null);
   const [aguardandoAprovacaoEmail, setAguardandoAprovacaoEmail] = useState<string | null>(null);
@@ -7208,8 +7216,13 @@ export default function App() {
 
   useEffect(() => {
     let unsubscribeProfile: (() => void) | null = null;
+    let loadingTimeout: NodeJS.Timeout | null = null;
 
     const unsubscribeAuth = onAuthStateChanged(auth, async (authenticatedUser) => {
+      if (loadingTimeout) clearTimeout(loadingTimeout);
+      loadingTimeout = setTimeout(() => {
+        setLoading(false);
+      }, 5000);
       if (authenticatedUser) {
         setUser(authenticatedUser);
         
@@ -7411,6 +7424,7 @@ export default function App() {
     return () => {
       unsubscribeAuth();
       if (unsubscribeProfile) unsubscribeProfile();
+      if (loadingTimeout) clearTimeout(loadingTimeout);
     };
   }, []);
 
