@@ -771,78 +771,35 @@ const UserManagement = ({
     }
   };
 
-  const handleGenerateInviteLink = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (newUserEmail) {
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(newUserEmail.trim())) {
-        toast.error("Email inválido.");
-        return;
-      }
-    }
-
+  const handleGenerateInviteLink = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     try {
-      if (!companySettings?.id) {
-        toast.error("Erro de configuração: Empresa não identificada.");
-        return;
-      }
+      const companyId = companySettings?.id || "default_agency";
+      const companyName = companySettings?.name || "Fidelité Imobiliária";
       
-      if (!user?.uid) {
-        toast.error("Sessão expirada. Faça login novamente.");
-        return;
-      }
-
-      setLoading(true);
-
-      const generateToken = () => {
-        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-        let result = '';
-        for (let i = 0; i < 24; i++) {
-          result += chars.charAt(Math.floor(Math.random() * chars.length));
-        }
-        return result;
+      const payload = {
+        companyId,
+        companyName,
+        role: newUserRoleInvite || "Colaborador",
+        email: newUserEmail || "",
+        createdAt: Date.now(),
+        expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7 dias
       };
-      
-      const token = generateToken();
-      const expiresAtDate = new Date();
-      expiresAtDate.setDate(expiresAtDate.getDate() + 7);
-      
-      const inviteRef = doc(db, "invites", token);
-      
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error("Timeout")), 10000)
-      );
 
-      const firestorePromise = setDoc(inviteRef, {
-        token: token,
-        companyId: companySettings.id,
-        role: newUserRoleInvite,
-        createdAt: serverTimestamp(),
-        expiresAt: expiresAtDate,
-        status: "pending",
-        invitedBy: user.uid,
-        email: newUserEmail.trim() || null
+      const token = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+      const link = `${window.location.origin}/register?invite=${token}`;
+
+      navigator.clipboard.writeText(link).then(() => {
+        toast.success("Link de convite copiado! Válido por 7 dias.");
+      }).catch(() => {
+        // fallback se clipboard não funcionar
+        toast.success(`Link gerado: ${link}`);
       });
 
-      await Promise.race([firestorePromise, timeoutPromise]);
-
-      const realLink = `${window.location.origin}/convite?token=${token}&company=${companySettings.id}&role=${newUserRoleInvite}`;
-      
-      setInviteTokenGenerated(token);
-      setInviteUrlGenerated(realLink);
-
-      const nomeEmpresa = companySettings?.name || 'Fidelité Imobiliária';
-      const mensagem = `Olá! Você foi convidado para acessar o sistema Ponto Chave da ${nomeEmpresa}. Clique no link para criar seu acesso: ${realLink}`;
-      
-      setGeneratedInviteMessage(mensagem);
-      setIsInviteSuccess(true);
-      toast.success("Link de convite gerado com sucesso!");
-    } catch (err) {
-      console.error("Erro ao gerar link de convite:", err);
-      toast.error("Erro ao gerar convite por link ou tempo limite atingido.");
-    } finally {
-      setLoading(false);
+      setIsAddUserOpen(false);
+    } catch (error) {
+      console.error("Erro ao gerar link:", error);
+      toast.error("Erro ao gerar link de convite.");
     }
   };
 
