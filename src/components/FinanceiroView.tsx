@@ -80,39 +80,7 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
     const q = query(collection(db, "bank_accounts"), where("companyId", "==", companyId));
     const unsubscribe = onSnapshot(q, async (snapshot) => {
       let data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BankAccount));
-      
-      // Seed de contas padrão caso não exista nenhuma
-      if (data.length === 0 && snapshot.metadata.fromCache === false) {
-        try {
-          const sicoobId = `sicoob_${companyId}`;
-          const cresolId = `cresol_${companyId}`;
-
-          await setDoc(doc(db, "bank_accounts", sicoobId), {
-            companyId,
-            name: 'Sicoob PJ Principal',
-            bank: 'SICOOB',
-            agency: '3007',
-            account: '12560-1',
-            balance: 50000,
-            createdAt: serverTimestamp()
-          });
-
-          await setDoc(doc(db, "bank_accounts", cresolId), {
-            companyId,
-            name: 'Cresol PJ',
-            bank: 'CRESOL',
-            agency: '5240',
-            account: '89552-0',
-            balance: 25000,
-            createdAt: serverTimestamp()
-          });
-          // O snapshot atualizará automaticamente em seguida
-        } catch (err) {
-          console.error("Erro no Seed automático de Contas Bancárias:", err);
-        }
-      } else {
-        setAccounts(data);
-      }
+      setAccounts(data);
     });
 
     return () => unsubscribe();
