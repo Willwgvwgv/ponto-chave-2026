@@ -348,8 +348,9 @@ export function useSales(agencyId: string) {
         })).sort((a, b) => new Date(b.sale_date).getTime() - new Date(a.sale_date).getTime());
       }
     },
-    staleTime: 5 * 60 * 1000, // 5 minutos
-    retry: 1,                 // 1 tentativa
+    staleTime: 10 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+    retry: 1,
   });
 }
 
@@ -436,30 +437,6 @@ export function useTeam(agencyId: string) {
           };
         });
 
-        // Coleção separada legacy ComissoneUser como backup/contingência
-        let legacyList: ComissoneUser[] = [];
-        try {
-          const comRef = collection(db, "comissone_users");
-          const comSnap = await getDocs(comRef);
-          comSnap.docs.forEach(doc => {
-            const data = doc.data();
-            legacyList.push({
-              id: doc.id,
-              agency_id: data.agency_id || data.companyId || safeAgencyId,
-              name: data.name || data.displayName || "Corretor",
-              email: data.email || "",
-              role: (data.role === "ADMIN" || data.role === "admin") ? "ADMIN" : (data.role === "MANAGER" || data.role === "manager" ? "MANAGER" : "BROKER"),
-              cpf: data.cpf,
-              phone: data.phone,
-              created_at: data.created_at || data.createdAt || new Date().toISOString(),
-              isSocio: data.isSocio,
-              cargoComissao: data.cargoComissao
-            });
-          });
-        } catch (e) {
-          // ignore
-        }
-
         const fallback = getStoredData();
         const localTeam = fallback.team.filter(u => u.agency_id === safeAgencyId);
 
@@ -476,14 +453,7 @@ export function useTeam(agencyId: string) {
           }
         });
 
-        // 2. Inserir legados da coleção comissone_users
-        legacyList.forEach(u => {
-          if (u.email) {
-            mergedMap.set(u.email.toLowerCase(), u);
-          }
-        });
-
-        // 3. Inserir mapeados (sobrepõe se duplicado por e-mail)
+        // 2. Inserir mapeados da coleção principal (sobrepõe fallback se duplicado por e-mail)
         mappedUsers.forEach(u => {
           if (u.email) {
             mergedMap.set(u.email.toLowerCase(), u);
@@ -501,7 +471,8 @@ export function useTeam(agencyId: string) {
         return fallback.team.filter(u => u.agency_id === safeAgencyId);
       }
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: 15 * 60 * 1000,
+    gcTime: 60 * 60 * 1000,
     retry: 1,
   });
 }

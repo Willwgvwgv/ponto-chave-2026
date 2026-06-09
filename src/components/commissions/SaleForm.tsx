@@ -413,7 +413,7 @@ export const SaleForm: React.FC<SaleFormProps> = ({
   });
 
   // Filtro de corretores autorizados para aparecer no dropdown
-  const filteredBrokers = team.filter(b => {
+  const filteredBrokers = useMemo(() => team.filter(b => {
     // Excluir conta institucional da própria Agência ('Fidelité Imobiliária' por exemplo)
     const isCompanyProfile = b.name.toLowerCase().includes("fidelité") || b.email.toLowerCase().includes("fidelite");
     if (isCompanyProfile) return false;
@@ -426,7 +426,7 @@ export const SaleForm: React.FC<SaleFormProps> = ({
 
     // Qualquer admin, gerente, ou corretor listado na equipe pode receber splits
     return isBrokerRole || isAdminRole || hasCommPerm;
-  });
+  }), [team]);
 
   const getBrokerDisplayRole = (b: ComissoneUser): string => {
     const rawRole = String(b.role || "").toUpperCase();

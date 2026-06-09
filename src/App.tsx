@@ -4,7 +4,7 @@
  */
 
 import * as React from "react";
-import { useState, useMemo, useEffect, createContext, useContext } from "react";
+import { useState, useMemo, useEffect, createContext, useContext, lazy, Suspense } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Toaster, toast } from 'sonner';
 import { 
@@ -79,10 +79,10 @@ import {
   Cell
 } from "recharts";
 import { cn } from "./lib/utils";
-import { VistoriaView } from './components/VistoriaView';
-import { ComissoesView } from './components/ComissoesView';
-import { SimuladorView } from './components/SimuladorView';
-import { FinanceiroView } from './components/FinanceiroView';
+const VistoriaView = lazy(() => import('./components/VistoriaView').then(m => ({ default: m.VistoriaView })));
+const ComissoesView = lazy(() => import('./components/ComissoesView').then(m => ({ default: m.ComissoesView })));
+const SimuladorView = lazy(() => import('./components/SimuladorView').then(m => ({ default: m.SimuladorView })));
+const FinanceiroView = lazy(() => import('./components/FinanceiroView').then(m => ({ default: m.FinanceiroView })));
 import { ConfirmModal } from './components/ui/ConfirmModal';
 import { Task, Priority, Tool, RecurrenceType, UserProfile, ProcessInstance, CompanySettings, ProcessTemplate, ProcessStep, KanbanColumn } from "./types";
 import { 
@@ -1895,18 +1895,16 @@ function AppContent() {
   useEffect(() => {
     if (!profile) return;
     const cid = profile.companyId || "company";
-    
-    // Buscar ferramentas da empresa OU criadas pelo usuário (para evitar órfãos)
+
     const q = query(collection(db, "tools"), where("companyId", "==", cid));
-    
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+
+    getDocs(q).then((snapshot) => {
       const toolsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Tool));
       setTools(toolsData);
-    }, (error) => {
+    }).catch((error) => {
       console.error("Erro ao buscar ferramentas:", error);
       handleFirestoreError(error, OperationType.LIST, "tools");
     });
-    return () => unsubscribe();
   }, [profile]);
 
   // Fetch Processes
@@ -1946,69 +1944,59 @@ function AppContent() {
   // Fetch Process Templates
   useEffect(() => {
     if (!user || !profile) return;
-    
-    // Optimization: Templates don't change often, use a regular fetch instead of snapshot if possible,
-    // or keep snapshot but it's small. Let's keep snapshot for now but note it's a small collection.
-    const unsubscribe = onSnapshot(collection(db, "process_templates"), (snapshot) => {
-      if (snapshot.empty && isAdmin) { // Only admin should init
-        // Initialize default templates if not exists
-        const defaultTemplates = [
-          {
-            type: "locacao",
-            title: "Locação",
-            icon: "Chave",
-            color: "text-blue-500",
-            steps: [
-              { label: "Documentação do Cliente", desc: "Coleta de RG, CPF, comprovante de renda e residência." },
-              { label: "Verificação na Loft", desc: "Análise de crédito e perfil através da plataforma Loft." },
-              { label: "Contrato de Locação", desc: "Elaboração e assinatura digital/física do contrato." },
-              { label: "Vistoria", desc: "Realização do laudo de vistoria detalhado com fotos." },
-              { label: "Transferências", desc: "Troca de titularidade de contas de água e energia." },
-              { label: "Entrega de Chaves", desc: "Finalização do processo e entrega formal das chaves." }
-            ],
-            updatedAt: serverTimestamp()
-          },
-          {
-            type: "captacao",
-            title: "Captação para Venda",
-            icon: "Busca",
-            color: "text-amber-500",
-            steps: [
-              { label: "Visita ao Imóvel", desc: "Avaliação inicial e coleta de informações técnicas." },
-              { label: "Documentação do Imóvel", desc: "Matrícula atualizada, IPTU e certidões negativas." },
-              { label: "Fotos e Vídeos", desc: "Produção de material visual profissional para anúncio." },
-              { label: "Análise de Mercado", desc: "Definição do valor de venda baseado em comparativos." },
-              { label: "Autorização de Venda", desc: "Assinatura do documento de exclusividade ou opção." },
-              { label: "Publicação", desc: "Cadastro nos portais e início da divulgação." }
-            ],
-            updatedAt: serverTimestamp()
-          },
-          {
-            type: "venda",
-            title: "Processo de Venda",
-            icon: "Início",
-            color: "text-green-500",
-            steps: [
-              { label: "Proposta e Negociação", desc: "Recebimento da oferta e ajuste de valores/prazos." },
-              { label: "Sinal e Princípio de Pagamento", desc: "Reserva do imóvel e garantia do negócio." },
-              { label: "Análise Jurídica", desc: "Verificação de certidões de compradores e vendedores." },
-              { label: "Escritura ou Financiamento", desc: "Assinatura do contrato bancário ou escritura pública." },
-              { label: "Registro em Cartório", desc: "Protocolo do título no Registro de Imóveis competente." },
-              { label: "Posse e Chaves", desc: "Liberação dos recursos e entrega definitiva do imóvel." }
-            ],
-            updatedAt: serverTimestamp()
-          }
-        ];
-        defaultTemplates.forEach(t => addDoc(collection(db, "process_templates"), t));
-      } else {
-        const templatesData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ProcessTemplate));
-        setProcessTemplates(templatesData);
+
+    const fetchTemplates = async () => {
+      try {
+        const snapshot = await getDocs(collection(db, "process_templates"));
+        if (snapshot.empty && isAdmin) {
+          const defaultTemplates = [
+            {
+              type: "locacao", title: "Locação", icon: "Chave", color: "text-blue-500",
+              steps: [
+                { label: "Documentação do Cliente", desc: "Coleta de RG, CPF, comprovante de renda e residência." },
+                { label: "Verificação na Loft", desc: "Análise de crédito e perfil através da plataforma Loft." },
+                { label: "Contrato de Locação", desc: "Elaboração e assinatura digital/física do contrato." },
+                { label: "Vistoria", desc: "Realização do laudo de vistoria detalhado com fotos." },
+                { label: "Transferências", desc: "Troca de titularidade de contas de água e energia." },
+                { label: "Entrega de Chaves", desc: "Finalização do processo e entrega formal das chaves." }
+              ], updatedAt: serverTimestamp()
+            },
+            {
+              type: "captacao", title: "Captação para Venda", icon: "Busca", color: "text-amber-500",
+              steps: [
+                { label: "Visita ao Imóvel", desc: "Avaliação inicial e coleta de informações técnicas." },
+                { label: "Documentação do Imóvel", desc: "Matrícula atualizada, IPTU e certidões negativas." },
+                { label: "Fotos e Vídeos", desc: "Produção de material visual profissional para anúncio." },
+                { label: "Análise de Mercado", desc: "Definição do valor de venda baseado em comparativos." },
+                { label: "Autorização de Venda", desc: "Assinatura do documento de exclusividade ou opção." },
+                { label: "Publicação", desc: "Cadastro nos portais e início da divulgação." }
+              ], updatedAt: serverTimestamp()
+            },
+            {
+              type: "venda", title: "Processo de Venda", icon: "Início", color: "text-green-500",
+              steps: [
+                { label: "Proposta e Negociação", desc: "Recebimento da oferta e ajuste de valores/prazos." },
+                { label: "Sinal e Princípio de Pagamento", desc: "Reserva do imóvel e garantia do negócio." },
+                { label: "Análise Jurídica", desc: "Verificação de certidões de compradores e vendedores." },
+                { label: "Escritura ou Financiamento", desc: "Assinatura do contrato bancário ou escritura pública." },
+                { label: "Registro em Cartório", desc: "Protocolo do título no Registro de Imóveis competente." },
+                { label: "Posse e Chaves", desc: "Liberação dos recursos e entrega definitiva do imóvel." }
+              ], updatedAt: serverTimestamp()
+            }
+          ];
+          defaultTemplates.forEach(t => addDoc(collection(db, "process_templates"), t));
+        } else {
+          const templatesData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ProcessTemplate));
+          setProcessTemplates(templatesData);
+        }
+      } catch (error: any) {
+        handleFirestoreError(error, OperationType.LIST, "process_templates");
       }
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, "process_templates");
-    });
-    return () => unsubscribe();
+    };
+
+    fetchTemplates();
   }, [user, profile]);
+
 
   const toggleTask = async (id: string) => {
     const task = tasks.find(t => t.id === id);
@@ -2996,23 +2984,31 @@ function AppContent() {
             onSelectProcess={setActiveInstanceId} 
           />
         ) : activeTab === "financeiro" ? (
-          <FinanceiroView isAdmin={isAdmin} user={user} profile={profile} companySettings={companySettings} />
+          <Suspense fallback={<div className="flex items-center justify-center h-64 text-gray-400">Carregando financeiro...</div>}>
+            <FinanceiroView isAdmin={isAdmin} user={user} profile={profile} companySettings={companySettings} />
+          </Suspense>
         ) : activeTab === "vistorias" ? (
-          <VistoriaView isAdmin={isAdmin} user={user} profile={profile} companySettings={companySettings} />
+          <Suspense fallback={<div className="flex items-center justify-center h-64 text-gray-400">Carregando vistorias...</div>}>
+            <VistoriaView isAdmin={isAdmin} user={user} profile={profile} companySettings={companySettings} />
+          </Suspense>
         ) : activeTab === "comissoes" ? (
-          <ComissoesView 
-            isAdmin={isAdmin} 
-            user={user} 
-            profile={profile} 
-            initialData={pendingCommissionData}
-            onClearInitialData={() => setPendingCommissionData(null)}
-            companySettings={companySettings}
-          />
+          <Suspense fallback={<div className="flex items-center justify-center h-64 text-gray-400">Carregando comissões...</div>}>
+            <ComissoesView 
+              isAdmin={isAdmin} 
+              user={user} 
+              profile={profile} 
+              initialData={pendingCommissionData}
+              onClearInitialData={() => setPendingCommissionData(null)}
+              companySettings={companySettings}
+            />
+          </Suspense>
         ) : activeTab === "simulador" ? (
-          <SimuladorView 
-            companySettings={companySettings} 
-            currentUser={{ displayName: user?.displayName || undefined, email: user?.email || undefined }} 
-          />
+          <Suspense fallback={<div className="flex items-center justify-center h-64 text-gray-400">Carregando simulador...</div>}>
+            <SimuladorView 
+              companySettings={companySettings} 
+              currentUser={{ displayName: user?.displayName || undefined, email: user?.email || undefined }} 
+            />
+          </Suspense>
         ) : activeTab === "profile" ? (
           <ProfileView 
             profile={profile} 

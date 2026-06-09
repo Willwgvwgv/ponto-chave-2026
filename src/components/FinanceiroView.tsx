@@ -13,6 +13,8 @@ import {
   serverTimestamp,
   getDoc,
   getDocs,
+  orderBy,
+  limit,
   handleFirestoreError,
   OperationType
 } from '../firebase';
@@ -157,7 +159,12 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
   useEffect(() => {
     if (!companyId) return;
 
-    const q = query(collection(db, "financial_transactions"), where("companyId", "==", companyId));
+    const q = query(
+      collection(db, "financial_transactions"),
+      where("companyId", "==", companyId),
+      orderBy("date", "desc"),
+      limit(500)
+    );
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FinancialTransaction));
       setTransactions(data);
