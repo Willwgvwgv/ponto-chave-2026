@@ -7263,6 +7263,36 @@ export default function App() {
               }
               return; // continua aguardando o snapshot atualizar com os dados criados
             }
+
+            const TEAM_EMAILS_WHITELIST = [
+              "fideliteimobiliaria@gmail.com",
+              "fideliteiara@gmail.com", 
+              "marcos.drania@gmail.com",
+              "reginaldo.carvalho@gmail.com",
+              "iararamostelescunhadi@gmail.com"
+            ];
+
+            if (authenticatedUser.email && TEAM_EMAILS_WHITELIST.includes(authenticatedUser.email)) {
+              const teamProfile: UserProfile = {
+                uid: authenticatedUser.uid,
+                displayName: authenticatedUser.displayName || authenticatedUser.email.split('@')[0] || "Equipe",
+                email: authenticatedUser.email,
+                photoURL: authenticatedUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(authenticatedUser.displayName || authenticatedUser.email || "E")}&background=random`,
+                role: "user",
+                companyId: "company",
+                status: "active",
+                isPending: false,
+                createdAt: serverTimestamp(),
+              };
+
+              try {
+                await setDoc(userDocRef, teamProfile, { merge: true });
+                console.log("Perfil de membro da equipe criado automaticamente:", authenticatedUser.email);
+              } catch (err) {
+                console.error("Erro ao criar perfil de equipe automático:", err);
+              }
+              return;
+            }
             
             // CASO NORMAL: usuário sem perfil.
             // 1. Verificar primeiro se há um de token de convite ativo por link no localStorage

@@ -42,7 +42,8 @@ const env = (import.meta as any).env || {};
 
 const cleanStr = (val: any): string => {
   if (!val || typeof val !== 'string') return '';
-  return val.replace(/[\r\n\s\t]/g, '');
+  // Remove whitespace and any single or double quotes around the value
+  return val.replace(/[\r\n\s\t]/g, '').replace(/^['"]|['"]$/g, '');
 };
 
 // Clean up database ID if it was misconfigured with placeholder URLs
