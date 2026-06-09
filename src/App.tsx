@@ -666,24 +666,30 @@ const UserManagement = ({
 
   useEffect(() => {
     if (!companySettings?.id) return;
-    const q = query(collection(db, "users"), where("companyId", "==", companySettings.id));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const usersData = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserProfile));
-      
-      // Sort users: Admins first, then by name
-      const sortedUsers = [...usersData].sort((a, b) => {
-        if (a.role === "admin" && b.role !== "admin") return -1;
-        if (a.role !== "admin" && b.role === "admin") return 1;
-        return (a.displayName || "").localeCompare(b.displayName || "");
-      });
 
-      setUsers(sortedUsers);
-      setLoading(false);
-    }, (error) => {
-      setLoading(false);
-      handleFirestoreError(error, OperationType.LIST, "users");
-    });
-    return () => unsubscribe();
+    const fetchUsers = async () => {
+      setLoading(true);
+      try {
+        const q = query(collection(db, "users"), where("companyId", "==", companySettings.id));
+        const snapshot = await getDocs(q);
+        const usersData = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserProfile));
+        
+        // Sort users: Admins first, then by name
+        const sortedUsers = [...usersData].sort((a, b) => {
+          if (a.role === "admin" && b.role !== "admin") return -1;
+          if (a.role !== "admin" && b.role === "admin") return 1;
+          return (a.displayName || "").localeCompare(b.displayName || "");
+        });
+
+        setUsers(sortedUsers);
+        setLoading(false);
+      } catch (error: any) {
+        setLoading(false);
+        handleFirestoreError(error, OperationType.LIST, "users");
+      }
+    };
+
+    fetchUsers();
   }, [companySettings?.id]);
 
   const filteredUsers = users.filter(u => {
@@ -803,7 +809,12 @@ const UserManagement = ({
       expiresAtDate.setDate(expiresAtDate.getDate() + 7);
       
       const inviteRef = doc(db, "invites", token);
-      await setDoc(inviteRef, {
+      
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error("Timeout")), 10000)
+      );
+
+      const firestorePromise = setDoc(inviteRef, {
         token: token,
         companyId: companySettings.id,
         role: newUserRoleInvite,
@@ -813,6 +824,8 @@ const UserManagement = ({
         invitedBy: user.uid,
         email: newUserEmail.trim() || null
       });
+
+      await Promise.race([firestorePromise, timeoutPromise]);
 
       const realLink = `${window.location.origin}/convite?token=${token}&company=${companySettings.id}&role=${newUserRoleInvite}`;
       
@@ -827,7 +840,7 @@ const UserManagement = ({
       toast.success("Link de convite gerado com sucesso!");
     } catch (err) {
       console.error("Erro ao gerar link de convite:", err);
-      toast.error("Erro ao gerar convite por link.");
+      toast.error("Erro ao gerar convite por link ou tempo limite atingido.");
     } finally {
       setLoading(false);
     }
