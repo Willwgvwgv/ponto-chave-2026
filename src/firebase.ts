@@ -40,8 +40,6 @@ import firebaseConfig from '../firebase-applet-config.json';
 // Detect if virtual environment defines VITE_FIREBASE_* environment variables (e.g. Vercel)
 const env = (import.meta as any).env || {};
 
-const hasEnvConfig = !!env.VITE_FIREBASE_API_KEY;
-
 // Clean up database ID if it was misconfigured with placeholder URLs
 const getSanitizedDatabaseId = () => {
   const envId = env.VITE_FIREBASE_DATABASE_ID;
@@ -51,23 +49,42 @@ const getSanitizedDatabaseId = () => {
   return envId || firebaseConfig.firestoreDatabaseId || "(default)";
 };
 
-export const resolvedFirebaseConfig = hasEnvConfig ? {
-  apiKey: env.VITE_FIREBASE_API_KEY,
-  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: env.VITE_FIREBASE_APP_ID,
-  firestoreDatabaseId: getSanitizedDatabaseId()
-} : {
-  apiKey: firebaseConfig.apiKey,
-  authDomain: firebaseConfig.authDomain,
-  projectId: firebaseConfig.projectId,
-  storageBucket: firebaseConfig.storageBucket,
-  messagingSenderId: firebaseConfig.messagingSenderId,
-  appId: firebaseConfig.appId,
+const isValidApiKey = (key: any): boolean => {
+  if (!key || typeof key !== 'string') return false;
+  const k = key.trim();
+  if (k === '' || k === 'undefined' || k === 'null') return false;
+  if (!k.startsWith('AIzaSy')) return false;
+  if (k.length < 25) return false;
+  if (/placeholder/i.test(k) || /replace/i.test(k) || /your[-_]api/i.test(k)) return false;
+  return true;
+};
+
+const isEnvApiValid = isValidApiKey(env.VITE_FIREBASE_API_KEY);
+
+export const resolvedFirebaseConfig = {
+  apiKey: isEnvApiValid ? env.VITE_FIREBASE_API_KEY : firebaseConfig.apiKey,
+  authDomain: (env.VITE_FIREBASE_AUTH_DOMAIN && env.VITE_FIREBASE_AUTH_DOMAIN !== 'undefined' && env.VITE_FIREBASE_AUTH_DOMAIN !== 'null') ? env.VITE_FIREBASE_AUTH_DOMAIN : firebaseConfig.authDomain,
+  projectId: (env.VITE_FIREBASE_PROJECT_ID && env.VITE_FIREBASE_PROJECT_ID !== 'undefined' && env.VITE_FIREBASE_PROJECT_ID !== 'null') ? env.VITE_FIREBASE_PROJECT_ID : firebaseConfig.projectId,
+  storageBucket: (env.VITE_FIREBASE_STORAGE_BUCKET && env.VITE_FIREBASE_STORAGE_BUCKET !== 'undefined' && env.VITE_FIREBASE_STORAGE_BUCKET !== 'null') ? env.VITE_FIREBASE_STORAGE_BUCKET : firebaseConfig.storageBucket,
+  messagingSenderId: (env.VITE_FIREBASE_MESSAGING_SENDER_ID && env.VITE_FIREBASE_MESSAGING_SENDER_ID !== 'undefined' && env.VITE_FIREBASE_MESSAGING_SENDER_ID !== 'null') ? env.VITE_FIREBASE_MESSAGING_SENDER_ID : firebaseConfig.messagingSenderId,
+  appId: (env.VITE_FIREBASE_APP_ID && env.VITE_FIREBASE_APP_ID !== 'undefined' && env.VITE_FIREBASE_APP_ID !== 'null') ? env.VITE_FIREBASE_APP_ID : firebaseConfig.appId,
   firestoreDatabaseId: getSanitizedDatabaseId()
 };
+
+// Log masked configuration for debugging purposes, but do not leak secrets
+if (typeof window !== 'undefined') {
+  const maskString = (str: string) => {
+    if (!str) return 'empty';
+    if (str.length <= 10) return '*'.repeat(str.length);
+    return str.substring(0, 6) + '...' + str.substring(str.length - 4);
+  };
+  console.log("🔥 Firebase Init Config:", {
+    projectId: resolvedFirebaseConfig.projectId,
+    databaseId: resolvedFirebaseConfig.firestoreDatabaseId,
+    apiKey: maskString(resolvedFirebaseConfig.apiKey),
+    isEnvApiValid
+  });
+}
 
 // Detect if Firebase has mock placeholder credentials or if the user forced demo mode
 const isLocalOverride = typeof window !== 'undefined' && localStorage.getItem("pc_force_demo_mode") === "true";

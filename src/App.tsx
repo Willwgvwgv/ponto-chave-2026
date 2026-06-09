@@ -18,6 +18,7 @@ import {
   Upload, 
   FileText, 
   Send, 
+  Copy,
   Database,
   X,
   Zap,
@@ -315,8 +316,18 @@ const Login = () => {
     try {
       await loginWithGoogle();
     } catch (err: any) {
-      setError("Falha ao entrar com Google. Tente novamente.");
       console.error("Google login error:", err);
+      let errorMessage = "Falha ao entrar com Google. ";
+      if (err.code === 'auth/unauthorized-domain') {
+        errorMessage += `Domínio não autorizado no Firebase!\n\nPor favor, vá no Console do Firebase (Authentication -> Configurações -> Domínios Autorizados) e adicione o seguinte domínio:\n\n👉  ${window.location.hostname}`;
+      } else if (err.code === 'auth/popup-blocked') {
+        errorMessage += "O pop-up de login foi bloqueado pelo seu navegador. Por favor, permita pop-ups para este site ou abra o aplicativo diretamente em uma nova aba.";
+      } else if (err.code === 'auth/operation-not-allowed') {
+        errorMessage += "O login com Google não está ativado no Firebase Console para o projeto. Ative-o em Authentication -> Sign-in method -> Google.";
+      } else {
+        errorMessage += `${err.message || String(err)} (${err.code || 'erro desconhecido'})`;
+      }
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -342,17 +353,19 @@ const Login = () => {
       }
     } catch (err: any) {
       console.error("Auth error:", err);
+      let errorMessage = "Erro de autenticação: ";
       if (err.code === 'auth/operation-not-allowed') {
-        setError("O cadastro por E-mail não está ativado no Firebase. Por favor, ative 'E-mail/Senha' no Console do Firebase para o projeto gen-lang-client-0657849307.");
-      } else if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
-        setError("E-mail ou senha incorretos.");
+        errorMessage += "O cadastro por E-mail não está ativado no Firebase. Por favor, ative 'E-mail/Senha' no Console do Firebase para o projeto gen-lang-client-0657849307.";
+      } else if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+        errorMessage = "E-mail ou senha incorretos ou inexistentes.";
       } else if (err.code === 'auth/email-already-in-use') {
-        setError("Este e-mail já está em uso.");
+        errorMessage = "Este e-mail já está em uso.";
       } else if (err.code === 'auth/weak-password') {
-        setError("A senha deve ter pelo menos 6 caracteres.");
+        errorMessage = "A senha deve ter pelo menos 6 caracteres.";
       } else {
-        setError("Ocorreu um erro no servidor de autenticação. Verifique se os provedores estão ativos.");
+        errorMessage += `${err.message || String(err)} (${err.code || 'erro desconhecido'})`;
       }
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -432,10 +445,10 @@ const Login = () => {
             <motion.div 
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
-              className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-3 text-red-600 text-sm"
+              className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-start gap-3 text-red-600 text-sm"
             >
-              <AlertCircle className="w-5 h-5 flex-shrink-0" />
-              <span className="font-medium">{error}</span>
+              <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+              <span className="font-medium whitespace-pre-line text-left block w-full">{error}</span>
             </motion.div>
           )}
 
@@ -574,6 +587,10 @@ const UserManagement = ({
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
+  const [addUserModalType, setAddUserModalType] = useState<'register' | 'invite'>('register');
+  const [generatedInviteMessage, setGeneratedInviteMessage] = useState('');
+  const [isInviteSuccess, setIsInviteSuccess] = useState(false);
+  const [isRegisterSuccess, setIsRegisterSuccess] = useState(false);
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserName, setNewUserName] = useState("");
   const [newUserRole, setNewUserRole] = useState<"admin" | "user">("user");
@@ -722,12 +739,12 @@ const UserManagement = ({
         email: emailNormalizado,
         role: newUserRole,
         companyId: companySettings.id,
-        status: "pending",                     // ← antes era "active"
+        status: "pending",
         isPending: true,
         createdAt: serverTimestamp(),
-        invitedBy: user.uid,                   // ← NOVO: quem convidou
-        invitedByName: user.displayName || user.email || "Admin", // ← NOVO: nome legível
-        invitedAt: serverTimestamp(),          // ← NOVO: quando convidou
+        invitedBy: user.uid,
+        invitedByName: user.displayName || user.email || "Admin",
+        invitedAt: serverTimestamp(),
       });
 
       // Montar mensagem de convite
@@ -740,21 +757,20 @@ const UserManagement = ({
         `Basta clicar no link e fazer login com o email acima.\n\n` +
         `Qualquer dúvida, é só me chamar!`;
 
-      try {
-        await navigator.clipboard.writeText(mensagem);
-        toast.success("Convite criado! Mensagem copiada — cole no WhatsApp do usuário.", {
-          duration: 5000,
-        });
-      } catch (clipErr) {
-        // Fallback se clipboard falhar (alguns navegadores)
-        toast.success("Convite criado com sucesso!");
-        console.warn("Clipboard falhou:", clipErr);
-      }
+      setGeneratedInviteMessage(mensagem);
 
-      setIsAddUserOpen(false);
-      setNewUserEmail("");
-      setNewUserName("");
-      setNewUserRole("user"); // resetar pro padrão
+      if (addUserModalType === 'invite') {
+        try {
+          await navigator.clipboard.writeText(mensagem);
+          toast.success("Mensagem de convite copiada!");
+        } catch (clipErr) {
+          console.warn("Clipboard falhou:", clipErr);
+        }
+        setIsInviteSuccess(true);
+      } else {
+        toast.success("Usuário cadastrado com sucesso!");
+        setIsRegisterSuccess(true);
+      }
     } catch (error) {
       toast.error("Erro ao cadastrar usuário.");
       console.error(error);
@@ -785,14 +801,32 @@ const UserManagement = ({
         </div>
         <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto">
           <button 
-            onClick={() => setIsAddUserOpen(true)}
+            onClick={() => {
+              setAddUserModalType('register');
+              setIsInviteSuccess(false);
+              setIsRegisterSuccess(false);
+              setGeneratedInviteMessage('');
+              setNewUserEmail('');
+              setNewUserName('');
+              setNewUserRole('user');
+              setIsAddUserOpen(true);
+            }}
             className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-2xl font-bold text-sm hover:bg-blue-700 transition-all w-full sm:w-auto shadow-lg shadow-blue-200"
           >
             <UserPlus className="w-5 h-5" />
             Cadastrar Manual
           </button>
           <button 
-            onClick={() => setIsAddUserOpen(true)}
+            onClick={() => {
+              setAddUserModalType('invite');
+              setIsInviteSuccess(false);
+              setIsRegisterSuccess(false);
+              setGeneratedInviteMessage('');
+              setNewUserEmail('');
+              setNewUserName('');
+              setNewUserRole('user');
+              setIsAddUserOpen(true);
+            }}
             className="flex items-center gap-2 px-6 py-3 bg-white border border-slate-200 text-slate-600 rounded-2xl font-bold text-sm hover:bg-slate-50 transition-all w-full sm:w-auto"
           >
             <Send className="w-5 h-5" />
@@ -1052,7 +1086,7 @@ const UserManagement = ({
         </div>
       )}
 
-      {/* Manual Register Modal */}
+      {/* Manual Register / Invite Modal */}
       <AnimatePresence>
         {isAddUserOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -1070,77 +1104,186 @@ const UserManagement = ({
               className="relative bg-white w-full max-w-md rounded-[40px] shadow-2xl overflow-hidden border border-slate-100"
             >
               <div className="p-8">
-                <div className="flex justify-between items-center mb-6">
-                  <h3 className="text-xl font-bold text-slate-900">Cadastrar Usuário</h3>
-                  <button onClick={() => setIsAddUserOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition-all">
-                    <X className="w-5 h-5 text-slate-400" />
-                  </button>
-                </div>
+                {isInviteSuccess ? (
+                  <div className="text-center space-y-6">
+                    <div className="mx-auto w-16 h-16 bg-green-50 rounded-full flex items-center justify-center text-green-500 scale-105">
+                      <Send className="w-8 h-8" />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-extrabold text-slate-900 tracking-tight">Convite Gerado com Sucesso!</h3>
+                      <p className="text-xs text-slate-400 mt-1 uppercase font-bold tracking-widest">Convidar por Link</p>
+                    </div>
 
-                <form onSubmit={handleManualRegister} className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Nome Completo</label>
-                    <div className="relative">
-                      <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                      <input 
-                        type="text"
-                        value={newUserName}
-                        onChange={(e) => setNewUserName(e.target.value)}
-                        placeholder="Ex: Ana Maria"
-                        className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                    <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 text-left space-y-2">
+                      <div className="text-[10px] text-slate-400 uppercase tracking-wider font-extrabold">Dados do Convidado</div>
+                      <div className="text-sm font-semibold text-slate-700">Nome: <span className="font-normal text-slate-600">{newUserName}</span></div>
+                      <div className="text-sm font-semibold text-slate-700">E-mail: <span className="font-normal text-slate-600">{newUserEmail}</span></div>
+                      <div className="text-sm font-semibold text-slate-700">Cargo: <span className="font-normal text-slate-600">{newUserRole === 'admin' ? 'Administrador' : 'Colaborador'}</span></div>
+                    </div>
+
+                    <div className="space-y-2 text-left">
+                      <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest block block">Mensagem de Convite</label>
+                      <textarea 
+                        readOnly
+                        value={generatedInviteMessage}
+                        className="w-full h-32 p-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-600 focus:outline-none resize-none font-sans leading-relaxed"
                       />
                     </div>
-                  </div>
 
-                  <div>
-                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">E-mail</label>
-                    <div className="relative">
-                      <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                      <input 
-                        type="email"
-                        value={newUserEmail}
-                        onChange={(e) => setNewUserEmail(e.target.value)}
-                        placeholder="ana@exemplo.com"
-                        className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Cargo Inicial</label>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 gap-2">
                       <button
-                        type="button"
-                        onClick={() => setNewUserRole("user")}
-                        className={cn(
-                          "py-3 rounded-2xl font-bold text-xs uppercase tracking-widest border transition-all",
-                          newUserRole === "user" ? "bg-blue-50 text-blue-600 border-blue-200" : "bg-white text-slate-400 border-slate-200"
-                        )}
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(generatedInviteMessage);
+                            toast.success("Mensagem de convite copiada!");
+                          } catch (err) {
+                            toast.error("Erro ao copiar.");
+                          }
+                        }}
+                        className="flex items-center justify-center gap-2 py-3 bg-blue-600 text-white rounded-2xl font-bold uppercase tracking-widest text-xs shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all hover:scale-[1.01]"
                       >
-                        Colaborador
+                        <Copy className="w-4 h-4" />
+                        Copiar Mensagem
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => setNewUserRole("admin")}
-                        className={cn(
-                          "py-3 rounded-2xl font-bold text-xs uppercase tracking-widest border transition-all",
-                          newUserRole === "admin" ? "bg-purple-50 text-purple-600 border-purple-200" : "bg-white text-slate-400 border-slate-200"
-                        )}
+                      <a
+                        href={`https://api.whatsapp.com/send?text=${encodeURIComponent(generatedInviteMessage)}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center justify-center gap-2 py-3 bg-emerald-500 text-white rounded-2xl font-bold uppercase tracking-widest text-xs shadow-lg shadow-emerald-200 hover:bg-emerald-600 transition-all hover:scale-[1.01]"
                       >
-                        Administrador
+                        <ExternalLink className="w-4 h-4" />
+                        Enviar via WhatsApp
+                      </a>
+                      <button
+                        onClick={() => setIsAddUserOpen(false)}
+                        className="py-3 bg-slate-100 text-slate-600 rounded-2xl font-bold uppercase tracking-widest text-xs hover:bg-slate-200 transition-all"
+                      >
+                        Fechar
                       </button>
                     </div>
                   </div>
+                ) : isRegisterSuccess ? (
+                  <div className="text-center space-y-6">
+                    <div className="mx-auto w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center text-blue-500 scale-105">
+                      <Check className="w-8 h-8" />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-extrabold text-slate-900 tracking-tight">Usuário Cadastrado!</h3>
+                      <p className="text-xs text-slate-400 mt-1 uppercase font-bold tracking-widest">Cadastro Manual Direto</p>
+                    </div>
 
-                  <div className="pt-4">
-                    <button 
-                      type="submit"
-                      className="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold uppercase tracking-widest text-xs shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all"
+                    <div className="bg-slate-50 border border-slate-100 rounded-2xl p-5 text-left space-y-3">
+                      <div className="text-[10px] text-slate-400 uppercase tracking-wider font-extrabold">Credenciais Pré-Aprovadas</div>
+                      <div className="space-y-1">
+                        <div className="text-xs text-slate-400">Nome</div>
+                        <div className="text-sm font-bold text-slate-700">{newUserName}</div>
+                      </div>
+                      <div className="space-y-1">
+                        <div className="text-xs text-slate-400">E-mail Cadastrado</div>
+                        <div className="text-sm font-bold text-slate-700">{newUserEmail}</div>
+                      </div>
+                      <div className="space-y-1">
+                        <div className="text-xs text-slate-400">Nível de Acesso</div>
+                        <div className="text-sm font-bold text-slate-700">
+                          {newUserRole === "admin" ? (
+                            <span className="px-2.5 py-1 bg-purple-100 text-purple-700 rounded-lg text-xs font-bold uppercase tracking-wider">Administrador</span>
+                          ) : (
+                            <span className="px-2.5 py-1 bg-blue-100 text-blue-700 rounded-lg text-xs font-bold uppercase tracking-wider">Colaborador</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <p className="text-xs text-slate-500 leading-relaxed text-left bg-slate-50/50 p-4 border border-slate-100 rounded-2xl">
+                      💡 <strong>Como acessar?</strong> O usuário já está pré-aprovado na base da empresa. Tudo o que ele precisa fazer é entrar na tela de login utilizando o endereço de e-mail registrado (fazendo login por Google ou registrando sua senha).
+                    </p>
+
+                    <button
+                      onClick={() => setIsAddUserOpen(false)}
+                      className="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold uppercase tracking-widest text-xs shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all hover:scale-[1.01]"
                     >
-                      Salvar Cadastro
+                      Fechar e Concluir
                     </button>
                   </div>
-                </form>
+                ) : (
+                  <div>
+                    <div className="flex justify-between items-center mb-6">
+                      <h3 className="text-xl font-bold text-slate-900">
+                        {addUserModalType === 'register' ? 'Cadastrar Usuário' : 'Convidar Usuário por Link'}
+                      </h3>
+                      <button onClick={() => setIsAddUserOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition-all">
+                        <X className="w-5 h-5 text-slate-400" />
+                      </button>
+                    </div>
+
+                    <form onSubmit={handleManualRegister} className="space-y-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Nome Completo</label>
+                        <div className="relative">
+                          <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                          <input 
+                            type="text"
+                            required
+                            value={newUserName}
+                            onChange={(e) => setNewUserName(e.target.value)}
+                            placeholder="Ex: Ana Maria"
+                            className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">E-mail</label>
+                        <div className="relative">
+                          <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                          <input 
+                            type="email"
+                            required
+                            value={newUserEmail}
+                            onChange={(e) => setNewUserEmail(e.target.value)}
+                            placeholder="ana@exemplo.com"
+                            className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Cargo Inicial</label>
+                        <div className="grid grid-cols-2 gap-3">
+                          <button
+                            type="button"
+                            onClick={() => setNewUserRole("user")}
+                            className={cn(
+                              "py-3 rounded-2xl font-bold text-xs uppercase tracking-widest border transition-all",
+                              newUserRole === "user" ? "bg-blue-50 text-blue-600 border-blue-200" : "bg-white text-slate-400 border-slate-200"
+                            )}
+                          >
+                            Colaborador
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setNewUserRole("admin")}
+                            className={cn(
+                              "py-3 rounded-2xl font-bold text-xs uppercase tracking-widest border transition-all",
+                              newUserRole === "admin" ? "bg-purple-50 text-purple-600 border-purple-200" : "bg-white text-slate-400 border-slate-200"
+                            )}
+                          >
+                            Administrador
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="pt-4">
+                        <button 
+                          type="submit"
+                          className="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold uppercase tracking-widest text-xs shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all active:scale-95 duration-100"
+                        >
+                          {addUserModalType === 'register' ? 'Salvar Cadastro' : 'Gerar Link de Convite'}
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                )}
               </div>
             </motion.div>
           </div>
@@ -6594,8 +6737,8 @@ async function seedDatabaseForCompany(companyId: string) {
     // 1. Seed Company
     const companyRef = doc(db, "companies", companyId);
     await setDoc(companyRef, {
-      name: "Fidelité Imobiliária",
-      subtitle: "Gestão e Processos",
+      name: "Ponto Chave Imóveis",
+      subtitle: "Gestão de Fluxos e Processos Imobiliários",
       address: "Av. T-63, Setor Bueno - Goiânia - GO",
       phone: "(62) 3999-9999",
       creci: "12345-J",
