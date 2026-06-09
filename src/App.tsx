@@ -836,8 +836,8 @@ const UserManagement = ({
         email: emailNormalizado,
         role: newUserRole,
         companyId: companySettings.id,
-        status: "pending",
-        isPending: true,
+        status: "active",
+        isPending: false,
         createdAt: serverTimestamp(),
         invitedBy: user.uid,
         invitedByName: user.displayName || user.email || "Admin",
@@ -7290,14 +7290,15 @@ export default function App() {
               const usersRef = collection(db, "users");
               const q = query(
                 usersRef,
-                where("email", "==", authenticatedUser.email),
-                where("isPending", "==", true)
+                where("email", "==", authenticatedUser.email)
               );
               const querySnapshot = await getDocs(q);
               
-              if (!querySnapshot.empty) {
+              // Localizar o registro pendente que começa com "pending_" ou que não possui o UID atual
+              const pendingDoc = querySnapshot.docs.find(doc => doc.id.startsWith("pending_") || doc.id !== authenticatedUser.uid);
+              
+              if (pendingDoc) {
                 // ENCONTROU CONVITE PENDENTE: ativar o usuário usando os dados do convite.
-                const pendingDoc = querySnapshot.docs[0];
                 const pendingData = pendingDoc.data();
                 
                 // Validar dados mínimos do convite
@@ -7317,7 +7318,8 @@ export default function App() {
                   photoURL: authenticatedUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(pendingData.displayName || authenticatedUser.email || "U")}&background=random`,
                   role: pendingData.role,
                   companyId: pendingData.companyId,
-                  status: "active",
+                  status: pendingData.status || "active",
+                  isPending: pendingData.isPending || false,
                   createdAt: serverTimestamp(),
                 };
                 
