@@ -670,9 +670,16 @@ const UserManagement = ({
     const fetchUsers = async () => {
       setLoading(true);
       try {
-        const q = query(collection(db, "users"), where("companyId", "==", companySettings.id));
+        const companyId = companySettings.id;
+        const q = query(collection(db, "users"), where("companyId", "==", companyId));
         const snapshot = await getDocs(q);
-        const usersData = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserProfile));
+        const usersData = snapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            ...data,
+            uid: data.uid || doc.id,
+          } as UserProfile;
+        });
         
         // Sort users: Admins first, then by name
         const sortedUsers = [...usersData].sort((a, b) => {
