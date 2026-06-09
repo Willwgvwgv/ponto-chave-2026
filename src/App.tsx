@@ -106,6 +106,7 @@ import {
   updateDoc, 
   deleteDoc, 
   serverTimestamp, 
+  Timestamp,
   handleFirestoreError,
   OperationType,
   User,
@@ -291,6 +292,43 @@ const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [inviteRole, setInviteRole] = useState<string | null>(null);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const token = localStorage.getItem('active_invite_token');
+    if (token) {
+      const fetchInvite = async () => {
+        try {
+          const inviteRef = doc(db, "invites", token);
+          const snap = await getDoc(inviteRef);
+          if (snap.exists()) {
+            const data = snap.data();
+            const now = new Date();
+            const expiresAt = data.expiresAt ? (data.expiresAt.toDate ? data.expiresAt.toDate() : new Date(data.expiresAt)) : null;
+            const isExpired = expiresAt ? now > expiresAt : false;
+            
+            if (data.status === 'pending' && !isExpired) {
+              setInviteRole(data.role);
+            } else if (isExpired) {
+              setInviteError("Este link de convite já expirou (validade de 7 dias). Solicite um novo convite.");
+              localStorage.removeItem('active_invite_token');
+            } else {
+              setInviteError("Este link de convite já foi utilizado ou é inválido.");
+              localStorage.removeItem('active_invite_token');
+            }
+          } else {
+            localStorage.removeItem('active_invite_token');
+          }
+        } catch (e) {
+          console.error("Erro ao carregar convite na tela de login:", e);
+        }
+      };
+      
+      fetchInvite();
+    }
+  }, []);
+
   const isForcedDemo = localStorage.getItem("pc_force_demo_mode") === "true";
 
   const handleForceDemo = () => {
@@ -392,6 +430,33 @@ const Login = () => {
           animate={{ y: 0, opacity: 1 }}
           className="bg-white p-8 rounded-[40px] shadow-2xl shadow-slate-200/50 border border-slate-100"
         >
+          {inviteRole && (
+            <div className="mb-6 p-5 bg-blue-50 rounded-3xl text-blue-900 text-xs border border-blue-100/60 flex flex-col gap-1.5 text-left">
+              <span className="font-extrabold flex items-center gap-1.5 text-blue-800">
+                <Shield className="w-4 h-4 text-blue-600 shrink-0 animate-pulse" />
+                Convite de Acesso Detectado
+              </span>
+              <p className="text-slate-600 leading-relaxed font-semibold">
+                Você foi convidado para acessar como <strong className="text-blue-700 font-bold capitalize">{inviteRole}</strong> no sistema Ponto Chave da Fidelité Imobiliária.
+              </p>
+              <p className="text-slate-500 text-[10px]">
+                Entre com sua conta Google abaixo para ativar sua conta e liberar seu acesso instantaneamente.
+              </p>
+            </div>
+          )}
+
+          {inviteError && (
+            <div className="mb-6 p-4 bg-red-50 rounded-2xl text-red-900 text-xs border border-red-100/60 flex flex-col gap-1.5 text-left">
+              <span className="font-bold flex items-center gap-1.5 text-red-800">
+                <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                Problema com o Convite
+              </span>
+              <p className="text-slate-600 leading-relaxed font-semibold">
+                {inviteError}
+              </p>
+            </div>
+          )}
+
           {isForcedDemo && (
             <div className="mb-6 p-4 bg-amber-50 rounded-2xl text-amber-800 text-xs border border-amber-200/60 flex flex-col gap-2">
               <span className="font-bold flex items-center gap-1.5 text-amber-900">
@@ -594,6 +659,9 @@ const UserManagement = ({
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserName, setNewUserName] = useState("");
   const [newUserRole, setNewUserRole] = useState<"admin" | "user">("user");
+  const [newUserRoleInvite, setNewUserRoleInvite] = useState<"Colaborador" | "Corretor" | "Gestor">("Colaborador");
+  const [inviteTokenGenerated, setInviteTokenGenerated] = useState("");
+  const [inviteUrlGenerated, setInviteUrlGenerated] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean, userId: string | null }>({ isOpen: false, userId: null });
 
   useEffect(() => {
@@ -694,6 +762,74 @@ const UserManagement = ({
       return `há ${Math.floor(dias / 30)} mês${Math.floor(dias / 30) > 1 ? 'es' : ''}`;
     } catch {
       return '';
+    }
+  };
+
+  const handleGenerateInviteLink = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (newUserEmail) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(newUserEmail.trim())) {
+        toast.error("Email inválido.");
+        return;
+      }
+    }
+
+    try {
+      if (!companySettings?.id) {
+        toast.error("Erro de configuração: Empresa não identificada.");
+        return;
+      }
+      
+      if (!user?.uid) {
+        toast.error("Sessão expirada. Faça login novamente.");
+        return;
+      }
+
+      setLoading(true);
+
+      const generateToken = () => {
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+        let result = '';
+        for (let i = 0; i < 24; i++) {
+          result += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        return result;
+      };
+      
+      const token = generateToken();
+      const expiresAtDate = new Date();
+      expiresAtDate.setDate(expiresAtDate.getDate() + 7);
+      
+      const inviteRef = doc(db, "invites", token);
+      await setDoc(inviteRef, {
+        token: token,
+        companyId: companySettings.id,
+        role: newUserRoleInvite,
+        createdAt: serverTimestamp(),
+        expiresAt: expiresAtDate,
+        status: "pending",
+        invitedBy: user.uid,
+        email: newUserEmail.trim() || null
+      });
+
+      const realLink = `${window.location.origin}/convite?token=${token}&company=${companySettings.id}&role=${newUserRoleInvite}`;
+      
+      setInviteTokenGenerated(token);
+      setInviteUrlGenerated(realLink);
+
+      const nomeEmpresa = companySettings?.name || 'Fidelité Imobiliária';
+      const mensagem = `Olá! Você foi convidado para acessar o sistema Ponto Chave da ${nomeEmpresa}. Clique no link para criar seu acesso: ${realLink}`;
+      
+      setGeneratedInviteMessage(mensagem);
+      setIsInviteSuccess(true);
+      toast.success("Link de convite gerado com sucesso!");
+    } catch (err) {
+      console.error("Erro ao gerar link de convite:", err);
+      toast.error("Erro ao gerar convite por link.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -825,6 +961,9 @@ const UserManagement = ({
               setNewUserEmail('');
               setNewUserName('');
               setNewUserRole('user');
+              setNewUserRoleInvite('Colaborador');
+              setInviteTokenGenerated('');
+              setInviteUrlGenerated('');
               setIsAddUserOpen(true);
             }}
             className="flex items-center gap-2 px-6 py-3 bg-white border border-slate-200 text-slate-600 rounded-2xl font-bold text-sm hover:bg-slate-50 transition-all w-full sm:w-auto"
@@ -1105,8 +1244,8 @@ const UserManagement = ({
             >
               <div className="p-8">
                 {isInviteSuccess ? (
-                  <div className="text-center space-y-6">
-                    <div className="mx-auto w-16 h-16 bg-green-50 rounded-full flex items-center justify-center text-green-500 scale-105">
+                  <div className="text-center space-y-6 animate-fade-in">
+                    <div className="mx-auto w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center text-emerald-500 scale-105">
                       <Send className="w-8 h-8" />
                     </div>
                     <div>
@@ -1114,49 +1253,61 @@ const UserManagement = ({
                       <p className="text-xs text-slate-400 mt-1 uppercase font-bold tracking-widest">Convidar por Link</p>
                     </div>
 
-                    <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 text-left space-y-2">
-                      <div className="text-[10px] text-slate-400 uppercase tracking-wider font-extrabold">Dados do Convidado</div>
-                      <div className="text-sm font-semibold text-slate-700">Nome: <span className="font-normal text-slate-600">{newUserName}</span></div>
-                      <div className="text-sm font-semibold text-slate-700">E-mail: <span className="font-normal text-slate-600">{newUserEmail}</span></div>
-                      <div className="text-sm font-semibold text-slate-700">Cargo: <span className="font-normal text-slate-600">{newUserRole === 'admin' ? 'Administrador' : 'Colaborador'}</span></div>
+                    <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 text-left space-y-3">
+                      <div className="text-[10px] text-slate-400 uppercase tracking-wider font-extrabold">Dados do Convite</div>
+                      {newUserEmail && (
+                        <div className="text-sm font-semibold text-slate-750">E-mail de Envio: <span className="font-normal text-slate-600">{newUserEmail}</span></div>
+                      )}
+                      <div className="text-sm font-semibold text-slate-750">Nível de Acesso: <span className="font-bold text-blue-600 capitalize">{newUserRoleInvite}</span></div>
+                      
+                      <div className="space-y-1.5 pt-2">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Link Único de Convite</label>
+                        <div className="flex gap-2">
+                          <input 
+                            type="text" 
+                            readOnly 
+                            value={inviteUrlGenerated}
+                            className="bg-white border border-slate-200 text-xs px-3 py-2.5 rounded-xl flex-1 font-mono text-slate-600 focus:outline-none"
+                          />
+                          <button
+                            onClick={async () => {
+                              try {
+                                await navigator.clipboard.writeText(inviteUrlGenerated);
+                                toast.success("Link copiado com sucesso!");
+                              } catch (err) {
+                                toast.error("Falha ao copiar link.");
+                              }
+                            }}
+                            className="px-4 py-2 bg-slate-900 text-white rounded-xl font-bold text-xs uppercase tracking-wider hover:bg-slate-800 transition-all shrink-0 cursor-pointer"
+                          >
+                            Copiar Link
+                          </button>
+                        </div>
+                      </div>
                     </div>
 
                     <div className="space-y-2 text-left">
-                      <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest block block">Mensagem de Convite</label>
+                      <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest block">Mensagem para WhatsApp</label>
                       <textarea 
                         readOnly
                         value={generatedInviteMessage}
-                        className="w-full h-32 p-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-600 focus:outline-none resize-none font-sans leading-relaxed"
+                        className="w-full h-24 p-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-600 focus:outline-none resize-none font-sans leading-relaxed"
                       />
                     </div>
 
-                    <div className="grid grid-cols-1 gap-2">
-                      <button
-                        onClick={async () => {
-                          try {
-                            await navigator.clipboard.writeText(generatedInviteMessage);
-                            toast.success("Mensagem de convite copiada!");
-                          } catch (err) {
-                            toast.error("Erro ao copiar.");
-                          }
-                        }}
-                        className="flex items-center justify-center gap-2 py-3 bg-blue-600 text-white rounded-2xl font-bold uppercase tracking-widest text-xs shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all hover:scale-[1.01]"
-                      >
-                        <Copy className="w-4 h-4" />
-                        Copiar Mensagem
-                      </button>
+                    <div className="grid grid-cols-1 gap-2 pt-2">
                       <a
                         href={`https://api.whatsapp.com/send?text=${encodeURIComponent(generatedInviteMessage)}`}
                         target="_blank"
                         rel="noreferrer"
-                        className="flex items-center justify-center gap-2 py-3 bg-emerald-500 text-white rounded-2xl font-bold uppercase tracking-widest text-xs shadow-lg shadow-emerald-200 hover:bg-emerald-600 transition-all hover:scale-[1.01]"
+                        className="flex items-center justify-center gap-2 py-4 bg-emerald-500 text-white rounded-2xl font-bold uppercase tracking-widest text-xs shadow-lg shadow-emerald-100 hover:bg-emerald-600 transition-all hover:scale-[1.01] cursor-pointer"
                       >
                         <ExternalLink className="w-4 h-4" />
                         Enviar via WhatsApp
                       </a>
                       <button
                         onClick={() => setIsAddUserOpen(false)}
-                        className="py-3 bg-slate-100 text-slate-600 rounded-2xl font-bold uppercase tracking-widest text-xs hover:bg-slate-200 transition-all"
+                        className="py-3 bg-slate-100 text-slate-600 rounded-2xl font-bold uppercase tracking-widest text-xs hover:bg-slate-200 transition-all cursor-pointer"
                       >
                         Fechar
                       </button>
@@ -1216,72 +1367,117 @@ const UserManagement = ({
                       </button>
                     </div>
 
-                    <form onSubmit={handleManualRegister} className="space-y-4">
-                      <div>
-                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Nome Completo</label>
-                        <div className="relative">
-                          <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                          <input 
-                            type="text"
-                            required
-                            value={newUserName}
-                            onChange={(e) => setNewUserName(e.target.value)}
-                            placeholder="Ex: Ana Maria"
-                            className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm"
-                          />
+                    {addUserModalType === 'invite' ? (
+                      <form onSubmit={handleGenerateInviteLink} className="space-y-4">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">E-mail do Convidado (Opcional)</label>
+                          <div className="relative">
+                            <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                            <input 
+                              type="email"
+                              value={newUserEmail}
+                              onChange={(e) => setNewUserEmail(e.target.value)}
+                              placeholder="E-mail opcional (para personalizar)"
+                              className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm"
+                            />
+                          </div>
                         </div>
-                      </div>
 
-                      <div>
-                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">E-mail</label>
-                        <div className="relative">
-                          <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                          <input 
-                            type="email"
-                            required
-                            value={newUserEmail}
-                            onChange={(e) => setNewUserEmail(e.target.value)}
-                            placeholder="ana@exemplo.com"
-                            className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm"
-                          />
+                        <div>
+                          <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Nível de Acesso</label>
+                          <div className="relative">
+                            <select
+                              value={newUserRoleInvite}
+                              onChange={(e) => setNewUserRoleInvite(e.target.value as any)}
+                              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm appearance-none cursor-pointer font-medium text-slate-700"
+                            >
+                              <option value="Colaborador">Colaborador</option>
+                              <option value="Corretor">Corretor</option>
+                              <option value="Gestor">Gestor</option>
+                            </select>
+                            <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-xs">
+                              ▼
+                            </div>
+                          </div>
                         </div>
-                      </div>
 
-                      <div>
-                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Cargo Inicial</label>
-                        <div className="grid grid-cols-2 gap-3">
-                          <button
-                            type="button"
-                            onClick={() => setNewUserRole("user")}
-                            className={cn(
-                              "py-3 rounded-2xl font-bold text-xs uppercase tracking-widest border transition-all",
-                              newUserRole === "user" ? "bg-blue-50 text-blue-600 border-blue-200" : "bg-white text-slate-400 border-slate-200"
-                            )}
+                        <div className="pt-4">
+                          <button 
+                            type="submit"
+                            className="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold uppercase tracking-widest text-xs shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all active:scale-95 duration-100 cursor-pointer"
                           >
-                            Colaborador
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setNewUserRole("admin")}
-                            className={cn(
-                              "py-3 rounded-2xl font-bold text-xs uppercase tracking-widest border transition-all",
-                              newUserRole === "admin" ? "bg-purple-50 text-purple-600 border-purple-200" : "bg-white text-slate-400 border-slate-200"
-                            )}
-                          >
-                            Administrador
+                            Gerar Link de Convite
                           </button>
                         </div>
-                      </div>
+                      </form>
+                    ) : (
+                      <form onSubmit={handleManualRegister} className="space-y-4">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Nome Completo</label>
+                          <div className="relative">
+                            <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                            <input 
+                              type="text"
+                              required
+                              value={newUserName}
+                              onChange={(e) => setNewUserName(e.target.value)}
+                              placeholder="Ex: Ana Maria"
+                              className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm"
+                            />
+                          </div>
+                        </div>
 
-                      <div className="pt-4">
-                        <button 
-                          type="submit"
-                          className="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold uppercase tracking-widest text-xs shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all active:scale-95 duration-100"
-                        >
-                          {addUserModalType === 'register' ? 'Salvar Cadastro' : 'Gerar Link de Convite'}
-                        </button>
-                      </div>
-                    </form>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">E-mail</label>
+                          <div className="relative">
+                            <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                            <input 
+                              type="email"
+                              required
+                              value={newUserEmail}
+                              onChange={(e) => setNewUserEmail(e.target.value)}
+                              placeholder="ana@exemplo.com"
+                              className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm"
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Cargo Inicial</label>
+                          <div className="grid grid-cols-2 gap-3">
+                            <button
+                              type="button"
+                              onClick={() => setNewUserRole("user")}
+                              className={cn(
+                                "py-3 rounded-2xl font-bold text-xs uppercase tracking-widest border transition-all",
+                                newUserRole === "user" ? "bg-blue-50 text-blue-600 border-blue-200" : "bg-white text-slate-400 border-slate-200"
+                              )}
+                            >
+                              Colaborador
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setNewUserRole("admin")}
+                              className={cn(
+                                "py-3 rounded-2xl font-bold text-xs uppercase tracking-widest border transition-all",
+                                newUserRole === "admin" ? "bg-purple-50 text-purple-600 border-purple-200" : "bg-white text-slate-400 border-slate-200"
+                              )}
+                            >
+                              Administrador
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="pt-4">
+                          <button 
+                            type="submit"
+                            className="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold uppercase tracking-widest text-xs shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all active:scale-95 duration-100"
+                          >
+                            Salvar Cadastro
+                          </button>
+                        </div>
+                      </form>
+                    )}
                   </div>
                 )}
               </div>
@@ -7052,6 +7248,30 @@ export default function App() {
     });
   }, []);
 
+  // Captura de convite via URL
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get('token');
+      const company = params.get('company');
+      const role = params.get('role');
+      
+      if (token) {
+        localStorage.setItem('active_invite_token', token);
+        if (company) localStorage.setItem('active_invite_company', company);
+        if (role) localStorage.setItem('active_invite_role', role);
+        
+        // Limpa os parâmetros da URL para manter a barra de navegação limpa
+        const newUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, newUrl);
+        
+        toast.info("Processando seu convite de acesso...");
+      }
+    } catch (e) {
+      console.error("Erro ao processar URL de convite:", e);
+    }
+  }, []);
+
   // Fetch Company Settings based on profile
   useEffect(() => {
     if (!profile?.companyId) {
@@ -7120,8 +7340,85 @@ export default function App() {
               return; // continua aguardando o snapshot atualizar com os dados criados
             }
             
-            // CASO NORMAL: usuário sem perfil = usuário sem convite válido.
-            // Procurar registro pré-aprovado (criado pelo admin) com o email do usuário.
+            // CASO NORMAL: usuário sem perfil.
+            // 1. Verificar primeiro se há um de token de convite ativo por link no localStorage
+            const inviteToken = localStorage.getItem('active_invite_token');
+            const inviteCompany = localStorage.getItem('active_invite_company');
+            const inviteRole = localStorage.getItem('active_invite_role');
+
+            if (inviteToken) {
+              try {
+                const inviteRef = doc(db, "invites", inviteToken);
+                const inviteSnap = await getDoc(inviteRef);
+
+                if (inviteSnap.exists()) {
+                  const inviteData = inviteSnap.data();
+                  const now = new Date();
+                  const expiresAt = inviteData.expiresAt ? (inviteData.expiresAt.toDate ? inviteData.expiresAt.toDate() : new Date(inviteData.expiresAt)) : null;
+                  const isExpired = expiresAt ? now > expiresAt : false;
+
+                  if (inviteData.status === 'pending' && !isExpired) {
+                    // Determinar role e cargo nas comissões
+                    let userRole: "admin" | "user" = "user";
+                    let cargoComissao: "CORRETOR" | "GESTOR" | "CAPTADOR" | "SOCIO" | null = null;
+
+                    const roleLower = (inviteData.role || '').toLowerCase();
+                    if (roleLower === 'gestor') {
+                      userRole = 'admin';
+                      cargoComissao = 'GESTOR';
+                    } else if (roleLower === 'corretor') {
+                      userRole = 'user';
+                      cargoComissao = 'CORRETOR';
+                    } else {
+                      userRole = 'user';
+                      cargoComissao = null;
+                    }
+
+                    const activatedProfile: UserProfile = {
+                      uid: authenticatedUser.uid,
+                      displayName: authenticatedUser.displayName || inviteData.email?.split('@')[0] || "Usuário",
+                      email: authenticatedUser.email,
+                      photoURL: authenticatedUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(authenticatedUser.displayName || authenticatedUser.email || "U")}&background=random`,
+                      role: userRole,
+                      companyId: inviteData.companyId || inviteCompany || "company",
+                      status: "active",
+                      createdAt: serverTimestamp(),
+                    };
+
+                    if (cargoComissao) {
+                      activatedProfile.cargoComissao = cargoComissao;
+                    }
+
+                    // Gravar o perfil ativo
+                    await setDoc(userDocRef, activatedProfile, { merge: true });
+
+                    // Desativar o convite por link
+                    await updateDoc(inviteRef, {
+                      status: "used",
+                      usedBy: authenticatedUser.uid,
+                      usedAt: serverTimestamp()
+                    });
+
+                    // Limpar localStorage
+                    localStorage.removeItem('active_invite_token');
+                    localStorage.removeItem('active_invite_company');
+                    localStorage.removeItem('active_invite_role');
+
+                    console.log("Perfil criado com sucesso usando convite por link.");
+                    toast.success("Conta criada e convite ativado com sucesso!");
+                    return; // Retorna pois o snapshot atualizará
+                  } else if (isExpired) {
+                    toast.error("Este link de convite já expirou.");
+                  } else {
+                    toast.error("Este link de convite já foi utilizado.");
+                  }
+                }
+              } catch (inviteErr) {
+                console.error("Erro ao validar convite por link:", inviteErr);
+              }
+            }
+
+            // CASO NORMAL SECUNDÁRIO: procurar registro pré-aprovado (criado pelo admin) com o email do usuário.
             try {
               const usersRef = collection(db, "users");
               const q = query(

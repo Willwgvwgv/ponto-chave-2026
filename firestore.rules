@@ -286,5 +286,12 @@ service cloud.firestore {
       allow update: if isUserActive() && isCompanyAdmin(existing().companyId);
       allow delete: if isUserActive() && isCompanyAdmin(existing().companyId) && existing().isDefault == false;
     }
+
+    match /invites/{token} {
+      allow get: if true;
+      allow create: if isUserActive() && isCompanyAdmin(incoming().companyId);
+      allow update: if true;
+      allow delete: if isUserActive() && isCompanyAdmin(existing().companyId);
+    }
   }
 }
