@@ -40,18 +40,23 @@ import firebaseConfig from '../firebase-applet-config.json';
 // Detect if virtual environment defines VITE_FIREBASE_* environment variables (e.g. Vercel)
 const env = (import.meta as any).env || {};
 
+const cleanStr = (val: any): string => {
+  if (!val || typeof val !== 'string') return '';
+  return val.replace(/[\r\n\s\t]/g, '');
+};
+
 // Clean up database ID if it was misconfigured with placeholder URLs
 const getSanitizedDatabaseId = () => {
-  const envId = env.VITE_FIREBASE_DATABASE_ID;
-  if (envId && (envId.startsWith("http") || envId.includes("example.com") || envId.trim() === "")) {
-    return firebaseConfig.firestoreDatabaseId || "(default)";
+  const envId = cleanStr(env.VITE_FIREBASE_DATABASE_ID);
+  if (envId && (envId.startsWith("http") || envId.includes("example.com") || envId === "")) {
+    return cleanStr(firebaseConfig.firestoreDatabaseId) || "(default)";
   }
-  return envId || firebaseConfig.firestoreDatabaseId || "(default)";
+  return envId || cleanStr(firebaseConfig.firestoreDatabaseId) || "(default)";
 };
 
 const isValidApiKey = (key: any): boolean => {
   if (!key || typeof key !== 'string') return false;
-  const k = key.trim();
+  const k = cleanStr(key);
   if (k === '' || k === 'undefined' || k === 'null') return false;
   if (!k.startsWith('AIzaSy')) return false;
   if (k.length < 25) return false;
@@ -62,12 +67,12 @@ const isValidApiKey = (key: any): boolean => {
 const isEnvApiValid = isValidApiKey(env.VITE_FIREBASE_API_KEY);
 
 export const resolvedFirebaseConfig = {
-  apiKey: isEnvApiValid ? env.VITE_FIREBASE_API_KEY : firebaseConfig.apiKey,
-  authDomain: (env.VITE_FIREBASE_AUTH_DOMAIN && env.VITE_FIREBASE_AUTH_DOMAIN !== 'undefined' && env.VITE_FIREBASE_AUTH_DOMAIN !== 'null') ? env.VITE_FIREBASE_AUTH_DOMAIN : firebaseConfig.authDomain,
-  projectId: (env.VITE_FIREBASE_PROJECT_ID && env.VITE_FIREBASE_PROJECT_ID !== 'undefined' && env.VITE_FIREBASE_PROJECT_ID !== 'null') ? env.VITE_FIREBASE_PROJECT_ID : firebaseConfig.projectId,
-  storageBucket: (env.VITE_FIREBASE_STORAGE_BUCKET && env.VITE_FIREBASE_STORAGE_BUCKET !== 'undefined' && env.VITE_FIREBASE_STORAGE_BUCKET !== 'null') ? env.VITE_FIREBASE_STORAGE_BUCKET : firebaseConfig.storageBucket,
-  messagingSenderId: (env.VITE_FIREBASE_MESSAGING_SENDER_ID && env.VITE_FIREBASE_MESSAGING_SENDER_ID !== 'undefined' && env.VITE_FIREBASE_MESSAGING_SENDER_ID !== 'null') ? env.VITE_FIREBASE_MESSAGING_SENDER_ID : firebaseConfig.messagingSenderId,
-  appId: (env.VITE_FIREBASE_APP_ID && env.VITE_FIREBASE_APP_ID !== 'undefined' && env.VITE_FIREBASE_APP_ID !== 'null') ? env.VITE_FIREBASE_APP_ID : firebaseConfig.appId,
+  apiKey: cleanStr(isEnvApiValid ? env.VITE_FIREBASE_API_KEY : firebaseConfig.apiKey),
+  authDomain: cleanStr((env.VITE_FIREBASE_AUTH_DOMAIN && env.VITE_FIREBASE_AUTH_DOMAIN !== 'undefined' && env.VITE_FIREBASE_AUTH_DOMAIN !== 'null') ? env.VITE_FIREBASE_AUTH_DOMAIN : firebaseConfig.authDomain),
+  projectId: cleanStr((env.VITE_FIREBASE_PROJECT_ID && env.VITE_FIREBASE_PROJECT_ID !== 'undefined' && env.VITE_FIREBASE_PROJECT_ID !== 'null') ? env.VITE_FIREBASE_PROJECT_ID : firebaseConfig.projectId),
+  storageBucket: cleanStr((env.VITE_FIREBASE_STORAGE_BUCKET && env.VITE_FIREBASE_STORAGE_BUCKET !== 'undefined' && env.VITE_FIREBASE_STORAGE_BUCKET !== 'null') ? env.VITE_FIREBASE_STORAGE_BUCKET : firebaseConfig.storageBucket),
+  messagingSenderId: cleanStr((env.VITE_FIREBASE_MESSAGING_SENDER_ID && env.VITE_FIREBASE_MESSAGING_SENDER_ID !== 'undefined' && env.VITE_FIREBASE_MESSAGING_SENDER_ID !== 'null') ? env.VITE_FIREBASE_MESSAGING_SENDER_ID : firebaseConfig.messagingSenderId),
+  appId: cleanStr((env.VITE_FIREBASE_APP_ID && env.VITE_FIREBASE_APP_ID !== 'undefined' && env.VITE_FIREBASE_APP_ID !== 'null') ? env.VITE_FIREBASE_APP_ID : firebaseConfig.appId),
   firestoreDatabaseId: getSanitizedDatabaseId()
 };
 
