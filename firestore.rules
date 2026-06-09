@@ -1,18 +1,9 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // ===============================================================
-    // Global Safety Net (Pillar 0)
-    // ===============================================================
-    match /{document=**} {
-      allow read, write: if false;
-    }
 
-    // ===============================================================
-    // Primitive Definition (Phase 3)
-    // ===============================================================
     function isSignedIn() { return request.auth != null; }
-    
+
     function isSuperAdmin() {
       return request.auth != null && (
         request.auth.token.email == "williangyn10@gmail.com" ||
@@ -22,276 +13,23 @@ service cloud.firestore {
 
     function isCompanyAdmin(companyId) {
       return isSuperAdmin() || (
-        isSignedIn() && (
-          exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.companyId == companyId &&
-          (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' || 
-           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'manager')
-        )
+        isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.companyId == companyId &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'manager')
       );
     }
-    
-    function getUserData() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+
+    function belongsToCompany(companyId) {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.companyId == companyId;
     }
 
-    function isUserActive() {
-      return isSignedIn() && 
-             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-             getUserData().get('status', 'active') == 'active';
-    }
-
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
-    }
-
-    function isAdmin() {
-      return isSuperAdmin() || (isUserActive() && getUserData().get('role', 'user') == 'admin');
-    }
-
-    function incoming() { return request.resource.data; }
-    function existing() { return resource.data; }
-    function isValidId(id) { return id is string && id.size() >= 2 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
-    function isValidEmail(email) { return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"); }
-
-    // ===============================================================
-    // Validation Blueprints (Pillar 2)
-    // ===============================================================
-    
-    function isValidUser(data) {
-      return data.keys().hasAll(['uid', 'email', 'companyId']) &&
-             data.uid is string && data.uid.size() <= 64 &&
-             data.companyId is string && data.companyId.size() <= 100 &&
-             isValidEmail(data.email) &&
-             (!data.keys().hasAll(['displayName']) || (data.displayName is string && data.displayName.size() <= 100)) &&
-             (!data.keys().hasAll(['role']) || (data.role == 'admin' || data.role == 'collaborator' || data.role == 'manager' || data.role == 'user' || data.role == 'none' || data.role == 'gerente')) &&
-             (!data.keys().hasAll(['status']) || (data.status == 'active' || data.status == 'blocked' || data.status == 'pending')) &&
-             (!data.keys().hasAll(['isPending']) || data.isPending is bool) &&
-             (!data.keys().hasAll(['createdAt']) || (data.createdAt is timestamp || data.createdAt == null)) &&
-             (!data.keys().hasAll(['updatedAt']) || (data.updatedAt is timestamp || data.updatedAt == null)) &&
-             (!data.keys().hasAll(['isSocio']) || data.isSocio is bool) &&
-             (!data.keys().hasAll(['cargoComissao']) || data.cargoComissao in ['CORRETOR', 'CAPTADOR', 'GESTOR', 'SOCIO', null]) &&
-             (!data.keys().hasAll(['cpf']) || (data.cpf is string && data.cpf.size() <= 20));
-    }
-
-    function isValidTask(data) {
-      return data.keys().hasAll(['uid', 'title', 'completed', 'priority', 'date', 'companyId']) &&
-             data.uid is string && data.uid.size() <= 64 &&
-             data.companyId is string && data.companyId.size() <= 100 &&
-             data.title is string && data.title.size() <= 200 &&
-             data.completed is bool &&
-             (data.priority == 'low' || data.priority == 'medium' || data.priority == 'high') &&
-             data.date is string && data.date.size() == 10 &&
-             (!('description' in data) || (data.description is string && data.description.size() <= 2000)) &&
-             (!('actionLabel' in data) || (data.actionLabel is string)) &&
-             (!('time' in data) || (data.time == null || data.time is string)) &&
-             (!('recurrence' in data) || (data.recurrence is string)) &&
-             (!('authorId' in data) || (data.authorId is string)) &&
-             (!('attachments' in data) || (data.attachments is list)) &&
-             (!('proofUrl' in data) || (data.proofUrl is string)) &&
-             (!('proofName' in data) || (data.proofName is string)) &&
-             (!('createdAt' in data) || (data.createdAt is timestamp || data.createdAt == null));
-    }
-
-    function isValidProcess(data) {
-      return data.keys().hasAll(['uid', 'title', 'type', 'status', 'completedSteps', 'companyId']) &&
-             data.uid is string && data.uid.size() <= 64 &&
-             data.companyId is string && data.companyId.size() <= 100 &&
-             data.title is string && data.title.size() <= 200 &&
-             (data.status == 'active' || data.status == 'completed' || data.status == 'archived') &&
-             data.completedSteps is list && data.completedSteps.size() <= 100 &&
-             (!('notes' in data) || (data.notes is string && data.notes.size() <= 2000)) &&
-             (!('stepProofs' in data) || data.stepProofs is map) &&
-             (!('stepAttachments' in data) || data.stepAttachments is map) &&
-             (!('tenantName' in data) || (data.tenantName is string)) &&
-             (!('propertyAddress' in data) || (data.propertyAddress is string)) &&
-             (!('rentAmount' in data) || (data.rentAmount is number)) &&
-             (!('isCommissionLaunched' in data) || (data.isCommissionLaunched is bool));
-    }
-
-    function isValidVistoria(data) {
-      return data.keys().hasAll(['corretorId', 'locatario', 'imovel', 'locador', 'comodos', 'status', 'data', 'companyId']) &&
-             data.corretorId is string && data.corretorId.size() <= 128 &&
-             data.companyId is string && data.companyId.size() <= 128 &&
-             data.locatario is map && data.imovel is map && data.locador is map &&
-             data.comodos is list && data.comodos.size() <= 50 &&
-             (data.status == 'rascunho' || data.status == 'concluido') &&
-             data.data is string && data.data.size() <= 20;
-    }
-
-    function isValidComissao(data) {
-      return data.keys().hasAll(['companyId', 'imovel', 'inquilino', 'primeiroAluguel', 'status', 'mesReferencia']) &&
-             data.companyId is string && data.imovel is string && data.inquilino is string &&
-             data.primeiroAluguel is number &&
-             (data.status == 'pendente' || data.status == 'pago' || data.status == 'atraso') &&
-             data.mesReferencia is string &&
-             (!('rateio' in data) || data.rateio is list) &&
-             (!('jaPagoCorretores' in data) || data.jaPagoCorretores is bool) &&
-             (!('pagamentosCorretores' in data) || data.pagamentosCorretores is list);
-    }
-
-    // ===============================================================
-    // Rules Matching (Phase 4)
-    // ===============================================================
-
-    match /users/{userId} {
-      allow get: if isSignedIn() && (isSuperAdmin() || isOwner(userId) || (isUserActive() && isCompanyAdmin(existing().companyId))) && isValidId(userId);
-      allow list: if isSuperAdmin() || (isSignedIn() && (
-        (isUserActive() && resource.data.companyId == getUserData().companyId) ||
-        (resource.data.email == request.auth.token.email && resource.data.get('isPending', false) == true)
-      ));
-      
-      allow create: if isSignedIn() && isValidId(userId) && isValidUser(incoming()) && (
-                      isSuperAdmin() ||
-                      (isUserActive() && isCompanyAdmin(incoming().companyId)) ||
-                      (
-                        isOwner(userId) &&
-                        incoming().get('role', 'user') != 'admin' &&
-                        incoming().get('role', 'user') != 'manager'
-                      )
-                    );
-      
-      allow update: if (isSuperAdmin() || isUserActive()) && (isSuperAdmin() || isOwner(userId) || isCompanyAdmin(existing().companyId)) && isValidId(userId) && isValidUser(incoming()) && (
-        isSuperAdmin() ||
-        (isOwner(userId) && incoming().get('companyId', '') == existing().get('companyId', '') && incoming().get('role', '') == existing().get('role', '')) ||
-        isCompanyAdmin(existing().get('companyId', ''))
-      );
-      
-      allow delete: if isSuperAdmin() || (isSignedIn() && (
-        (isUserActive() && isCompanyAdmin(existing().get('companyId', 'default'))) ||
-        (existing().get('email', '') == request.auth.token.email)
-      ));
-    }
-
-    match /companies/{companyId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() && (isSuperAdmin() || incoming().ownerId == request.auth.uid);
-      allow update: if (isSuperAdmin() || (isUserActive() && isCompanyAdmin(companyId)));
-      allow delete: if isSuperAdmin();
-    }
-
-    match /tasks/{taskId} {
-      allow get: if isUserActive() && resource.data.companyId == getUserData().companyId && 
-                    (resource.data.uid == request.auth.uid || isCompanyAdmin(resource.data.companyId)) && isValidId(taskId);
-      allow list: if isUserActive() && resource.data.companyId == getUserData().companyId && 
-                     (resource.data.uid == request.auth.uid || (getUserData().role == 'admin' && getUserData().companyId == resource.data.companyId));
-      
-      allow create: if isUserActive() && isValidId(taskId) && isValidTask(incoming()) && 
-                    incoming().companyId == getUserData().companyId && (incoming().uid == request.auth.uid || isCompanyAdmin(incoming().companyId));
-      
-      allow update: if isUserActive() && isValidId(taskId) && existing().companyId == getUserData().companyId && 
-                    (existing().uid == request.auth.uid || isCompanyAdmin(existing().companyId)) && 
-                    isValidTask(incoming()) && incoming().companyId == existing().companyId && (
-                      isCompanyAdmin(existing().companyId) || incoming().uid == existing().uid
-                    );
-      
-      allow delete: if isUserActive() && isValidId(taskId) && existing().companyId == getUserData().companyId && 
-                    (existing().uid == request.auth.uid || isCompanyAdmin(existing().companyId));
-    }
-
-    match /processes/{processId} {
-      allow get: if isUserActive() && resource.data.companyId == getUserData().companyId && isValidId(processId);
-      allow list: if isUserActive() && resource.data.companyId == getUserData().companyId;
-      
-      allow create: if isUserActive() && isValidId(processId) && isValidProcess(incoming()) && 
-                    incoming().companyId == getUserData().companyId;
-      
-      allow update: if isUserActive() && isValidId(processId) && existing().companyId == getUserData().companyId && 
-                    isValidProcess(incoming()) && incoming().companyId == existing().companyId;
-                    
-      allow delete: if isUserActive() && isValidId(processId) && existing().companyId == getUserData().companyId && 
-                    (existing().uid == request.auth.uid || isCompanyAdmin(existing().companyId));
-    }
-
-    match /tools/{toolId} {
-      allow read: if isUserActive() && resource.data.companyId == getUserData().companyId;
-      allow write: if isUserActive() && isCompanyAdmin(incoming().companyId) && isValidId(toolId);
-    }
-
-    match /process_templates/{templateId} {
-      allow read: if isUserActive();
-      allow write: if isAdmin() && isValidId(templateId);
-    }
-
-    match /settings/{settingId} {
-      allow read: if isUserActive();
-      allow write: if isAdmin() && isValidId(settingId);
-    }
-
-    match /vistorias/{vistoriaId} {
-      allow get: if isUserActive() && (isSuperAdmin() || resource.data.get('companyId', 'default') == getUserData().get('companyId', 'default')) && isValidId(vistoriaId);
-      allow list: if isUserActive() && (isSuperAdmin() || resource.data.get('companyId', 'default') == getUserData().get('companyId', 'default'));
-      
-      allow create: if isUserActive() && isValidId(vistoriaId) && isValidVistoria(incoming()) && 
-                    incoming().companyId == getUserData().companyId;
-      
-      allow update: if isUserActive() && isValidId(vistoriaId) && (isSuperAdmin() || existing().get('companyId', 'default') == getUserData().get('companyId', 'default')) && 
-                    isValidVistoria(incoming()) && incoming().companyId == existing().get('companyId', 'default');
-      
-      allow delete: if isUserActive() && isValidId(vistoriaId) && (isSuperAdmin() || (existing().get('companyId', 'default') == getUserData().get('companyId', 'default') && 
-                    (existing().corretorId == request.auth.uid || isCompanyAdmin(existing().get('companyId', 'default')))));
-    }
-
-    match /comissoes/{comissaoId} {
-      allow get: if isUserActive() && resource.data.companyId == getUserData().companyId && isValidId(comissaoId);
-      allow list: if isUserActive() && resource.data.companyId == getUserData().companyId;
-      
-      allow create: if isUserActive() && isValidId(comissaoId) && isValidComissao(incoming()) && 
-                    incoming().companyId == getUserData().companyId;
-      
-      allow update: if isUserActive() && isValidId(comissaoId) && existing().companyId == getUserData().companyId && 
-                    isValidComissao(incoming()) && incoming().companyId == existing().companyId;
-      
-      allow delete: if isUserActive() && isValidId(comissaoId) && existing().companyId == getUserData().companyId && 
-                    isCompanyAdmin(existing().companyId);
-    }
-
-    match /sales/{saleId} {
-      allow get: if isUserActive() && resource.data.agency_id == getUserData().companyId && isValidId(saleId);
-      allow list: if isUserActive() && resource.data.agency_id == getUserData().companyId;
-      allow create: if isUserActive() && isValidId(saleId) && incoming().agency_id == getUserData().companyId && isCompanyAdmin(incoming().agency_id) && incoming().sale_value > 0 && incoming().commission_percentage > 0 && incoming().commission_percentage <= 100;
-      allow update: if isUserActive() && isValidId(saleId) && existing().agency_id == getUserData().companyId && isCompanyAdmin(existing().agency_id) && incoming().agency_id == existing().agency_id;
-      allow delete: if isUserActive() && isValidId(saleId) && existing().agency_id == getUserData().companyId && isCompanyAdmin(existing().agency_id);
-    }
-
-    match /broker_splits/{splitId} {
-      // Sócios podem ter múltiplos splits por venda com papéis distintos
-      allow get: if isUserActive() && resource.data.agency_id == getUserData().companyId && isValidId(splitId);
-      allow list: if isUserActive() && resource.data.agency_id == getUserData().companyId;
-      allow create: if isUserActive() && isValidId(splitId) && incoming().agency_id == getUserData().companyId && isCompanyAdmin(incoming().agency_id) && incoming().percentage > 0 && incoming().percentage <= 100 && incoming().calculated_value >= 0 && (!('receipt_data' in incoming()) || incoming().receipt_data == null || (incoming().receipt_data is string && incoming().receipt_data.size() <= 500000));
-      allow update: if isUserActive() && isValidId(splitId) && existing().agency_id == getUserData().companyId && isCompanyAdmin(existing().agency_id) && incoming().agency_id == existing().agency_id && (!('receipt_data' in incoming()) || incoming().receipt_data == null || (incoming().receipt_data is string && incoming().receipt_data.size() <= 500000));
-      allow delete: if isUserActive() && isValidId(splitId) && existing().agency_id == getUserData().companyId && isCompanyAdmin(existing().agency_id);
-    }
-
-    match /bank_accounts/{accountId} {
-      allow get: if isUserActive() && resource.data.companyId == getUserData().companyId;
-      allow list: if isUserActive() && resource.data.companyId == getUserData().companyId;
-      allow create: if isUserActive() && isCompanyAdmin(incoming().companyId) && incoming().companyId == getUserData().companyId;
-      allow update: if isUserActive() && isCompanyAdmin(existing().companyId) && existing().companyId == getUserData().companyId;
-      allow delete: if isUserActive() && existing().companyId == getUserData().companyId;
-    }
-
-    match /financial_transactions/{txId} {
-      allow get: if isUserActive() && resource.data.companyId == getUserData().companyId;
-      allow list: if isUserActive() && resource.data.companyId == getUserData().companyId;
-      allow create: if isUserActive() && incoming().companyId == getUserData().companyId && incoming().amount != 0;
-      allow update: if isUserActive() && existing().companyId == getUserData().companyId && incoming().companyId == existing().companyId;
-      allow delete: if isUserActive() && existing().companyId == getUserData().companyId;
-    }
-
-    match /financial_categories/{catId} {
-      allow get: if isUserActive() && resource.data.companyId == getUserData().companyId;
-      allow list: if isUserActive() && resource.data.companyId == getUserData().companyId;
-      allow create: if isUserActive() && isCompanyAdmin(incoming().companyId);
-      allow update: if isUserActive() && isCompanyAdmin(existing().companyId);
-      allow delete: if isUserActive() && isCompanyAdmin(existing().companyId) && existing().isDefault == false;
-    }
-
-    match /invites/{token} {
-      allow get: if true;
-      allow create: if isUserActive() && isCompanyAdmin(incoming().companyId);
-      allow update: if true;
-      allow delete: if isUserActive() && isCompanyAdmin(existing().companyId);
+    // Regra global — usuários autenticados podem ler e escrever
+    match /{document=**} {
+      allow read, write: if isSignedIn();
     }
   }
 }
