@@ -31,7 +31,8 @@ export interface UserProfile {
   role: "admin" | "user" | "none";
   permissions?: string[];
   companyId?: string;
-  status?: "active" | "blocked";
+  status?: "active" | "blocked" | "pending";
+  isPending?: boolean;
   createdAt?: any;
   gcalLastSync?: string;
   isSocio?: boolean;        // true = pode ter múltiplos papéis na divisão de comissões

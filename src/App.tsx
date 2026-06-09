@@ -707,6 +707,7 @@ const UserManagement = ({
     const newRole = currentRole === "admin" ? "user" : "admin";
     try {
       await updateDoc(doc(db, "users", userId), { role: newRole });
+      setUsers(prev => prev.map(u => u.uid === userId ? { ...u, role: newRole } : u));
       toast.success(`Cargo alterado para ${newRole === 'admin' ? 'Administrador' : 'Colaborador'}`);
     } catch (error) {
       toast.error("Erro ao alterar cargo.");
@@ -721,6 +722,7 @@ const UserManagement = ({
     
     try {
       await updateDoc(doc(db, "users", userId), { permissions: newPermissions });
+      setUsers(prev => prev.map(u => u.uid === userId ? { ...u, permissions: newPermissions } : u));
       toast.success("Permissão atualizada com sucesso.");
     } catch (error) {
       toast.error("Erro ao atualizar permissão.");
@@ -740,7 +742,8 @@ const UserManagement = ({
   const updateUserName = async (userId: string, newDisplayName: string) => {
     try {
       await updateDoc(doc(db, "users", userId), { displayName: newDisplayName });
-      toast.success("Nome atualizado com sucesso.");
+      setUsers(prev => prev.map(u => u.uid === userId ? { ...u, displayName: newDisplayName } : u));
+      toast.success("Nome updated com sucesso.");
     } catch (error) {
       toast.error("Erro ao atualizar nome.");
       handleFirestoreError(error, OperationType.UPDATE, `users/${userId}`);
@@ -775,25 +778,13 @@ const UserManagement = ({
     if (e) e.preventDefault();
     try {
       const companyId = companySettings?.id || "default_agency";
-      const companyName = companySettings?.name || "Fidelité Imobiliária";
-      
-      const payload = {
-        companyId,
-        companyName,
-        role: newUserRoleInvite || "Colaborador",
-        email: newUserEmail || "",
-        createdAt: Date.now(),
-        expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7 dias
-      };
-
-      const token = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
-      const link = `${window.location.origin}/register?invite=${token}`;
+      const link = `${window.location.origin}/?invite=${companyId}`;
 
       navigator.clipboard.writeText(link).then(() => {
-        toast.success("Link de convite copiado! Válido por 7 dias.");
+        toast.success("Link de convite copiado! Qualquer pessoa com este link pode solicitar acesso à equipe.");
       }).catch(() => {
         // fallback se clipboard não funcionar
-        toast.success(`Link gerado: ${link}`);
+        toast.success(`Link de convite: ${link}`);
       });
 
       setIsAddUserOpen(false);
@@ -989,7 +980,13 @@ const UserManagement = ({
                               SÓCIO
                             </span>
                           )}
-                          {(u as any).isPending === true && (
+                          {u.status === "pending" && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-rose-50 text-rose-700 border border-rose-200 rounded-md text-[9px] font-bold uppercase tracking-wide animate-pulse">
+                              <AlertCircle className="w-2.5 h-2.5" />
+                              Pendente Aprovação
+                            </span>
+                          )}
+                          {(u as any).isPending === true && u.status !== "pending" && (
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-md text-[9px] font-bold uppercase tracking-wide">
                               <Clock className="w-2.5 h-2.5" />
                               Aguardando 1º acesso
@@ -1116,6 +1113,29 @@ const UserManagement = ({
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-3">
+                      {u.status === "pending" && (
+                        <button 
+                          onClick={async () => {
+                            if (confirm(`Aprovar o cadastro de ${u.displayName || u.email}?`)) {
+                              try {
+                                await updateDoc(doc(db, "users", u.uid), {
+                                  status: "active",
+                                  isPending: false
+                                });
+                                setUsers(prev => prev.map(item => item.uid === u.uid ? { ...item, status: "active", isPending: false } : item));
+                                toast.success("Membro aprovado com sucesso! Agora você já pode configurar cargos e permissões.");
+                              } catch (err) {
+                                console.error(err);
+                                toast.error("Erro ao aprovar membro.");
+                              }
+                            }
+                          }}
+                          className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all shadow-sm shadow-emerald-100 flex items-center gap-1 cursor-pointer"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                          Aprovar
+                        </button>
+                      )}
                       <button 
                         onClick={() => copyInviteText(u)}
                         className="p-2 text-slate-300 hover:text-green-500 hover:bg-green-50 rounded-lg transition-all"
@@ -1172,6 +1192,7 @@ const UserManagement = ({
                     try {
                       await updateDoc(doc(db, "users", deleteConfirm.userId), { status: "blocked", role: "none" });
                       await deleteDoc(doc(db, "users", deleteConfirm.userId));
+                      setUsers(prev => prev.filter(u => u.uid !== deleteConfirm.userId));
                       toast.success("Usuário removido com sucesso.");
                     } catch (error) {
                       toast.error("Erro ao excluir usuário.");
@@ -1338,48 +1359,40 @@ const UserManagement = ({
                     </div>
 
                     {addUserModalType === 'invite' ? (
-                      <form onSubmit={handleGenerateInviteLink} className="space-y-4">
-                        <div>
-                          <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">E-mail do Convidado (Opcional)</label>
-                          <div className="relative">
-                            <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                            <input 
-                              type="email"
-                              value={newUserEmail}
-                              onChange={(e) => setNewUserEmail(e.target.value)}
-                              placeholder="E-mail opcional (para personalizar)"
-                              className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm"
-                            />
-                          </div>
+                      <div className="space-y-6 text-left">
+                        <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 space-y-2.5">
+                          <p className="text-sm text-slate-700 leading-relaxed font-semibold">
+                            Como funciona o convite?
+                          </p>
+                          <ul className="text-xs text-slate-600 space-y-1.5 list-disc list-inside">
+                            <li>Copie o link abaixo e envie para o novo membro da equipe.</li>
+                            <li>Ele fará o cadastro preenchendo o próprio e-mail, nome e senha.</li>
+                            <li>Por segurança, a conta entrará como <strong className="text-amber-600 font-bold">Pendente</strong> e ele não verá os dados do sistema.</li>
+                            <li>Você receberá o cadastro na tabela e poderá <strong className="text-emerald-600 font-bold">Aprovar</strong> e definir o cargo desejado.</li>
+                          </ul>
                         </div>
 
-                        <div>
-                          <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Nível de Acesso</label>
-                          <div className="relative">
-                            <select
-                              value={newUserRoleInvite}
-                              onChange={(e) => setNewUserRoleInvite(e.target.value as any)}
-                              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm appearance-none cursor-pointer font-medium text-slate-700"
-                            >
-                              <option value="Colaborador">Colaborador</option>
-                              <option value="Corretor">Corretor</option>
-                              <option value="Gestor">Gestor</option>
-                            </select>
-                            <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-xs">
-                              ▼
-                            </div>
-                          </div>
+                        <div className="space-y-2">
+                          <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest">Link de Cadastro Único</label>
+                          <input 
+                            type="text"
+                            readOnly
+                            value={`${window.location.origin}/?invite=${companySettings?.id || 'company'}`}
+                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none text-xs font-mono text-slate-600"
+                            onClick={(e) => (e.target as HTMLInputElement).select()}
+                          />
                         </div>
 
-                        <div className="pt-4">
+                        <div className="pt-2">
                           <button 
-                            type="submit"
+                            type="button"
+                            onClick={() => handleGenerateInviteLink()}
                             className="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold uppercase tracking-widest text-xs shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all active:scale-95 duration-100 cursor-pointer"
                           >
-                            Gerar Link de Convite
+                            Copiar Link de Convite
                           </button>
                         </div>
-                      </form>
+                      </div>
                     ) : (
                       <form onSubmit={handleManualRegister} className="space-y-4">
                         <div>
@@ -7218,11 +7231,21 @@ export default function App() {
   useEffect(() => {
     try {
       const params = new URLSearchParams(window.location.search);
+      const invite = params.get('invite');
       const token = params.get('token');
       const company = params.get('company');
       const role = params.get('role');
       
-      if (token) {
+      if (invite) {
+        localStorage.setItem('active_invite_company', invite);
+        localStorage.setItem('active_invite_token', invite);
+        
+        // Limpa os parâmetros da URL para manter a barra de navegação limpa
+        const newUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, newUrl);
+        
+        toast.info("Processando seu convite de acesso...");
+      } else if (token) {
         localStorage.setItem('active_invite_token', token);
         if (company) localStorage.setItem('active_invite_company', company);
         if (role) localStorage.setItem('active_invite_role', role);
@@ -7310,77 +7333,40 @@ export default function App() {
             // 1. Verificar primeiro se há um de token de convite ativo por link no localStorage
             const inviteToken = localStorage.getItem('active_invite_token');
             const inviteCompany = localStorage.getItem('active_invite_company');
-            const inviteRole = localStorage.getItem('active_invite_role');
 
-            if (inviteToken) {
+            if (inviteCompany || inviteToken) {
               try {
-                const inviteRef = doc(db, "invites", inviteToken);
-                const inviteSnap = await getDoc(inviteRef);
+                const companyIdToUse = inviteCompany || inviteToken;
+                
+                // Sempre registrar com status "pending" e isPending como true, para o administrador aprovar e escolher cargo!
+                const pendingProfile: UserProfile = {
+                  uid: authenticatedUser.uid,
+                  displayName: authenticatedUser.displayName || authenticatedUser.email?.split('@')[0] || "Usuário",
+                  email: authenticatedUser.email,
+                  photoURL: authenticatedUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(authenticatedUser.displayName || authenticatedUser.email || "U")}&background=random`,
+                  role: "user", // cargo inicial padrão, será alterado pelo administrador ao aprovar
+                  companyId: companyIdToUse || "company",
+                  status: "pending",
+                  isPending: true,
+                  createdAt: serverTimestamp(),
+                };
 
-                if (inviteSnap.exists()) {
-                  const inviteData = inviteSnap.data();
-                  const now = new Date();
-                  const expiresAt = inviteData.expiresAt ? (inviteData.expiresAt.toDate ? inviteData.expiresAt.toDate() : new Date(inviteData.expiresAt)) : null;
-                  const isExpired = expiresAt ? now > expiresAt : false;
+                // Gravar o perfil como pendente
+                await setDoc(userDocRef, pendingProfile, { merge: true });
 
-                  if (inviteData.status === 'pending' && !isExpired) {
-                    // Determinar role e cargo nas comissões
-                    let userRole: "admin" | "user" = "user";
-                    let cargoComissao: "CORRETOR" | "GESTOR" | "CAPTADOR" | "SOCIO" | null = null;
+                // Limpar localStorage
+                localStorage.removeItem('active_invite_token');
+                localStorage.removeItem('active_invite_company');
+                localStorage.removeItem('active_invite_role');
 
-                    const roleLower = (inviteData.role || '').toLowerCase();
-                    if (roleLower === 'gestor') {
-                      userRole = 'admin';
-                      cargoComissao = 'GESTOR';
-                    } else if (roleLower === 'corretor') {
-                      userRole = 'user';
-                      cargoComissao = 'CORRETOR';
-                    } else {
-                      userRole = 'user';
-                      cargoComissao = null;
-                    }
-
-                    const activatedProfile: UserProfile = {
-                      uid: authenticatedUser.uid,
-                      displayName: authenticatedUser.displayName || inviteData.email?.split('@')[0] || "Usuário",
-                      email: authenticatedUser.email,
-                      photoURL: authenticatedUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(authenticatedUser.displayName || authenticatedUser.email || "U")}&background=random`,
-                      role: userRole,
-                      companyId: inviteData.companyId || inviteCompany || "company",
-                      status: "active",
-                      createdAt: serverTimestamp(),
-                    };
-
-                    if (cargoComissao) {
-                      activatedProfile.cargoComissao = cargoComissao;
-                    }
-
-                    // Gravar o perfil ativo
-                    await setDoc(userDocRef, activatedProfile, { merge: true });
-
-                    // Desativar o convite por link
-                    await updateDoc(inviteRef, {
-                      status: "used",
-                      usedBy: authenticatedUser.uid,
-                      usedAt: serverTimestamp()
-                    });
-
-                    // Limpar localStorage
-                    localStorage.removeItem('active_invite_token');
-                    localStorage.removeItem('active_invite_company');
-                    localStorage.removeItem('active_invite_role');
-
-                    console.log("Perfil criado com sucesso usando convite por link.");
-                    toast.success("Conta criada e convite ativado com sucesso!");
-                    return; // Retorna pois o snapshot atualizará
-                  } else if (isExpired) {
-                    toast.error("Este link de convite já expirou.");
-                  } else {
-                    toast.error("Este link de convite já foi utilizado.");
-                  }
-                }
+                console.log("Perfil pendente criado com sucesso usando link de convite.");
+                setProfile(null);
+                setLoading(false);
+                setAguardandoAprovacaoEmail(authenticatedUser.email || null);
+                await auth.signOut();
+                return;
               } catch (inviteErr) {
-                console.error("Erro ao validar convite por link:", inviteErr);
+                console.error("Erro ao registrar usuário pendente:", inviteErr);
               }
             }
 
