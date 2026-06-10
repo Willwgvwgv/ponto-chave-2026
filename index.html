@@ -4,6 +4,28 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Ponto Chave - Gestão e Processos</title>
+    <script>
+      // Prevent Google Translate from crashing React applications when DOM nodes are mutated
+      if (typeof Node === 'function' && Node.prototype) {
+        const originalInsertBefore = Node.prototype.insertBefore;
+        Node.prototype.insertBefore = function (newNode, referenceNode) {
+          if (referenceNode && referenceNode.parentNode !== this) {
+            console.warn('insertBefore referenceNode parent check failed. Google Translate issue safely handled.');
+            return originalInsertBefore.call(this, newNode, null);
+          }
+          return originalInsertBefore.apply(this, arguments);
+        };
+
+        const originalRemoveChild = Node.prototype.removeChild;
+        Node.prototype.removeChild = function (child) {
+          if (child && child.parentNode !== this) {
+            console.warn('removeChild child parent check failed. Google Translate issue safely handled.');
+            return child;
+          }
+          return originalRemoveChild.apply(this, arguments);
+        };
+      }
+    </script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="theme-color" content="#2563EB" />
