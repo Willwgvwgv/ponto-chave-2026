@@ -15,7 +15,8 @@ import {
   FileText, 
   Check, 
   Layers, 
-  Briefcase 
+  Briefcase,
+  Pencil
 } from "lucide-react";
 import { Comissao, RateioComissao, PagamentoCorretor, ComissoneUser, UserProfile } from "../../types";
 import { ConfirmModal } from "../ui/ConfirmModal";
@@ -62,6 +63,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
   });
   
   const [selectedRental, setSelectedRental] = useState<Comissao | null>(null);
+  const [editingRental, setEditingRental] = useState<Comissao | null>(null);
   const [filterText, setFilterText] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("TUDO");
   const [selectedMonthFilter, setSelectedMonthFilter] = useState<string>("TODOS");
@@ -134,6 +136,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
     setSelectedBrokerId("");
     setBrokerRole("locacao");
     setBrokerPercent(100);
+    setEditingRental(null);
     if (onClearInitialData) onClearInitialData();
   };
 
@@ -258,30 +261,49 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
       return;
     }
 
-    const rec: Omit<Comissao, "id"> & { id?: string; processId?: string } = {
-      companyId: userProfile.companyId || "default_agency",
-      imovel,
-      inquilino,
-      aluguelMensal,
-      primeiroAluguel,
-      porcentagemFidelite,
-      valorFidelite,
-      valorRepasseCorretores,
-      vencimento: vencimento || new Date().toISOString().split("T")[0],
-      mesReferencia,
-      status: "pendente",
-      jaPagoCorretores: false,
-      rateio: rateios,
-      observacoes,
-      criadoPor: userProfile.uid,
-      criadoPorNome: userProfile.displayName || "Admin",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      pagamentosCorretores: [],
-      processId: initialData?.processId || undefined
-    };
+    if (editingRental) {
+      const updatedRec: Comissao = {
+        ...editingRental,
+        imovel,
+        inquilino,
+        aluguelMensal,
+        primeiroAluguel,
+        porcentagemFidelite,
+        valorFidelite,
+        valorRepasseCorretores,
+        vencimento: vencimento || new Date().toISOString().split("T")[0],
+        mesReferencia,
+        rateio: rateios,
+        observacoes,
+        updatedAt: new Date().toISOString()
+      };
+      onUpdateRental(updatedRec);
+    } else {
+      const rec: Omit<Comissao, "id"> & { id?: string; processId?: string } = {
+        companyId: userProfile.companyId || "default_agency",
+        imovel,
+        inquilino,
+        aluguelMensal,
+        primeiroAluguel,
+        porcentagemFidelite,
+        valorFidelite,
+        valorRepasseCorretores,
+        vencimento: vencimento || new Date().toISOString().split("T")[0],
+        mesReferencia,
+        status: "pendente",
+        jaPagoCorretores: false,
+        rateio: rateios,
+        observacoes,
+        criadoPor: userProfile.uid,
+        criadoPorNome: userProfile.displayName || "Admin",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        pagamentosCorretores: [],
+        processId: initialData?.processId || undefined
+      };
+      onCreateRental(rec);
+    }
 
-    onCreateRental(rec);
     resetForm();
     setActiveTab("list");
   };
@@ -419,12 +441,41 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
         <div className="bg-white border border-slate-100 rounded-[32px] p-8 shadow-xl space-y-8 animate-fade-in">
           {/* Header */}
           <div className="flex items-center justify-between border-b border-slate-100 pb-6 shrink-0">
-            <button 
-              onClick={() => setSelectedRental(null)}
-              className="px-4 py-2 border border-slate-200 text-slate-500 hover:text-slate-800 rounded-xl text-[10px] font-black uppercase tracking-widest cursor-pointer flex items-center gap-2"
-            >
-              <ArrowLeft className="w-4 h-4" /> Voltar
-            </button>
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => { setSelectedRental(null); setEditingRental(null); }}
+                className="px-4 py-2 border border-slate-200 text-slate-500 hover:text-slate-800 rounded-xl text-[10px] font-black uppercase tracking-widest cursor-pointer flex items-center gap-2"
+              >
+                <ArrowLeft className="w-4 h-4" /> Voltar
+              </button>
+              <button 
+                type="button"
+                onClick={() => {
+                  setEditingRental(selectedRental);
+                  setImovel(selectedRental.imovel || "");
+                  setInquilino(selectedRental.inquilino || "");
+                  setAluguelMensal(selectedRental.aluguelMensal || 0);
+                  setPrimeiroAluguel(selectedRental.primeiroAluguel || selectedRental.aluguelMensal || 0);
+                  setPorcentagemFidelite(selectedRental.porcentagemFidelite ?? 100);
+                  
+                  const derivedPercent = selectedRental.valorFidelite > 0 
+                    ? Math.round((selectedRental.valorRepasseCorretores * 100) / selectedRental.valorFidelite) 
+                    : 70;
+                  setPorcentagemRepasse(derivedPercent);
+                  
+                  setVencimento(selectedRental.vencimento || "");
+                  setMesReferencia(selectedRental.mesReferencia || "");
+                  setObservacoes(selectedRental.observacoes || "");
+                  setRateios(selectedRental.rateio || []);
+                  
+                  setSelectedRental(null);
+                  setActiveTab("create");
+                }}
+                className="px-4 py-2 border border-blue-500 text-blue-600 hover:bg-blue-50 rounded-xl text-[10px] font-black uppercase tracking-widest cursor-pointer flex items-center gap-2"
+              >
+                <Pencil className="w-3.5 h-3.5" /> Editar Comissão
+              </button>
+            </div>
             <div className="text-right">
               <span className={`text-[9px] font-black uppercase tracking-widest px-3 py-1.5 rounded-xl leading-none ${
                 selectedRental.status === "pago" ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600 animate-pulse"
@@ -604,8 +655,12 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
         /* RENTAL FORM SCREEN */
         <form onSubmit={handleSaveRental} className="bg-white border border-slate-100 rounded-[32px] p-8 shadow-xl space-y-6 animate-fade-in">
           <div className="border-b border-slate-100 pb-4 shrink-0">
-            <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight">Criação de Repasse de Locação</h2>
-            <p className="text-xs text-slate-400 mt-1 uppercase font-bold tracking-widest">Lançar repasse do primeiro aluguel de imóvel (Fidelidade/Taxa de Intermediação)</p>
+            <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight">
+              {editingRental ? "Editar Comissão de Locação" : "Criação de Repasse de Locação"}
+            </h2>
+            <p className="text-xs text-slate-400 mt-1 uppercase font-bold tracking-widest">
+              {editingRental ? "Alterar dados de comissão e rateio de locação" : "Lançar repasse do primeiro aluguel de imóvel (Fidelidade/Taxa de Intermediação)"}
+            </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -826,16 +881,20 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
           <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 shrink-0">
             <button 
               type="button" 
-              onClick={() => { resetForm(); setActiveTab("dashboard"); }}
+              onClick={() => { 
+                const wasEditing = !!editingRental;
+                resetForm(); 
+                setActiveTab(wasEditing ? "list" : "dashboard"); 
+              }}
               className="px-6 py-3 border border-slate-200 text-slate-500 hover:text-slate-800 rounded-2xl text-[10px] font-black uppercase tracking-widest cursor-pointer transition-all"
             >
               Cancelar
             </button>
             <button 
               type="submit" 
-              className="px-8 py-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest cursor-pointer transition-all shadow-lg shadow-emerald-500/15"
+              className="px-8 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest cursor-pointer transition-all shadow-lg shadow-emerald-500/15 font-bold"
             >
-              Salvar Comissão de Locação
+              {editingRental ? "Salvar Alterações" : "Salvar Comissão de Locação"}
             </button>
           </div>
         </form>
