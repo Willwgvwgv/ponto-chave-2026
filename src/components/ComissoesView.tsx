@@ -409,6 +409,7 @@ export const ComissoesView: React.FC<ComissoesViewProps> = ({
 
                 {activeSubTab === "create" && (
                   <SaleForm
+                    key={editingSale ? `edit-${editingSale.id}` : "new"}
                     agencyId={agencyId}
                     team={team}
                     onSave={handleSaveSale}

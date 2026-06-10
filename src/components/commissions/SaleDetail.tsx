@@ -728,7 +728,7 @@ export const SaleDetail: React.FC<SaleDetailProps> = ({
                     onClick={() => onEditSale(sale)}
                     className="block text-[9px] font-black uppercase tracking-widest border border-blue-500 text-blue-600 hover:bg-blue-50 rounded-xl px-3 py-1.5 transition-all cursor-pointer flex items-center gap-1"
                   >
-                    <Pencil className="w-3" />
+                    <Pencil className="w-3 h-3" />
                     Editar Venda
                   </button>
                 )}
