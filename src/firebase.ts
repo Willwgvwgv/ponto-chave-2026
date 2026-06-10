@@ -67,14 +67,20 @@ const isValidApiKey = (key: any): boolean => {
 
 const isEnvApiValid = isValidApiKey(env.VITE_FIREBASE_API_KEY);
 
+const isAIStudioPreview = typeof window !== 'undefined' && (
+  window.location.hostname.includes('.run.app') || 
+  window.location.hostname.includes('web-preview') || 
+  window.location.hostname.includes('aistudio')
+);
+
 export const resolvedFirebaseConfig = {
-  apiKey: cleanStr(isEnvApiValid ? env.VITE_FIREBASE_API_KEY : firebaseConfig.apiKey),
-  authDomain: cleanStr((env.VITE_FIREBASE_AUTH_DOMAIN && env.VITE_FIREBASE_AUTH_DOMAIN !== 'undefined' && env.VITE_FIREBASE_AUTH_DOMAIN !== 'null') ? env.VITE_FIREBASE_AUTH_DOMAIN : firebaseConfig.authDomain),
-  projectId: cleanStr((env.VITE_FIREBASE_PROJECT_ID && env.VITE_FIREBASE_PROJECT_ID !== 'undefined' && env.VITE_FIREBASE_PROJECT_ID !== 'null') ? env.VITE_FIREBASE_PROJECT_ID : firebaseConfig.projectId),
-  storageBucket: cleanStr((env.VITE_FIREBASE_STORAGE_BUCKET && env.VITE_FIREBASE_STORAGE_BUCKET !== 'undefined' && env.VITE_FIREBASE_STORAGE_BUCKET !== 'null') ? env.VITE_FIREBASE_STORAGE_BUCKET : firebaseConfig.storageBucket),
-  messagingSenderId: cleanStr((env.VITE_FIREBASE_MESSAGING_SENDER_ID && env.VITE_FIREBASE_MESSAGING_SENDER_ID !== 'undefined' && env.VITE_FIREBASE_MESSAGING_SENDER_ID !== 'null') ? env.VITE_FIREBASE_MESSAGING_SENDER_ID : firebaseConfig.messagingSenderId),
-  appId: cleanStr((env.VITE_FIREBASE_APP_ID && env.VITE_FIREBASE_APP_ID !== 'undefined' && env.VITE_FIREBASE_APP_ID !== 'null') ? env.VITE_FIREBASE_APP_ID : firebaseConfig.appId),
-  firestoreDatabaseId: getSanitizedDatabaseId()
+  apiKey: cleanStr((isEnvApiValid && !isAIStudioPreview) ? env.VITE_FIREBASE_API_KEY : firebaseConfig.apiKey),
+  authDomain: cleanStr((env.VITE_FIREBASE_AUTH_DOMAIN && !isAIStudioPreview && env.VITE_FIREBASE_AUTH_DOMAIN !== 'undefined' && env.VITE_FIREBASE_AUTH_DOMAIN !== 'null') ? env.VITE_FIREBASE_AUTH_DOMAIN : firebaseConfig.authDomain),
+  projectId: cleanStr((env.VITE_FIREBASE_PROJECT_ID && !isAIStudioPreview && env.VITE_FIREBASE_PROJECT_ID !== 'undefined' && env.VITE_FIREBASE_PROJECT_ID !== 'null') ? env.VITE_FIREBASE_PROJECT_ID : firebaseConfig.projectId),
+  storageBucket: cleanStr((env.VITE_FIREBASE_STORAGE_BUCKET && !isAIStudioPreview && env.VITE_FIREBASE_STORAGE_BUCKET !== 'undefined' && env.VITE_FIREBASE_STORAGE_BUCKET !== 'null') ? env.VITE_FIREBASE_STORAGE_BUCKET : firebaseConfig.storageBucket),
+  messagingSenderId: cleanStr((env.VITE_FIREBASE_MESSAGING_SENDER_ID && !isAIStudioPreview && env.VITE_FIREBASE_MESSAGING_SENDER_ID !== 'undefined' && env.VITE_FIREBASE_MESSAGING_SENDER_ID !== 'null') ? env.VITE_FIREBASE_MESSAGING_SENDER_ID : firebaseConfig.messagingSenderId),
+  appId: cleanStr((env.VITE_FIREBASE_APP_ID && !isAIStudioPreview && env.VITE_FIREBASE_APP_ID !== 'undefined' && env.VITE_FIREBASE_APP_ID !== 'null') ? env.VITE_FIREBASE_APP_ID : firebaseConfig.appId),
+  firestoreDatabaseId: isAIStudioPreview ? (cleanStr(firebaseConfig.firestoreDatabaseId) || "(default)") : getSanitizedDatabaseId()
 };
 
 // Log masked configuration for debugging purposes, but do not leak secrets
