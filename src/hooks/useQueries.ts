@@ -1038,6 +1038,50 @@ export function useDeleteRentalMutation() {
   });
 }
 
+export function useDeleteSaleMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ saleId, companyId }: { saleId: string; companyId: string }) => {
+      try {
+        await deleteDoc(doc(db, "sales", saleId));
+
+        const splitsRef = collection(db, "broker_splits");
+        const existingSplitsQuery = query(splitsRef, where("sale_id", "==", saleId));
+        const existingSplitsSnap = await getDocs(existingSplitsQuery);
+        for (const splitDoc of existingSplitsSnap.docs) {
+          await deleteDoc(splitDoc.ref);
+        }
+
+        const txsRef = collection(db, "financial_transactions");
+        const existingTxsQuery = query(
+          txsRef,
+          where("companyId", "==", companyId),
+          where("commissionRef", "==", saleId),
+          where("origin", "==", "AUTOMATICO")
+        );
+        const existingTxsSnap = await getDocs(existingTxsQuery);
+        for (const txDoc of existingTxsSnap.docs) {
+          await deleteDoc(txDoc.ref);
+        }
+      } catch (err) {
+        console.warn("Offline/local fallback para exclusão de venda:", err);
+        const local = getStoredData();
+        const updatedSales = local.sales.filter((s: Sale) => s.id !== saleId);
+        saveStoredData({ sales: updatedSales });
+      }
+    },
+    onSuccess: (data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["sales", variables.companyId || "default_agency"] });
+      queryClient.invalidateQueries({ queryKey: ["sales"] });
+    },
+    onError: (err) => {
+      console.error(err);
+      toast.error("Erro ao excluir venda.");
+    }
+  });
+}
+
 export function useUpdateSaleNfMutation() {
   const queryClient = useQueryClient();
 

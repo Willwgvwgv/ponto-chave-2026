@@ -29,6 +29,7 @@ interface SaleDetailProps {
   team?: ComissoneUser[];
   onEditSale?: (sale: Sale) => void;
   onPublishSale?: (saleId: string) => void;
+  onDeleteSale?: (saleId: string) => void;
 }
 
 export const SaleDetail: React.FC<SaleDetailProps> = ({
@@ -39,7 +40,8 @@ export const SaleDetail: React.FC<SaleDetailProps> = ({
   onToggleNfEmitida,
   team = [],
   onEditSale,
-  onPublishSale
+  onPublishSale,
+  onDeleteSale
 }) => {
   const [selectedSplitForForecast, setSelectedSplitForForecast] = useState<BrokerSplit | null>(null);
   const [selectedSplitForPayment, setSelectedSplitForPayment] = useState<BrokerSplit | null>(null);
@@ -102,43 +104,22 @@ export const SaleDetail: React.FC<SaleDetailProps> = ({
     return () => unsubscribe();
   }, [sale.id]);
 
-  const handleCancelSale = async () => {
+  const handleDeleteSale = async () => {
     setConfirmState({
       open: true,
-      title: "Cancelar venda",
-      message: "Deseja realmente cancelar esta venda? O status será alterado para Cancelada, os splits serão invalidados e um lançamento financeiro de estorno será gerado automaticamente.",
+      title: "Confirmar Exclusão",
+      message: "Tem certeza que deseja excluir esta venda? Esta ação não pode ser desfeita.",
       confirmColor: "red",
       onConfirm: async () => {
         setConfirmState(prev => ({ ...prev, open: false }));
         try {
-          const companyId = sale.agency_id || "default_agency";
-          const contaPrincipal = await getContaPrincipal(companyId);
-          const catId = await getCategoriaId(companyId, "Outras Despesas");
-
-          // 1. Atualizar o status da venda para CANCELLED (como no types.ts)
-          await updateDoc(doc(db, "sales", sale.id), { status: "CANCELLED" });
-
-          // 2. Criar o lançamento de estorno no financeiro
-          const estornoTxId = `tx_estorno_sale_${sale.id}`;
-          await setDoc(doc(db, "financial_transactions", estornoTxId), {
-            companyId,
-            accountId: contaPrincipal,
-            date: new Date().toISOString().split("T")[0],
-            description: `Estorno — Comissão cancelada — ${sale.property_address}`,
-            amount: -sale.total_commission,
-            type: 'DESPESA',
-            categoryId: catId || undefined,
-            categoryName: 'Outras Despesas',
-            status: 'CONCILIADO',
-            origin: 'AUTOMATICO',
-            commissionRef: sale.id,
-            createdAt: new Date().toISOString()
-          });
-
-          toast.success("Venda cancelada e estorno gerado no financeiro com sucesso!");
+          if (onDeleteSale) {
+            await onDeleteSale(sale.id);
+          }
+          onGoBack();
         } catch (err) {
-          console.error("Erro ao cancelar venda:", err);
-          toast.error("Erro ao cancelar venda.");
+          console.error("Erro ao excluir venda:", err);
+          toast.error("Erro ao excluir venda.");
         }
       }
     });
@@ -753,10 +734,10 @@ export const SaleDetail: React.FC<SaleDetailProps> = ({
                 {sale.status === "ACTIVE" && (
                   <button
                     type="button"
-                    onClick={handleCancelSale}
+                    onClick={handleDeleteSale}
                     className="block text-[9px] font-black uppercase tracking-widest bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 rounded-xl px-3 py-1.5 transition-all cursor-pointer"
                   >
-                    Cancelar Venda
+                    Excluir Venda
                   </button>
                 )}
               </div>

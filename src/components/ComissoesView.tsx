@@ -22,7 +22,8 @@ import {
   useCreateRentalMutation,
   useUpdateRentalMutation,
   useDeleteRentalMutation,
-  useUpdateSaleNfMutation
+  useUpdateSaleNfMutation,
+  useDeleteSaleMutation
 } from "../hooks/useQueries";
 import { CommissionDashboard } from "./commissions/CommissionDashboard";
 import { SalesList } from "./commissions/SalesList";
@@ -84,6 +85,7 @@ export const ComissoesView: React.FC<ComissoesViewProps> = ({
   const createRentalMutation = useCreateRentalMutation();
   const updateRentalMutation = useUpdateRentalMutation();
   const deleteRentalMutation = useDeleteRentalMutation();
+  const deleteSaleMutation = useDeleteSaleMutation();
 
   // Se detectarmos dados de processo de locação sendo passados como 'Lançar Comissão'
   useEffect(() => {
@@ -270,6 +272,10 @@ export const ComissoesView: React.FC<ComissoesViewProps> = ({
     deleteRentalMutation.mutate({ id, companyId: agencyId });
   };
 
+  const handleDeleteSale = (saleId: string) => {
+    deleteSaleMutation.mutate({ saleId, companyId: agencyId });
+  };
+
   return (
     <div className="p-4 md:p-8 space-y-6 max-w-7xl mx-auto font-sans text-slate-800">
       
@@ -416,6 +422,7 @@ export const ComissoesView: React.FC<ComissoesViewProps> = ({
                       setActiveSubTab("create");
                     }}
                     onPublishSale={handlePublishSale}
+                    onDeleteSale={handleDeleteSale}
                   />
                 )}
               </motion.div>
