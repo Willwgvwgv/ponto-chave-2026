@@ -659,10 +659,11 @@ const UserManagement = ({
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserName, setNewUserName] = useState("");
   const [newUserRole, setNewUserRole] = useState<"admin" | "user">("user");
-  const [newUserRoleInvite, setNewUserRoleInvite] = useState<"Colaborador" | "Corretor" | "Gestor">("Colaborador");
-  const [inviteTokenGenerated, setInviteTokenGenerated] = useState("");
-  const [inviteUrlGenerated, setInviteUrlGenerated] = useState("");
+  const [newUserRoleInvite] = useState<"Colaborador" | "Corretor" | "Gestor">("Colaborador");
+  const [inviteTokenGenerated] = useState("");
+  const [inviteUrlGenerated] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean, userId: string | null }>({ isOpen: false, userId: null });
+  const [editingUserProfile, setEditingUserProfile] = useState<UserProfile | null>(null);
 
   useEffect(() => {
     if (!companySettings?.id) return;
@@ -706,22 +707,6 @@ const UserManagement = ({
     return name.includes(search) || email.includes(search);
   });
 
-  const toggleRole = async (userId: string, currentRole: string) => {
-    if (userId === user?.uid) {
-      toast.error("Você não pode alterar seu próprio cargo.");
-      return;
-    }
-    const newRole = currentRole === "admin" ? "user" : "admin";
-    try {
-      await updateDoc(doc(db, "users", userId), { role: newRole });
-      setUsers(prev => prev.map(u => u.uid === userId ? { ...u, role: newRole } : u));
-      toast.success(`Cargo alterado para ${newRole === 'admin' ? 'Administrador' : 'Colaborador'}`);
-    } catch (error) {
-      toast.error("Erro ao alterar cargo.");
-      handleFirestoreError(error, OperationType.UPDATE, `users/${userId}`);
-    }
-  };
-
   const togglePermission = async (userId: string, currentPermissions: string[] = [], permission: string) => {
     const newPermissions = currentPermissions.includes(permission)
       ? currentPermissions.filter(p => p !== permission)
@@ -746,14 +731,27 @@ const UserManagement = ({
     setDeleteConfirm({ isOpen: true, userId });
   };
 
-  const updateUserName = async (userId: string, newDisplayName: string) => {
+  const handleSaveUserEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUserProfile) return;
     try {
-      await updateDoc(doc(db, "users", userId), { displayName: newDisplayName });
-      setUsers(prev => prev.map(u => u.uid === userId ? { ...u, displayName: newDisplayName } : u));
-      toast.success("Nome updated com sucesso.");
+      const userRef = doc(db, "users", editingUserProfile.uid);
+      const updates: Partial<UserProfile> = {
+        displayName: editingUserProfile.displayName,
+        role: editingUserProfile.role,
+        cargoComissao: editingUserProfile.cargoComissao || null,
+        isSocio: editingUserProfile.isSocio || false
+      };
+      
+      await updateDoc(userRef, updates);
+      
+      // update local list
+      setUsers(prev => prev.map(u => u.uid === editingUserProfile.uid ? { ...u, ...updates } : u));
+      toast.success("Membro atualizado com sucesso!");
+      setEditingUserProfile(null);
     } catch (error) {
-      toast.error("Erro ao atualizar nome.");
-      handleFirestoreError(error, OperationType.UPDATE, `users/${userId}`);
+      toast.error("Erro ao atualizar dados do membro.");
+      console.error(error);
     }
   };
 
@@ -761,24 +759,6 @@ const UserManagement = ({
     const text = `Olá ${u.displayName || 'Colaborador'}, seu acesso ao ${companySettings?.name || 'Ponto Chave'} já está liberado!\n\nPara acessar, utilize seu e-mail: ${u.email}\n\nLink do sistema: ${window.location.origin}\n\nBem-vindo(a) à equipe!`;
     navigator.clipboard.writeText(text);
     toast.success("Texto de convite copiado para o WhatsApp!");
-  };
-
-  const formatarTempoRelativo = (timestamp: any): string => {
-    try {
-      if (!timestamp) return '';
-      const data = timestamp?.toDate ? timestamp.toDate() : new Date(timestamp);
-      const agora = Date.now();
-      const diff = agora - data.getTime();
-      const dias = Math.floor(diff / (1000 * 60 * 60 * 24));
-      
-      if (dias === 0) return 'hoje';
-      if (dias === 1) return 'ontem';
-      if (dias < 7) return `há ${dias} dias`;
-      if (dias < 30) return `há ${Math.floor(dias / 7)} semana${Math.floor(dias / 7) > 1 ? 's' : ''}`;
-      return `há ${Math.floor(dias / 30)} mês${Math.floor(dias / 30) > 1 ? 'es' : ''}`;
-    } catch {
-      return '';
-    }
   };
 
   const handleGenerateInviteLink = (e?: React.FormEvent) => {
@@ -790,7 +770,6 @@ const UserManagement = ({
       navigator.clipboard.writeText(link).then(() => {
         toast.success("Link de convite copiado! Qualquer pessoa com este link pode solicitar acesso à equipe.");
       }).catch(() => {
-        // fallback se clipboard não funcionar
         toast.success(`Link de convite: ${link}`);
       });
 
@@ -826,7 +805,6 @@ const UserManagement = ({
         return;
       }
       
-      // Verificar se já existe convite ou usuário com este email
       const emailNormalizado = newUserEmail.trim().toLowerCase();
       const usersRef = collection(db, "users");
       const q = query(usersRef, where("email", "==", emailNormalizado));
@@ -851,7 +829,6 @@ const UserManagement = ({
         invitedAt: serverTimestamp(),
       });
 
-      // Montar mensagem de convite
       const linkSistema = window.location.origin;
       const nomeEmpresa = companySettings?.name || 'Ponto Chave';
       const mensagem = `Olá ${newUserName.trim()}! 👋\n\n` +
@@ -881,6 +858,45 @@ const UserManagement = ({
     }
   };
 
+  const getInitials = (name: string) => {
+    if (!name) return "?";
+    const parts = name.trim().split(" ");
+    if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
+    return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+  };
+
+  const getUserRoleBadge = (u: UserProfile) => {
+    if (u.status === "pending") {
+      return { 
+        label: "PENDENTE", 
+        className: "bg-amber-50 text-amber-700 border border-amber-200" 
+      };
+    }
+    if (u.role === "admin") {
+      return { 
+        label: "ADMIN", 
+        className: "bg-purple-50 text-purple-700 border border-purple-200" 
+      };
+    }
+    const cargo = u.cargoComissao || "";
+    if (cargo === "GESTOR") {
+      return { 
+        label: "GESTOR", 
+        className: "bg-emerald-50 text-emerald-700 border border-emerald-200" 
+      };
+    }
+    if (cargo === "CORRETOR" || cargo === "CAPTADOR" || cargo === "SOCIO") {
+      return { 
+        label: "CORRETOR", 
+        className: "bg-blue-50 text-blue-700 border border-blue-200" 
+      };
+    }
+    return { 
+      label: "COLABORADOR", 
+      className: "bg-slate-50 text-slate-600 border border-slate-200" 
+    };
+  };
+
   if (selectedUser) {
     return (
       <UserActivityView 
@@ -897,265 +913,213 @@ const UserManagement = ({
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+    <div className="bg-[#F8F9FA] rounded-2xl p-5 border border-slate-200/60 shadow-sm space-y-6 animate-fadeIn">
+      {/* CABEÇALHO */}
+      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 border-b border-slate-100 pb-5">
         <div>
           <h2 className="text-xl font-black text-slate-900 tracking-tight">Gestão de Usuários</h2>
-          <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold mt-1">Gerencie permissões e acessos</p>
+          <p className="text-xs text-slate-500 font-medium">Gerencie permissões e acessos</p>
         </div>
-        <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto">
+        
+        <div className="flex flex-col sm:flex-row items-center gap-3 w-full xl:w-auto">
+          {/* Botão Cadastrar Manual (azul) */}
           <button 
+            type="button"
+            id="btn-register-manual"
+            onClick={() => {
+              setAddUserModalType('register');
+              setIsInviteSuccess(false);
+              setIsRegisterSuccess(false);
+              setNewUserEmail('');
+              setNewUserName('');
+              setNewUserRole('user');
+              setIsAddUserOpen(true);
+            }}
+            className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs uppercase tracking-wider transition-all w-full sm:w-auto cursor-pointer shadow-sm"
+          >
+            <UserPlus className="w-3.8 h-3.8" />
+            Cadastrar Manual
+          </button>
+
+          {/* Botão Convidar por Link (outline) */}
+          <button 
+            type="button"
+            id="btn-invite-link"
             onClick={() => {
               setAddUserModalType('invite');
               setIsInviteSuccess(false);
               setIsRegisterSuccess(false);
               setGeneratedInviteMessage('');
-              setNewUserEmail('');
-              setNewUserName('');
-              setNewUserRole('user');
-              setNewUserRoleInvite('Colaborador');
-              setInviteTokenGenerated('');
-              setInviteUrlGenerated('');
               setIsAddUserOpen(true);
             }}
-            className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-2xl font-bold text-sm hover:bg-blue-700 transition-all w-full sm:w-auto shadow-lg shadow-blue-200 cursor-pointer"
+            className="flex items-center justify-center gap-1.5 px-4 py-2.5 border border-blue-600 text-blue-600 hover:bg-blue-50/50 rounded-xl font-bold text-xs uppercase tracking-wider transition-all w-full sm:w-auto cursor-pointer"
           >
-            <Send className="w-5 h-5" />
+            <Send className="w-3.8 h-3.8" />
             Convidar por Link
           </button>
-          <div className="relative w-full md:w-72">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+
+          {/* Campo de Busca */}
+          <div className="relative w-full sm:w-60">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input 
               type="text" 
+              id="search-users-input"
               placeholder="Buscar usuários..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#3B82F6] transition-all text-sm"
+              className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-xs"
             />
           </div>
         </div>
       </div>
 
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+      {/* TABELA DE USUÁRIOS */}
+      <div className="bg-white rounded-2xl border border-slate-205/60 shadow-md overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-slate-50/50 border-b border-slate-100">
-                <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Usuário</th>
-                <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">E-mail</th>
-                <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-center">Cargo</th>
-                <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-right">Ações</th>
+              <tr className="bg-slate-50/60 border-b border-slate-100">
+                <th className="px-5 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">USUÁRIO</th>
+                <th className="px-5 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-left">E-MAIL</th>
+                <th className="px-5 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">CARGO</th>
+                <th className="px-5 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">COMISSÕES</th>
+                <th className="px-5 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">AÇÕES</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100/70">
               {loading ? (
-                <tr><td colSpan={4} className="px-6 py-12 text-center text-slate-400">Carregando usuários...</td></tr>
-              ) : filteredUsers.length === 0 ? (
-                <tr><td colSpan={4} className="px-6 py-12 text-center text-slate-400">Nenhum usuário encontrado.</td></tr>
-              ) : filteredUsers.map((u) => (
-                <tr key={u.uid} className="hover:bg-slate-50/50 transition-colors group/row">
-                  <td className="px-6 py-4 cursor-pointer group/row" onClick={() => setSelectedUser(u)}>
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center overflow-hidden border border-slate-200 group-hover/row:border-blue-400 transition-colors cursor-pointer">
-                        {u.photoURL ? (
-                          <img src={u.photoURL} alt={u.displayName || ""} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                        ) : (
-                          <UserIcon className="w-5 h-5 text-slate-400" />
-                        )}
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-1.5 group/name flex-wrap">
-                          <span className="font-semibold text-slate-800 block group-hover/row:text-blue-600 transition-colors">{u.displayName || "Usuário sem nome"}</span>
-                          {u.isSocio && (
-                            <span className="inline-flex items-center px-2 py-0.5 bg-purple-100 text-purple-700 border border-purple-200 rounded-md text-[9px] font-extrabold uppercase tracking-widest animate-pulse" title="Sócio com permissão de múltiplos splits">
-                              SÓCIO
-                            </span>
-                          )}
-                          {u.status === "pending" && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-rose-50 text-rose-700 border border-rose-200 rounded-md text-[9px] font-bold uppercase tracking-wide animate-pulse">
-                              <AlertCircle className="w-2.5 h-2.5" />
-                              Pendente Aprovação
-                            </span>
-                          )}
-                          {(u as any).isPending === true && u.status !== "pending" && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-md text-[9px] font-bold uppercase tracking-wide">
-                              <Clock className="w-2.5 h-2.5" />
-                              Aguardando 1º acesso
-                            </span>
-                          )}
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const newName = prompt("Novo nome para este usuário:", u.displayName || "");
-                              if (newName && newName !== u.displayName) {
-                                updateUserName(u.uid, newName);
-                              }
-                            }}
-                            className="p-1 text-slate-300 hover:text-blue-500 opacity-0 group-hover/name:opacity-100 transition-all"
-                          >
-                            <Edit2 className="w-3 h-3" />
-                          </button>
-                        </div>
-                        <span className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Ver Histórico</span>
-                        {(u as any).isPending && (u as any).invitedByName && (
-                          <p className="text-[9px] text-slate-400 mt-1 font-medium">
-                            Convidado por {(u as any).invitedByName}
-                            {(u as any).invitedAt && ` · ${formatarTempoRelativo((u as any).invitedAt)}`}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-slate-500">{u.email}</td>
-                  <td className="px-6 py-4 text-center">
-                    <div className="flex flex-col items-center gap-2">
-                      <span className={cn(
-                        "px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider",
-                        u.role === "admin" ? "bg-purple-100 text-purple-600" : "bg-slate-100 text-slate-600"
-                      )}>
-                        {u.role === "admin" ? "Administrador" : "Colaborador"}
-                      </span>
-                      <label className="flex items-center gap-2 cursor-pointer mt-1 group/perm">
-                        <input 
-                          type="checkbox" 
-                          checked={u.permissions?.includes("comissoes")}
-                          onChange={() => togglePermission(u.uid, u.permissions, "comissoes")}
-                          className="w-3.5 h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 transition-all"
-                        />
-                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest group-hover/perm:text-blue-500 transition-colors">Perm. Comissões</span>
-                      </label>
-                      {u.permissions?.includes("comissoes") && (
-                        <div className="mt-3 pt-2.5 border-t border-slate-200/60 flex flex-col items-center gap-2.5 w-full max-w-[170px] mx-auto animate-fadeIn">
-                          {/* Toggle Sócio */}
-                          <div 
-                            className="flex items-center justify-between w-full"
-                            title="Sócios podem participar com até 3 papéis diferentes na mesma divisão de comissão"
-                          >
-                            <span className="text-[9px] font-black uppercase tracking-wider text-slate-500">É Sócio?</span>
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                const newVal = !u.isSocio;
-                                try {
-                                  await updateDoc(doc(db, "users", u.uid), { isSocio: newVal });
-                                  toast.success(newVal ? "Sócio ativado" : "Sócio desativado");
-                                } catch (err) {
-                                  toast.error("Erro ao salvar status de sócio");
-                                }
-                              }}
-                              className={`relative inline-flex h-4 w-9 items-center rounded-full transition-colors cursor-pointer ${
-                                u.isSocio ? "bg-[#1e293b]" : "bg-slate-200"
-                              }`}
-                            >
-                              <span
-                                className={`inline-block h-3 w-3 transform rounded-full bg-white transition-all ${
-                                  u.isSocio ? "translate-x-5" : "translate-x-0.5"
-                                }`}
-                              />
-                            </button>
-                          </div>
-
-                          {/* Cargo nas Comissões Select */}
-                          <div className="flex flex-col items-stretch w-full text-left">
-                            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mb-1">Cargo nas Comissões</span>
-                            <select
-                              value={u.cargoComissao || ""}
-                              onChange={async (e) => {
-                                const val = e.target.value || null;
-                                try {
-                                  await updateDoc(doc(db, "users", u.uid), { cargoComissao: val });
-                                  toast.success("Cargo de comissão atualizado");
-                                } catch (err) {
-                                  toast.error("Erro ao atualizar cargo de comissão");
-                                }
-                              }}
-                              className="bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-700 px-1.5 py-1 w-full text-center cursor-pointer focus:outline-none focus:border-blue-500"
-                            >
-                              <option value="">Nenhum/Corretor</option>
-                              <option value="CORRETOR">Corretor</option>
-                              <option value="CAPTADOR">Captador</option>
-                              <option value="GESTOR">Gestor</option>
-                              <option value="SOCIO">Sócio</option>
-                            </select>
-                          </div>
-
-                          {/* CPF Input */}
-                          <div className="flex flex-col items-stretch w-full text-left">
-                            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mb-1">CPF do Recebedor</span>
-                            <input
-                              type="text"
-                              placeholder="000.000.000-00"
-                              value={u.cpf || ""}
-                              maxLength={14}
-                              onChange={async (e) => {
-                                const masked = formatCPF(e.target.value);
-                                try {
-                                  await updateDoc(doc(db, "users", u.uid), { cpf: masked });
-                                } catch (err) {
-                                  toast.error("Erro ao atualizar CPF");
-                                }
-                              }}
-                              className="bg-slate-50 border border-slate-250 focus:border-blue-500 rounded-lg text-xs font-mono font-bold text-slate-850 text-center px-1.5 py-1 w-full focus:outline-none"
-                            />
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <div className="flex items-center justify-end gap-3">
-                      {u.status === "pending" && (
-                        <button 
-                          onClick={async () => {
-                            if (confirm(`Aprovar o cadastro de ${u.displayName || u.email}?`)) {
-                              try {
-                                await updateDoc(doc(db, "users", u.uid), {
-                                  status: "active",
-                                  isPending: false
-                                });
-                                setUsers(prev => prev.map(item => item.uid === u.uid ? { ...item, status: "active", isPending: false } : item));
-                                toast.success("Membro aprovado com sucesso! Agora você já pode configurar cargos e permissões.");
-                              } catch (err) {
-                                console.error(err);
-                                toast.error("Erro ao aprovar membro.");
-                              }
-                            }
-                          }}
-                          className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all shadow-sm shadow-emerald-100 flex items-center gap-1 cursor-pointer"
-                        >
-                          <Check className="w-3.5 h-3.5" />
-                          Aprovar
-                        </button>
-                      )}
-                      <button 
-                        onClick={() => copyInviteText(u)}
-                        className="p-2 text-slate-300 hover:text-green-500 hover:bg-green-50 rounded-lg transition-all"
-                        title="Copiar texto de convite"
-                      >
-                        <Send className="w-4 h-4" />
-                      </button>
-                      <button 
-                        onClick={() => toggleRole(u.uid, u.role)}
-                        className="text-xs font-bold text-[#3B82F6] hover:underline uppercase tracking-widest"
-                      >
-                        Alterar Cargo
-                      </button>
-                      <button 
-                        onClick={() => deleteUser(u.uid)}
-                        className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
+                <tr>
+                  <td colSpan={5} className="px-5 py-10 text-center text-xs text-slate-400">
+                    Carregando usuários...
                   </td>
                 </tr>
-              ))}
+              ) : filteredUsers.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-5 py-10 text-center text-xs text-slate-400">
+                    Nenhum usuário cadastrado.
+                  </td>
+                </tr>
+              ) : (
+                filteredUsers.map((u) => {
+                  const badge = getUserRoleBadge(u);
+                  const hasComissoes = u.permissions?.includes("comissoes");
+                  return (
+                    <tr key={u.uid} className="hover:bg-blue-50/40 transition-colors group/row">
+                      {/* USUÁRIO */}
+                      <td className="px-5 py-3.5">
+                        <div className="flex items-center gap-3">
+                          <div className="shrink-0 cursor-pointer" onClick={() => setSelectedUser(u)}>
+                            <div className="w-9 h-9 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center overflow-hidden border border-blue-100 hover:border-blue-400 transition-colors">
+                              {u.photoURL ? (
+                                <img src={u.photoURL} alt={u.displayName || ""} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                              ) : (
+                                <span className="text-xs font-bold">{getInitials(u.displayName || u.email)}</span>
+                              )}
+                            </div>
+                          </div>
+                          <div>
+                            <span 
+                              onClick={() => setSelectedUser(u)}
+                              className="font-bold text-slate-900 text-sm hover:text-blue-600 transition-colors cursor-pointer"
+                            >
+                              {u.displayName || "Usuário sem nome"}
+                            </span>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* E-MAIL */}
+                      <td className="px-5 py-3.5">
+                        <span className="text-xs text-slate-500 font-medium">
+                          {u.email}
+                        </span>
+                      </td>
+
+                      {/* CARGO */}
+                      <td className="px-5 py-3.5">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider border ${badge.className}`}>
+                          {badge.label}
+                        </span>
+                      </td>
+
+                      {/* COMISSÕES */}
+                      <td className="px-5 py-3.5">
+                        <div className="flex items-center">
+                          <button
+                            type="button"
+                            id={`toggle-comm-${u.uid}`}
+                            onClick={() => togglePermission(u.uid, u.permissions || [], "comissoes")}
+                            className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                              hasComissoes ? "bg-blue-600" : "bg-slate-200"
+                            }`}
+                          >
+                            <span
+                              className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-all ${
+                                hasComissoes ? "translate-x-4.5" : "translate-x-1"
+                              }`}
+                            />
+                          </button>
+                        </div>
+                      </td>
+
+                      {/* AÇÕES */}
+                      <td className="px-5 py-3.5 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          {u.status === "pending" && (
+                            <button 
+                              id={`approve-btn-${u.uid}`}
+                              onClick={async () => {
+                                if (confirm(`Aprovar o cadastro de ${u.displayName || u.email}?`)) {
+                                  try {
+                                    await updateDoc(doc(db, "users", u.uid), {
+                                      status: "active",
+                                      isPending: false
+                                    });
+                                    setUsers(prev => prev.map(item => item.uid === u.uid ? { ...item, status: "active", isPending: false } : item));
+                                    toast.success("Membro aprovado com sucesso! Agora você já pode configurar cargos nas comissões.");
+                                  } catch (err) {
+                                    console.error(err);
+                                    toast.error("Erro ao aprovar membro.");
+                                  }
+                                }
+                              }}
+                              className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1 cursor-pointer"
+                              title="Aprovar Membro"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                              Aprovar
+                            </button>
+                          )}
+                          
+                          <button 
+                            id={`edit-cargo-btn-${u.uid}`}
+                            onClick={() => setEditingUserProfile({ ...u })}
+                            className="p-1.5 bg-slate-50 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all cursor-pointer"
+                            title="Editar Cargo"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+
+                          <button 
+                            id={`delete-user-btn-${u.uid}`}
+                            onClick={() => deleteUser(u.uid)}
+                            className="p-1.5 bg-slate-50 text-slate-500 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all cursor-pointer"
+                            title="Excluir Usuário"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Custom Deletion Modal */}
+      {/* MODAL DE EXCLUSÃO */}
       {deleteConfirm.isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <motion.div 
@@ -1167,7 +1131,7 @@ const UserManagement = ({
           <motion.div 
             initial={{ scale: 0.9, opacity: 0, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
-            className="relative bg-white w-full max-w-sm rounded-[40px] shadow-2xl overflow-hidden border border-slate-100 p-8 text-center"
+            className="relative bg-white w-full max-w-sm rounded-[32px] shadow-2xl overflow-hidden border border-slate-100 p-8 text-center"
           >
             <div className="w-16 h-16 bg-red-50 text-red-500 rounded-3xl flex items-center justify-center mx-auto mb-6">
               <Trash2 className="w-8 h-8" />
@@ -1192,13 +1156,13 @@ const UserManagement = ({
                   }
                   setDeleteConfirm({ isOpen: false, userId: null });
                 }}
-                className="w-full py-4 bg-red-500 text-white rounded-2xl font-bold uppercase tracking-widest text-xs shadow-lg shadow-red-500/25 hover:bg-red-600 transition-all hover:scale-[1.02] active:scale-95"
+                className="w-full py-4 bg-red-500 text-white rounded-2xl font-bold uppercase tracking-widest text-xs shadow-lg shadow-red-500/25 hover:bg-red-650 transition-all cursor-pointer"
               >
                 Confirmar Exclusão
               </button>
               <button 
                 onClick={() => setDeleteConfirm({ isOpen: false, userId: null })}
-                className="w-full py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold uppercase tracking-widest text-xs hover:bg-slate-200 transition-all"
+                className="w-full py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold uppercase tracking-widest text-xs hover:bg-slate-200 transition-all cursor-pointer"
               >
                 Cancelar
               </button>
@@ -1207,7 +1171,118 @@ const UserManagement = ({
         </div>
       )}
 
-      {/* Manual Register / Invite Modal */}
+      {/* MODAL DE EDIÇÃO DO USUÁRIO */}
+      <AnimatePresence>
+        {editingUserProfile && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+              onClick={() => setEditingUserProfile(null)}
+            />
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="relative bg-white w-full max-w-sm rounded-[32px] shadow-2xl overflow-hidden border border-slate-100 p-6 text-left"
+            >
+              <div className="flex justify-between items-center mb-5">
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Configurar Membro</h3>
+                  <p className="text-[10px] text-slate-400 uppercase font-black tracking-wider">Ajuste o acesso corporativo</p>
+                </div>
+                <button onClick={() => setEditingUserProfile(null)} className="p-1.5 hover:bg-slate-100 rounded-full transition-all cursor-pointer">
+                  <X className="w-5 h-5 text-slate-400" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveUserEdit} className="space-y-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Nome Completo</label>
+                  <input
+                    type="text"
+                    required
+                    value={editingUserProfile.displayName || ""}
+                    onChange={(e) => setEditingUserProfile({ ...editingUserProfile, displayName: e.target.value })}
+                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-semibold text-slate-700"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Nível de Acesso Principal</label>
+                  <select
+                    value={editingUserProfile.role}
+                    onChange={(e) => setEditingUserProfile({ ...editingUserProfile, role: e.target.value as "admin" | "user" })}
+                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-505 text-xs font-bold text-slate-700 cursor-pointer"
+                  >
+                    <option value="user">Colaborador</option>
+                    <option value="admin">Administrador</option>
+                  </select>
+                </div>
+
+                {editingUserProfile.permissions?.includes("comissoes") && (
+                  <>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Cargo nas Comissões</label>
+                      <select
+                        value={editingUserProfile.cargoComissao || ""}
+                        onChange={(e) => setEditingUserProfile({ ...editingUserProfile, cargoComissao: e.target.value || "" })}
+                        className="w-full px-3.5 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-505 text-xs font-bold text-slate-700 cursor-pointer"
+                      >
+                        <option value="">Nenhum/Corretor</option>
+                        <option value="CORRETOR">Corretor</option>
+                        <option value="CAPTADOR">Captador</option>
+                        <option value="GESTOR">Gestor</option>
+                        <option value="SOCIO">Sócio</option>
+                      </select>
+                    </div>
+
+                    <div className="flex items-center justify-between py-2.5 border-t border-slate-100 mt-2">
+                      <div className="space-y-0.5">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block">É Sócio?</span>
+                        <span className="text-[8px] text-slate-400 block max-w-xs font-medium leading-normal">Permite participar com até 3 papéis na mesma divisão</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setEditingUserProfile({ ...editingUserProfile, isSocio: !editingUserProfile.isSocio })}
+                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors cursor-pointer ${
+                          editingUserProfile.isSocio ? "bg-slate-900" : "bg-slate-200"
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-3.2 w-3.2 transform rounded-full bg-white transition-all ${
+                            editingUserProfile.isSocio ? "translate-x-5" : "translate-x-0.7"
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                <div className="grid grid-cols-2 gap-3 pt-4 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setEditingUserProfile(null)}
+                    className="py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold uppercase tracking-wider text-[10px] transition cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="py-2 bg-blue-605 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold uppercase tracking-wider text-[10px] transition cursor-pointer"
+                  >
+                    Salvar
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* CADASTRAR MANUAL E CONVIDAR POR LINK DE CONVITE MODAL */}
       <AnimatePresence>
         {isAddUserOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -1222,153 +1297,201 @@ const UserManagement = ({
               initial={{ scale: 0.9, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              className="relative bg-white w-full max-w-md rounded-[40px] shadow-2xl overflow-hidden border border-slate-100"
+              className="relative bg-white w-full max-w-sm rounded-[32px] shadow-2xl overflow-hidden border border-slate-100"
             >
-              <div className="p-8">
+              <div className="p-6">
                 {isInviteSuccess ? (
-                  <div className="text-center space-y-6 animate-fade-in">
-                    <div className="mx-auto w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center text-emerald-500 scale-105">
-                      <Send className="w-8 h-8" />
+                  <div className="text-center space-y-5 animate-fade-in">
+                    <div className="mx-auto w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-500 scale-105">
+                      <Send className="w-6 h-6" />
                     </div>
                     <div>
-                      <h3 className="text-xl font-extrabold text-slate-900 tracking-tight">Convite Gerado com Sucesso!</h3>
-                      <p className="text-xs text-slate-400 mt-1 uppercase font-bold tracking-widest">Convidar por Link</p>
+                      <h3 className="text-lg font-extrabold text-slate-900 tracking-tight">Convite Gerado!</h3>
+                      <p className="text-[10px] text-slate-400 mt-1 uppercase font-bold tracking-widest">Convidar por Link</p>
                     </div>
 
-                    <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 text-left space-y-3">
-                      <div className="text-[10px] text-slate-400 uppercase tracking-wider font-extrabold">Dados do Convite</div>
+                    <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 text-left space-y-2">
+                      <div className="text-[9px] text-slate-400 uppercase tracking-widest font-extrabold">Mensagem Copiada</div>
                       {newUserEmail && (
-                        <div className="text-sm font-semibold text-slate-750">E-mail de Envio: <span className="font-normal text-slate-600">{newUserEmail}</span></div>
+                        <div className="text-xs font-semibold text-slate-700">E-mail: <span className="font-normal text-slate-600">{newUserEmail}</span></div>
                       )}
-                      <div className="text-sm font-semibold text-slate-750">Nível de Acesso: <span className="font-bold text-blue-600 capitalize">{newUserRoleInvite}</span></div>
                       
-                      <div className="space-y-1.5 pt-2">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Link Único de Convite</label>
+                      <div className="space-y-1.5 pt-1">
+                        <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">URL do Convite</label>
                         <div className="flex gap-2">
                           <input 
                             type="text" 
                             readOnly 
-                            value={inviteUrlGenerated}
-                            className="bg-white border border-slate-200 text-xs px-3 py-2.5 rounded-xl flex-1 font-mono text-slate-600 focus:outline-none"
+                            value={`${window.location.origin}/?invite=${companySettings?.id || 'company'}`}
+                            className="bg-white border border-slate-200 text-[10px] px-3 py-2 rounded-xl flex-1 font-mono text-slate-600 focus:outline-none"
                           />
                           <button
                             onClick={async () => {
                               try {
-                                await navigator.clipboard.writeText(inviteUrlGenerated);
-                                toast.success("Link copiado com sucesso!");
+                                await navigator.clipboard.writeText(`${window.location.origin}/?invite=${companySettings?.id || 'company'}`);
+                                toast.success("URL copiada!");
                               } catch (err) {
-                                toast.error("Falha ao copiar link.");
+                                toast.error("Falha ao copiar.");
                               }
                             }}
-                            className="px-4 py-2 bg-slate-900 text-white rounded-xl font-bold text-xs uppercase tracking-wider hover:bg-slate-800 transition-all shrink-0 cursor-pointer"
+                            className="px-3 py-1.5 bg-slate-900 text-white rounded-lg font-bold text-[10px] uppercase tracking-wider hover:bg-slate-800 transition shrink-0 cursor-pointer"
                           >
-                            Copiar Link
+                            Copiar
                           </button>
                         </div>
                       </div>
                     </div>
 
-                    <div className="space-y-2 text-left">
-                      <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest block">Mensagem para WhatsApp</label>
+                    <div className="space-y-1 py-1.5 text-left">
+                      <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Mensagem Formatada</label>
                       <textarea 
                         readOnly
                         value={generatedInviteMessage}
-                        className="w-full h-24 p-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-600 focus:outline-none resize-none font-sans leading-relaxed"
+                        className="w-full h-20 p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[11px] text-slate-600 focus:outline-none resize-none leading-relaxed"
                       />
                     </div>
 
-                    <div className="grid grid-cols-1 gap-2 pt-2">
+                    <div className="grid grid-cols-1 gap-2">
                       <a
                         href={`https://api.whatsapp.com/send?text=${encodeURIComponent(generatedInviteMessage)}`}
                         target="_blank"
                         rel="noreferrer"
-                        className="flex items-center justify-center gap-2 py-4 bg-emerald-500 text-white rounded-2xl font-bold uppercase tracking-widest text-xs shadow-lg shadow-emerald-100 hover:bg-emerald-600 transition-all hover:scale-[1.01] cursor-pointer"
+                        className="flex items-center justify-center gap-1.5 py-3 bg-emerald-500 text-white rounded-xl font-bold uppercase tracking-widest text-[10px] shadow-sm hover:bg-emerald-600 transition cursor-pointer"
                       >
-                        <ExternalLink className="w-4 h-4" />
-                        Enviar via WhatsApp
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        WhatsApp
                       </a>
                       <button
                         onClick={() => setIsAddUserOpen(false)}
-                        className="py-3 bg-slate-100 text-slate-600 rounded-2xl font-bold uppercase tracking-widest text-xs hover:bg-slate-200 transition-all cursor-pointer"
+                        className="py-2 bg-slate-100 text-slate-600 rounded-xl font-bold uppercase tracking-widest text-[10px] hover:bg-slate-200 transition cursor-pointer"
                       >
                         Fechar
                       </button>
                     </div>
                   </div>
                 ) : isRegisterSuccess ? (
-                  <div className="text-center space-y-6">
-                    <div className="mx-auto w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center text-blue-500 scale-105">
-                      <Check className="w-8 h-8" />
+                  <div className="text-center space-y-5">
+                    <div className="mx-auto w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-500 scale-105">
+                      <Check className="w-6 h-6" />
                     </div>
                     <div>
-                      <h3 className="text-xl font-extrabold text-slate-900 tracking-tight">Usuário Cadastrado!</h3>
-                      <p className="text-xs text-slate-400 mt-1 uppercase font-bold tracking-widest">Cadastro Manual Direto</p>
+                      <h3 className="text-base font-extrabold text-slate-900 tracking-tight">Usuário Cadastrado!</h3>
+                      <p className="text-[10px] text-slate-400 mt-1 uppercase font-bold tracking-widest">Acesso Pré-Aprovado</p>
                     </div>
 
-                    <div className="bg-slate-50 border border-slate-100 rounded-2xl p-5 text-left space-y-3">
-                      <div className="text-[10px] text-slate-400 uppercase tracking-wider font-extrabold">Credenciais Pré-Aprovadas</div>
-                      <div className="space-y-1">
-                        <div className="text-xs text-slate-400">Nome</div>
-                        <div className="text-sm font-bold text-slate-700">{newUserName}</div>
+                    <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 text-left space-y-2 text-xs">
+                      <div className="text-[9px] text-slate-400 uppercase tracking-widest font-extrabold">Detalhes da conta</div>
+                      <div className="flex justify-between border-b border-slate-100 pb-1.5">
+                        <span className="text-slate-400 font-medium">Nome</span>
+                        <span className="font-bold text-slate-700">{newUserName}</span>
                       </div>
-                      <div className="space-y-1">
-                        <div className="text-xs text-slate-400">E-mail Cadastrado</div>
-                        <div className="text-sm font-bold text-slate-700">{newUserEmail}</div>
+                      <div className="flex justify-between border-b border-slate-100 pb-1.5">
+                        <span className="text-slate-400 font-medium">E-mail</span>
+                        <span className="font-bold text-slate-750">{newUserEmail}</span>
                       </div>
-                      <div className="space-y-1">
-                        <div className="text-xs text-slate-400">Nível de Acesso</div>
-                        <div className="text-sm font-bold text-slate-700">
-                          {newUserRole === "admin" ? (
-                            <span className="px-2.5 py-1 bg-purple-100 text-purple-700 rounded-lg text-xs font-bold uppercase tracking-wider">Administrador</span>
-                          ) : (
-                            <span className="px-2.5 py-1 bg-blue-100 text-blue-700 rounded-lg text-xs font-bold uppercase tracking-wider">Colaborador</span>
-                          )}
-                        </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400 font-medium">Acesso</span>
+                        <span className="font-semibold px-2 py-0.5 rounded text-[9px] uppercase tracking-wider bg-purple-50 text-purple-700 border border-purple-150">
+                          {newUserRole === "admin" ? "Administrador" : "Colaborador"}
+                        </span>
                       </div>
                     </div>
 
-                    <p className="text-xs text-slate-500 leading-relaxed text-left bg-slate-50/50 p-4 border border-slate-100 rounded-2xl">
-                      💡 <strong>Como acessar?</strong> O usuário já está pré-aprovado na base da empresa. Tudo o que ele precisa fazer é entrar na tela de login utilizando o endereço de e-mail registrado (fazendo login por Google ou registrando sua senha).
+                    <p className="text-[10px] font-medium text-slate-500 leading-relaxed text-left bg-slate-50 border border-slate-100 p-3 rounded-xl">
+                      💡 <strong>Como Entrar:</strong> Basta este usuário fazer login no sistema informando exatamente o e-mail registrado acima. Ele já está ativo e poderá acessar todo o painel imediatamente.
                     </p>
 
                     <button
                       onClick={() => setIsAddUserOpen(false)}
-                      className="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold uppercase tracking-widest text-xs shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all hover:scale-[1.01]"
+                      className="w-full py-2.5 bg-blue-600 text-white rounded-xl font-bold uppercase tracking-widest text-[10px] hover:bg-blue-700 transition cursor-pointer"
                     >
-                      Fechar e Concluir
+                      Fechar
                     </button>
                   </div>
-                ) : (
+                ) : addUserModalType === 'register' ? (
                   <div>
-                    <div className="flex justify-between items-center mb-6">
-                      <h3 className="text-xl font-bold text-slate-900">
-                        Convidar Usuário por Link
-                      </h3>
-                      <button onClick={() => setIsAddUserOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition-all">
+                    <div className="flex justify-between items-center mb-5">
+                      <div>
+                        <h3 className="text-base font-bold text-slate-900">Cadastrar Manual</h3>
+                        <p className="text-[10px] text-slate-400 uppercase font-black tracking-wider">Crie o acesso diretamente</p>
+                      </div>
+                      <button onClick={() => setIsAddUserOpen(false)} className="p-1.5 hover:bg-slate-100 rounded-full transition-all cursor-pointer">
                         <X className="w-5 h-5 text-slate-400" />
                       </button>
                     </div>
 
-                    <div className="space-y-6 text-left">
-                      <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 space-y-2.5">
-                        <p className="text-sm text-slate-700 leading-relaxed font-semibold">
-                          Como funciona o convite?
-                        </p>
-                        <ul className="text-xs text-slate-600 space-y-1.5 list-disc list-inside">
-                          <li>Copie o link abaixo e envie para o novo membro da equipe.</li>
-                          <li>Ele fará o cadastro preenchendo o próprio e-mail, nome e senha.</li>
-                          <li>Por segurança, a conta entrará como <strong className="text-amber-600 font-bold">Pendente</strong> e ele não verá os dados do sistema.</li>
-                          <li>Você receberá o cadastro na tabela e poderá <strong className="text-emerald-600 font-bold">Aprovar</strong> e definir o cargo desejado.</li>
-                        </ul>
+                    <form onSubmit={handleManualRegister} className="space-y-4 text-left">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Nome Completo</label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="Ex: João da Silva"
+                          value={newUserName}
+                          onChange={(e) => setNewUserName(e.target.value)}
+                          className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-semibold text-slate-700"
+                        />
                       </div>
 
-                      <div className="space-y-2">
-                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest">Link de Cadastro Único</label>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">E-mail Corporativo</label>
+                        <input
+                          type="email"
+                          required
+                          placeholder="exemplo@email.com"
+                          value={newUserEmail}
+                          onChange={(e) => setNewUserEmail(e.target.value)}
+                          className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-semibold text-slate-700"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Nível de Acesso</label>
+                        <select
+                          value={newUserRole}
+                          onChange={(e) => setNewUserRole(e.target.value as "admin" | "user")}
+                          className="w-full px-3.5 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-bold text-slate-750 cursor-pointer"
+                        >
+                          <option value="user">Colaborador</option>
+                          <option value="admin">Administrador</option>
+                        </select>
+                      </div>
+
+                      <button
+                        type="submit"
+                        className="w-full py-2.5 mt-3 bg-blue-605 bg-blue-600 text-white rounded-xl font-bold uppercase tracking-wider text-[10px] hover:bg-blue-700 transition cursor-pointer"
+                      >
+                        Confirmar Cadastro
+                      </button>
+                    </form>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="flex justify-between items-center mb-5">
+                      <div>
+                        <h3 className="text-base font-bold text-slate-900">Convidar via Link</h3>
+                        <p className="text-[10px] text-slate-400 uppercase font-black tracking-wider">Envie um link de cadastro rápido</p>
+                      </div>
+                      <button onClick={() => setIsAddUserOpen(false)} className="p-1.5 hover:bg-slate-100 rounded-full transition-all cursor-pointer">
+                        <X className="w-5 h-5 text-slate-400" />
+                      </button>
+                    </div>
+
+                    <div className="space-y-4 text-left">
+                      <div className="bg-blue-50/50 border border-blue-100/60 rounded-xl p-3.5 space-y-1.5 text-xs text-slate-705">
+                        <p className="font-bold text-slate-800">Como funciona?</p>
+                        <p className="text-[11px] leading-relaxed text-slate-600">
+                          Envie este link para um corretor ou colaborador. Ao acessá-lo, ele poderá fazer o próprio cadastro. Por segurança, sua conta entrará como <strong className="text-amber-700">Pendente</strong> até que você a aprove.
+                        </p>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest">Link de Convite Único</label>
                         <input 
                           type="text"
                           readOnly
                           value={`${window.location.origin}/?invite=${companySettings?.id || 'company'}`}
-                          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none text-xs font-mono text-slate-600"
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none text-[10px] font-mono text-slate-600"
                           onClick={(e) => (e.target as HTMLInputElement).select()}
                         />
                       </div>
@@ -1377,7 +1500,7 @@ const UserManagement = ({
                         <button 
                           type="button"
                           onClick={() => handleGenerateInviteLink()}
-                          className="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold uppercase tracking-widest text-xs shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all active:scale-95 duration-100 cursor-pointer"
+                          className="w-full py-2.5 bg-blue-600 text-white rounded-xl font-bold uppercase tracking-wider text-[10px] shadow-sm hover:bg-blue-700 transition cursor-pointer"
                         >
                           Copiar Link de Convite
                         </button>
