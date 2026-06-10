@@ -85,8 +85,8 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
   const [inquilino, setInquilino] = useState(initialData?.inquilino || "");
   const [aluguelMensal, setAluguelMensal] = useState(initialData?.aluguelMensal || 0);
   const [primeiroAluguel, setPrimeiroAluguel] = useState(initialData?.aluguelMensal || 0);
-  const [porcentagemFidelite, setPorcentagemFidelite] = useState(40);
-  const [porcentagemRepasse, setPorcentagemRepasse] = useState(60); // 40% Fidelité retention, 60% repasse standard
+  const [porcentagemFidelite, setPorcentagemFidelite] = useState(editingRental?.porcentagemFidelite ?? 40);
+  const [porcentagemRepasse, setPorcentagemRepasse] = useState(100 - (editingRental?.porcentagemFidelite ?? 40)); // 40% Fidelité retention, 60% repasse standard
   const [vencimento, setVencimento] = useState("");
   const [mesReferencia, setMesReferencia] = useState(() => {
     const d = new Date();
@@ -109,6 +109,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
   const [selectedBrokerId, setSelectedBrokerId] = useState("");
   const [brokerRole, setBrokerRole] = useState<"captador" | "locacao" | "auxiliar" | "locador">("locacao");
   const [brokerPercent, setBrokerPercent] = useState<number>(100);
+  const [brokerValue, setBrokerValue] = useState<number>(0);
 
   // Modal de pagamento
   const [isPayModalOpen, setIsPayModalOpen] = useState(false);
@@ -146,6 +147,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
     setSelectedBrokerId("");
     setBrokerRole("locacao");
     setBrokerPercent(100);
+    setBrokerValue(0);
     setEditingRental(null);
     if (onClearInitialData) onClearInitialData();
   };
@@ -168,6 +170,25 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
   const valorRepasseCorretores = useMemo(() => {
     return primeiroAluguel - valorFidelite;
   }, [primeiroAluguel, valorFidelite]);
+
+  // Sync value when pool total (valorRepasseCorretores) or percent changes
+  React.useEffect(() => {
+    setBrokerValue(Number(((valorRepasseCorretores * brokerPercent) / 100).toFixed(2)));
+  }, [valorRepasseCorretores, brokerPercent]);
+
+  const handleBrokerPercentChange = (pct: number) => {
+    setBrokerPercent(pct);
+    setBrokerValue(Number(((valorRepasseCorretores * pct) / 100).toFixed(2)));
+  };
+
+  const handleBrokerValueChange = (val: number) => {
+    setBrokerValue(val);
+    if (valorRepasseCorretores > 0) {
+      setBrokerPercent(Number(((val * 100) / valorRepasseCorretores).toFixed(2)));
+    } else {
+      setBrokerPercent(0);
+    }
+  };
 
   // STATS
   const stats = useMemo(() => {
@@ -241,7 +262,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
       return;
     }
 
-    const val = Math.round((valorRepasseCorretores * brokerPercent) / 100);
+    const val = Math.round(brokerValue) || Math.round((valorRepasseCorretores * brokerPercent) / 100);
     const newRateio: RateioComissao = {
       corretorId: selectedBrokerId,
       corretorNome: brokerObj.name,
@@ -761,6 +782,22 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                     />
                   </div>
                 </div>
+
+                {/* Box de Resumo Financeiro Visual (Fundo Azul Claro) */}
+                <div className="bg-sky-50 border border-sky-100 p-4 rounded-2xl text-xs space-y-2.5 shadow-sm">
+                  <div className="flex justify-between items-center text-slate-600">
+                    <span className="font-semibold">Valor do Aluguel:</span>
+                    <span className="font-bold text-slate-800 font-mono">{formatCurrency(primeiroAluguel)}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-slate-600">
+                    <span>Retenção Fidelité ({porcentagemFidelite}%):</span>
+                    <span className="font-bold text-red-600 font-mono">- {formatCurrency(valorFidelite)}</span>
+                  </div>
+                  <div className="border-t border-sky-200/50 pt-2 flex justify-between items-center text-emerald-600 font-bold">
+                    <span>Pool Corretores ({porcentagemRepasse}%):</span>
+                    <span className="font-extrabold text-emerald-600 font-mono">= {formatCurrency(valorRepasseCorretores)}</span>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -768,25 +805,9 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
             <div className="space-y-5 bg-slate-50/50 p-6 rounded-3xl border border-slate-100 flex flex-col justify-between">
               <div className="space-y-4">
                 <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest border-b border-light pb-1">2. Rateio do Pool</h3>
-                
-                {/* Resumo Visual de Divisão */}
-                <div className="bg-slate-900 text-slate-200 p-4.5 rounded-2xl font-mono text-xs space-y-1.5 border border-slate-800 shadow-inner">
-                  <div className="flex justify-between">
-                    <span>Valor do Aluguel</span>
-                    <span className="font-bold text-white">{formatCurrency(primeiroAluguel)}</span>
-                  </div>
-                  <div className="flex justify-between text-slate-400">
-                    <span>Fidelité ({porcentagemFidelite}%)</span>
-                    <span>- {formatCurrency(valorFidelite)}</span>
-                  </div>
-                  <div className="border-t border-slate-800 pt-1.5 flex justify-between text-emerald-400 font-bold">
-                    <span>Pool Corretores ({porcentagemRepasse}%)</span>
-                    <span>= {formatCurrency(valorRepasseCorretores)}</span>
-                  </div>
-                </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-white p-4 border border-slate-100 rounded-2xl shadow-sm">
-                  <div className="col-span-1 md:col-span-3">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3 bg-white p-4 border border-slate-100 rounded-2xl shadow-sm">
+                  <div className="col-span-1 md:col-span-4">
                     <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Escolher Corretor</label>
                     <select
                       value={selectedBrokerId}
@@ -819,8 +840,19 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                     <input 
                       type="number" 
                       value={brokerPercent || ""} 
-                      onChange={e => setBrokerPercent(Number(e.target.value))} 
-                      placeholder="70"
+                      onChange={e => handleBrokerPercentChange(Number(e.target.value))} 
+                      placeholder="0"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Valor (R$)</label>
+                    <input 
+                      type="number" 
+                      step="any"
+                      value={brokerValue || ""} 
+                      onChange={e => handleBrokerValueChange(Number(e.target.value))} 
+                      placeholder="0.00"
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold"
                     />
                   </div>
@@ -828,7 +860,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                     <button
                       type="button"
                       onClick={handleAddBrokerToRateio}
-                      className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all shadow-md shadow-indigo-500/15 font-bold animate-pulse"
+                      className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all shadow-md shadow-indigo-500/15 font-bold"
                     >
                       Incluir
                     </button>
@@ -839,17 +871,31 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                 <div className="space-y-2 pt-2 border-t border-slate-100">
                   <div className="flex justify-between items-center text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                     <span>Progresso de Alocação</span>
-                    <span className={rateios.reduce((acc, r) => acc + (r.porcentagem || 0), 0) === 100 ? "text-emerald-600 font-extrabold" : "text-amber-600 font-extrabold"}>
-                      {rateios.reduce((acc, r) => acc + (r.porcentagem || 0), 0)}% / 100%
-                    </span>
+                    {(() => {
+                      const sumPercent = rateios.reduce((acc, r) => acc + (r.porcentagem || 0), 0);
+                      let textColor = "text-amber-600";
+                      if (sumPercent === 100) textColor = "text-emerald-600";
+                      else if (sumPercent > 100) textColor = "text-red-600";
+                      return (
+                        <span className={`${textColor} font-extrabold`}>
+                          {sumPercent}% / 100%
+                        </span>
+                      );
+                    })()}
                   </div>
                   <div className="w-full bg-slate-150 rounded-full h-2 overflow-hidden border border-slate-200/40">
-                    <div 
-                      className={`h-full transition-all duration-350 ${
-                        rateios.reduce((acc, r) => acc + (r.porcentagem || 0), 0) === 100 ? "bg-emerald-500" : "bg-amber-500"
-                      }`} 
-                      style={{ width: `${Math.min(100, rateios.reduce((acc, r) => acc + (r.porcentagem || 0), 0))}%` }}
-                    />
+                    {(() => {
+                      const sumPercent = rateios.reduce((acc, r) => acc + (r.porcentagem || 0), 0);
+                      let barColor = "bg-amber-500";
+                      if (sumPercent === 100) barColor = "bg-emerald-500";
+                      else if (sumPercent > 100) barColor = "bg-red-500";
+                      return (
+                        <div 
+                          className={`h-full transition-all duration-350 ${barColor}`} 
+                          style={{ width: `${Math.min(100, sumPercent)}%` }}
+                        />
+                      );
+                    })()}
                   </div>
                 </div>
 
