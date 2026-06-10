@@ -4,8 +4,20 @@ import { Sale, BrokerSplit, ComissoneUser } from "../../types";
 import { StatusBadge } from "./StatusBadge";
 import { ForecastModal } from "./ForecastModal";
 import { PaymentModal } from "./PaymentModal";
-import { collection, query, where, onSnapshot, doc, updateDoc, getDoc, setDoc, getDocs } from "firebase/firestore";
-import { db } from "../../firebase";
+import { 
+  db, 
+  collection, 
+  query, 
+  where, 
+  onSnapshot, 
+  doc, 
+  updateDoc, 
+  getDoc, 
+  setDoc, 
+  getDocs,
+  handleFirestoreError,
+  OperationType
+} from "../../firebase";
 import { getContaPrincipal, getCategoriaId } from "../../hooks/useQueries";
 import { toast } from "sonner";
 import jsPDF from "jspdf";
@@ -101,6 +113,7 @@ export const SaleDetail: React.FC<SaleDetailProps> = ({
       setFinancialTransactions(list);
     }, (error) => {
       console.error("Erro no onSnapshot das transacoes financeiras:", error);
+      handleFirestoreError(error, OperationType.GET, "financial_transactions");
     });
 
     return () => unsubscribe();
@@ -147,6 +160,7 @@ export const SaleDetail: React.FC<SaleDetailProps> = ({
       }
     }, (error) => {
       console.error("Erro no onSnapshot do cronograma:", error);
+      handleFirestoreError(error, OperationType.GET, "broker_splits");
     });
 
     return () => unsubscribe();

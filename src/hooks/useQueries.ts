@@ -1,6 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { collection, getDocs, query, where, orderBy, doc, addDoc, updateDoc, deleteDoc, getDoc, setDoc, limit } from "firebase/firestore";
-import { db } from "../firebase";
+import { db, collection, getDocs, query, where, orderBy, doc, addDoc, updateDoc, deleteDoc, getDoc, setDoc, limit } from "../firebase";
 import { Sale, BrokerSplit, ComissoneUser, Comissao, RateioComissao, PagamentoCorretor } from "../types";
 import { toast } from "sonner";
 
@@ -653,7 +652,7 @@ export function useUpdateSaleMutation() {
         const existingSplitsQuery = query(splitsRef, where("sale_id", "==", saleId));
         const existingSplitsSnap = await getDocs(existingSplitsQuery);
         for (const splitDoc of existingSplitsSnap.docs) {
-          await deleteDoc(splitDoc.ref);
+          await deleteDoc(doc(db, "broker_splits", splitDoc.id));
         }
 
         // 3. Adicionar novos splits
@@ -674,7 +673,7 @@ export function useUpdateSaleMutation() {
         );
         const existingTxsSnap = await getDocs(existingTxsQuery);
         for (const txDoc of existingTxsSnap.docs) {
-          await deleteDoc(txDoc.ref);
+          await deleteDoc(doc(db, "financial_transactions", txDoc.id));
         }
 
         // 5. Se não for RASCUNHO (status !== 'DRAFT'), recriar as transações financeiras automáticas
@@ -1050,7 +1049,7 @@ export function useDeleteSaleMutation() {
         const existingSplitsQuery = query(splitsRef, where("sale_id", "==", saleId));
         const existingSplitsSnap = await getDocs(existingSplitsQuery);
         for (const splitDoc of existingSplitsSnap.docs) {
-          await deleteDoc(splitDoc.ref);
+          await deleteDoc(doc(db, "broker_splits", splitDoc.id));
         }
 
         const txsRef = collection(db, "financial_transactions");
@@ -1062,7 +1061,7 @@ export function useDeleteSaleMutation() {
         );
         const existingTxsSnap = await getDocs(existingTxsQuery);
         for (const txDoc of existingTxsSnap.docs) {
-          await deleteDoc(txDoc.ref);
+          await deleteDoc(doc(db, "financial_transactions", txDoc.id));
         }
       } catch (err) {
         console.warn("Offline/local fallback para exclusão de venda:", err);
