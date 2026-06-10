@@ -7064,30 +7064,6 @@ async function seedDatabaseForCompany(companyId: string) {
       });
     }
 
-    // 6. Seed Bank Accounts
-    const sicoobId = `sicoob_${companyId}`;
-    const cresolId = `cresol_${companyId}`;
-
-    await setDoc(doc(db, "bank_accounts", sicoobId), {
-      companyId,
-      name: 'Sicoob PJ Principal',
-      bank: 'SICOOB',
-      agency: '3007',
-      account: '12560-1',
-      balance: 50000,
-      createdAt: new Date().toISOString()
-    });
-
-    await setDoc(doc(db, "bank_accounts", cresolId), {
-      companyId,
-      name: 'Cresol PJ',
-      bank: 'CRESOL',
-      agency: '5240',
-      account: '89552-0',
-      balance: 25000,
-      createdAt: new Date().toISOString()
-    });
-
     // 7. Seed Processes
     await setDoc(doc(db, "processes", "process-1_seed"), {
       companyId: companyId,
@@ -7210,10 +7186,7 @@ export default function App() {
           updatedAt: new Date()
         });
 
-        // Auto-seed for master admin on first load
-        if (profile?.email === "williangyn10@gmail.com") {
-          seedDatabaseForCompany(profile.companyId).catch(console.error);
-        }
+        // Seed desabilitado — dados criados manualmente
       }
     }, (error) => {
       console.error("Error fetching company settings:", error);
