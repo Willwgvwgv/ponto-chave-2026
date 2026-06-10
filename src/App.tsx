@@ -679,7 +679,7 @@ const UserManagement = ({
             ...data,
             uid: data.uid || doc.id,
           } as UserProfile;
-        });
+        }).filter(u => u.displayName || u.email);
         
         // Sort users: Admins first, then by name
         const sortedUsers = [...usersData].sort((a, b) => {
