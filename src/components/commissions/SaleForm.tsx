@@ -414,18 +414,16 @@ export const SaleForm: React.FC<SaleFormProps> = ({
 
   // Filtro de corretores autorizados para aparecer no dropdown
   const filteredBrokers = useMemo(() => team.filter(b => {
-    // Excluir conta institucional da própria Agência ('Fidelité Imobiliária' por exemplo)
-    const isCompanyProfile = b.name.toLowerCase().includes("fidelité") || b.email.toLowerCase().includes("fidelite");
+    const isCompanyProfile = b.name?.toLowerCase().includes("fidelité") || b.email?.toLowerCase().includes("fidelite");
     if (isCompanyProfile) return false;
 
-    const rawRole = String(b.role || "").toUpperCase();
-    const hasCommPerm = b.permComissoes === true || b.perm_comissoes === true || b.permissions?.includes("comissoes");
+    const rawRole = String(b.role || "").toLowerCase();
+    const hasCommPerm = b.permComissoes === true || b.perm_comissoes === true || 
+                        b.permissions?.includes("comissoes") || b.permissions?.includes("comissão");
 
-    const isBrokerRole = rawRole === "BROKER" || rawRole === "CAPTADOR" || rawRole === "MANAGER" || rawRole === "GESTOR";
-    const isAdminRole = rawRole === "ADMIN";
+    const isBrokerRole = ["broker", "corretor", "captador", "manager", "gestor", "admin"].includes(rawRole);
 
-    // Qualquer admin, gerente, ou corretor listado na equipe pode receber splits
-    return isBrokerRole || isAdminRole || hasCommPerm;
+    return isBrokerRole || hasCommPerm;
   }), [team]);
 
   const getBrokerDisplayRole = (b: ComissoneUser): string => {
