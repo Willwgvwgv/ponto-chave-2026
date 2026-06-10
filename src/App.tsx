@@ -735,7 +735,18 @@ const UserManagement = ({
     e.preventDefault();
     if (!editingUserProfile) return;
     try {
-      const userRef = doc(db, "users", editingUserProfile.uid);
+      let docId = editingUserProfile.uid;
+      
+      // Se uid parece ser um pending_id, buscar pelo e-mail
+      if (docId.startsWith("pending_") || !docId) {
+        const q = query(collection(db, "users"), where("email", "==", editingUserProfile.email));
+         const snap = await getDocs(q);
+        if (!snap.empty) {
+          docId = snap.docs[0].id;
+        }
+      }
+      
+      const userRef = doc(db, "users", docId);
       const updates: Partial<UserProfile> = {
         displayName: editingUserProfile.displayName,
         email: editingUserProfile.email ? editingUserProfile.email.trim().toLowerCase() : "",
@@ -752,7 +763,7 @@ const UserManagement = ({
       setEditingUserProfile(null);
     } catch (error) {
       toast.error("Erro ao atualizar dados do membro.");
-      console.error(error);
+      console.error("Erro ao atualizar membro:", error);
     }
   };
 
