@@ -334,8 +334,8 @@ export function useSales(agencyId: string) {
         })).sort((a: any, b: any) => new Date(b.sale_date).getTime() - new Date(a.sale_date).getTime());
       }
     },
-    staleTime: 10 * 60 * 1000,
-    gcTime: 30 * 60 * 1000,
+    staleTime: 5 * 1000, // 5 segundos para manter dados de vendas super atualizados
+    gcTime: 30 * 1000, // 30 segundos de garbage collection
     retry: 1,
   });
 }
@@ -457,8 +457,8 @@ export function useTeam(agencyId: string) {
         return fallback.team.filter(u => u.agency_id === safeAgencyId);
       }
     },
-    staleTime: 15 * 60 * 1000,
-    gcTime: 60 * 60 * 1000,
+    staleTime: 15 * 1000, // 15 segundos para o time de corretores
+    gcTime: 60 * 1000, // 1 minuto de GC para corretores
     retry: 1,
   });
 }
