@@ -108,7 +108,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
   // Add broker to rateio form
   const [selectedBrokerId, setSelectedBrokerId] = useState("");
   const [brokerRole, setBrokerRole] = useState<"captador" | "locacao" | "auxiliar" | "locador">("locacao");
-  const [brokerPercent, setBrokerPercent] = useState<number>(100);
+  const [brokerPercent, setBrokerPercent] = useState<number>(0);
   const [brokerValue, setBrokerValue] = useState<number>(0);
 
   // Modal de pagamento
@@ -146,7 +146,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
     setRateios([]);
     setSelectedBrokerId("");
     setBrokerRole("locacao");
-    setBrokerPercent(100);
+    setBrokerPercent(0);
     setBrokerValue(0);
     setEditingRental(null);
     if (onClearInitialData) onClearInitialData();
@@ -171,10 +171,10 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
     return primeiroAluguel - valorFidelite;
   }, [primeiroAluguel, valorFidelite]);
 
-  // Sync value when pool total (valorRepasseCorretores) or percent changes
+  // Sync value when pool total (valorRepasseCorretores) changes
   React.useEffect(() => {
     setBrokerValue(Number(((valorRepasseCorretores * brokerPercent) / 100).toFixed(2)));
-  }, [valorRepasseCorretores, brokerPercent]);
+  }, [valorRepasseCorretores]);
 
   const handleBrokerPercentChange = (pct: number) => {
     setBrokerPercent(pct);
@@ -262,17 +262,21 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
       return;
     }
 
-    const val = Math.round(brokerValue) || Math.round((valorRepasseCorretores * brokerPercent) / 100);
+    const val = Number(brokerValue.toFixed(2)) || Number(((valorRepasseCorretores * brokerPercent) / 100).toFixed(2));
+    const pct = Number(brokerPercent.toFixed(2));
+
     const newRateio: RateioComissao = {
       corretorId: selectedBrokerId,
       corretorNome: brokerObj.name,
       papel: brokerRole,
-      porcentagem: brokerPercent,
+      porcentagem: pct,
       valor: val
     };
 
     setRateios([...rateios, newRateio]);
     setSelectedBrokerId("");
+    setBrokerPercent(0);
+    setBrokerValue(0);
   };
 
   const handleRemoveBrokerFromRateio = (id: string) => {
@@ -294,7 +298,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
 
     const updatedRateiosWithRecalculatedValues = rateios.map(r => ({
       ...r,
-      valor: Math.round((valorRepasseCorretores * (r.porcentagem || 0)) / 100)
+      valor: Number(((valorRepasseCorretores * (r.porcentagem || 0)) / 100).toFixed(2))
     }));
 
     if (editingRental) {
@@ -872,20 +876,20 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                   <div className="flex justify-between items-center text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                     <span>Progresso de Alocação</span>
                     {(() => {
-                      const sumPercent = rateios.reduce((acc, r) => acc + (r.porcentagem || 0), 0);
+                      const sumPercent = Number(rateios.reduce((acc, r) => acc + (r.porcentagem || 0), 0).toFixed(2));
                       let textColor = "text-amber-600";
                       if (sumPercent === 100) textColor = "text-emerald-600";
                       else if (sumPercent > 100) textColor = "text-red-600";
                       return (
                         <span className={`${textColor} font-extrabold`}>
-                          {sumPercent}% / 100%
+                          {sumPercent.toFixed(2).replace(/\.00$/, "")}% / 100%
                         </span>
                       );
                     })()}
                   </div>
                   <div className="w-full bg-slate-150 rounded-full h-2 overflow-hidden border border-slate-200/40">
                     {(() => {
-                      const sumPercent = rateios.reduce((acc, r) => acc + (r.porcentagem || 0), 0);
+                      const sumPercent = Number(rateios.reduce((acc, r) => acc + (r.porcentagem || 0), 0).toFixed(2));
                       let barColor = "bg-amber-500";
                       if (sumPercent === 100) barColor = "bg-emerald-500";
                       else if (sumPercent > 100) barColor = "bg-red-500";
@@ -905,9 +909,9 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                 ) : (
                   <div className="space-y-2 max-h-[180px] overflow-y-auto">
                     {rateios.map((rt, idx) => {
-                      const computedVal = Math.round((valorRepasseCorretores * (rt.porcentagem || 0)) / 100);
+                      const computedVal = Number(((valorRepasseCorretores * (rt.porcentagem || 0)) / 100).toFixed(2));
                       return (
-                        <div key={idx} className="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-xl shadow-sm text-xs select-none hover:bg-slate-50/50 transition-all">
+                        <div key={rt.corretorId || idx} className="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-xl shadow-sm text-xs select-none hover:bg-slate-50/50 transition-all">
                           <div className="space-y-0.5">
                             <p className="font-bold text-slate-800">{rt.corretorNome}</p>
                             <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-semibold uppercase tracking-wider">
@@ -915,7 +919,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                                 {rt.papel === "locacao" ? "Locador" : rt.papel === "captador" ? "Captador" : "Auxiliar"}
                               </span>
                               <span>•</span>
-                              <span>{rt.porcentagem}% do pool</span>
+                              <span>{Number(rt.porcentagem).toFixed(2).replace(/\.00$/, "")}% do pool</span>
                             </div>
                           </div>
                           <div className="flex items-center gap-2.5">

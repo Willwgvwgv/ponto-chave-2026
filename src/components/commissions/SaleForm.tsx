@@ -16,6 +16,7 @@ interface SaleFormProps {
 }
 
 interface TempSplit {
+  id?: string;
   brokerId: string;
   role: "CAPTADOR" | "VENDEDOR" | "GESTOR" | "";
   percentage: number | string;
@@ -244,14 +245,15 @@ export const SaleForm: React.FC<SaleFormProps> = ({
 
   const [tempSplits, setTempSplits] = useState<TempSplit[]>(
     editingSale?.splits 
-      ? editingSale.splits.map(s => ({
+      ? editingSale.splits.map((s, idx) => ({
+          id: s.id || `split-${idx}-${Date.now()}-${Math.random()}`,
           brokerId: s.broker_id,
           role: s.role,
           percentage: s.percentage
         }))
       : [
-          { brokerId: "", role: "VENDEDOR", percentage: 60 },
-          { brokerId: "", role: "CAPTADOR", percentage: 40 }
+          { id: `split-0-${Date.now()}`, brokerId: "", role: "VENDEDOR", percentage: 60 },
+          { id: `split-1-${Date.now()}`, brokerId: "", role: "CAPTADOR", percentage: 40 }
         ]
   );
 
@@ -524,6 +526,7 @@ export const SaleForm: React.FC<SaleFormProps> = ({
         roleDefault = "VENDEDOR";
       }
       return {
+        id: existing?.id || `split-qd-${i}-${Date.now()}-${Math.random()}`,
         brokerId: existing ? existing.brokerId : "",
         role: existing ? existing.role : roleDefault,
         percentage: pctArray[i]
@@ -552,7 +555,7 @@ export const SaleForm: React.FC<SaleFormProps> = ({
     const limit = splitDivisionType === "vgv" ? (typeof commissionPercentage === "string" ? parseFloat(commissionPercentage.replace(",", ".")) || 0 : commissionPercentage || 0) : 100;
     const remainingPercentage = round2(limit - sumPercentage);
     const defaultPercentage = Math.max(0, remainingPercentage);
-    setTempSplits([...tempSplits, { brokerId: "", role: "GESTOR", percentage: defaultPercentage }]);
+    setTempSplits([...tempSplits, { id: `split-add-${Date.now()}-${Math.random()}`, brokerId: "", role: "GESTOR", percentage: defaultPercentage }]);
     setActiveQuickDist("custom");
   };
 
@@ -625,8 +628,8 @@ export const SaleForm: React.FC<SaleFormProps> = ({
     setSplitDivisionType("commission");
     setActiveQuickDist("custom");
     setTempSplits([
-      { brokerId: "", role: "VENDEDOR", percentage: 60 },
-      { brokerId: "", role: "CAPTADOR", percentage: 40 }
+      { id: `split-clear-0-${Date.now()}`, brokerId: "", role: "VENDEDOR", percentage: 60 },
+      { id: `split-clear-1-${Date.now()}`, brokerId: "", role: "CAPTADOR", percentage: 40 }
     ]);
     localStorage.removeItem("comissone_sale_draft");
   };
@@ -1553,7 +1556,7 @@ export const SaleForm: React.FC<SaleFormProps> = ({
               }
 
               return (
-                <div key={idx} className={`grid grid-cols-1 md:grid-cols-[1.5fr_1.2fr_165px_110px_45px] gap-3 bg-white p-4 border-y border-r border-slate-100 rounded-r-2xl ${leftBorderClass} items-center overflow-visible shadow-sm hover:shadow-md transition-shadow duration-200 animate-fade-in md:space-y-0 space-y-2`}>
+                <div key={item.id || idx} className={`grid grid-cols-1 md:grid-cols-[1.5fr_1.2fr_165px_110px_45px] gap-3 bg-white p-4 border-y border-r border-slate-100 rounded-r-2xl ${leftBorderClass} items-center overflow-visible shadow-sm hover:shadow-md transition-shadow duration-200 animate-fade-in md:space-y-0 space-y-2`}>
                   
                   {/* Corretor dropdown */}
                   <div className="w-full">
