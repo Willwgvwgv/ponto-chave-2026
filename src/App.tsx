@@ -738,9 +738,10 @@ const UserManagement = ({
       const userRef = doc(db, "users", editingUserProfile.uid);
       const updates: Partial<UserProfile> = {
         displayName: editingUserProfile.displayName,
+        email: editingUserProfile.email ? editingUserProfile.email.trim().toLowerCase() : "",
         role: editingUserProfile.role,
         cargoComissao: editingUserProfile.cargoComissao || null,
-        isSocio: editingUserProfile.isSocio || false
+        permissions: editingUserProfile.permissions || []
       };
       
       await updateDoc(userRef, updates);
@@ -878,6 +879,25 @@ const UserManagement = ({
         className: "bg-purple-50 text-purple-700 border border-purple-200" 
       };
     }
+    if (u.role === "corretor") {
+      return { 
+        label: "CORRETOR", 
+        className: "bg-blue-50 text-blue-700 border border-blue-200" 
+      };
+    }
+    if (u.role === "captador") {
+      return { 
+        label: "CAPTADOR", 
+        className: "bg-teal-50 text-teal-700 border border-teal-200" 
+      };
+    }
+    if (u.role === "user") {
+      return { 
+        label: "COLABORADOR", 
+        className: "bg-slate-50 text-slate-500 border border-slate-200" 
+      };
+    }
+    // Fallbacks para dados anteriores e cargoComissao
     const cargo = u.cargoComissao || "";
     if (cargo === "GESTOR") {
       return { 
@@ -885,15 +905,21 @@ const UserManagement = ({
         className: "bg-emerald-50 text-emerald-700 border border-emerald-200" 
       };
     }
-    if (cargo === "CORRETOR" || cargo === "CAPTADOR" || cargo === "SOCIO") {
+    if (cargo === "CORRETOR" || cargo === "SOCIO") {
       return { 
         label: "CORRETOR", 
         className: "bg-blue-50 text-blue-700 border border-blue-200" 
       };
     }
+    if (cargo === "CAPTADOR") {
+      return { 
+        label: "CAPTADOR", 
+        className: "bg-teal-50 text-teal-700 border border-teal-200" 
+      };
+    }
     return { 
       label: "COLABORADOR", 
-      className: "bg-slate-50 text-slate-600 border border-slate-200" 
+      className: "bg-slate-50 text-slate-500 border border-slate-200" 
     };
   };
 
@@ -1211,54 +1237,76 @@ const UserManagement = ({
                 </div>
 
                 <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">E-mail</label>
+                  <input
+                    type="email"
+                    required
+                    value={editingUserProfile.email || ""}
+                    onChange={(e) => setEditingUserProfile({ ...editingUserProfile, email: e.target.value })}
+                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-semibold text-slate-700"
+                  />
+                </div>
+
+                <div className="space-y-1">
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Nível de Acesso Principal</label>
                   <select
                     value={editingUserProfile.role}
-                    onChange={(e) => setEditingUserProfile({ ...editingUserProfile, role: e.target.value as "admin" | "user" })}
-                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-505 text-xs font-bold text-slate-700 cursor-pointer"
+                    onChange={(e) => setEditingUserProfile({ ...editingUserProfile, role: e.target.value as any })}
+                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-bold text-slate-700 cursor-pointer"
                   >
-                    <option value="user">Colaborador</option>
                     <option value="admin">Administrador</option>
+                    <option value="corretor">Corretor</option>
+                    <option value="captador">Captador</option>
+                    <option value="user">Colaborador</option>
                   </select>
                 </div>
 
-                {editingUserProfile.permissions?.includes("comissoes") && (
-                  <>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Cargo nas Comissões</label>
-                      <select
-                        value={editingUserProfile.cargoComissao || ""}
-                        onChange={(e) => setEditingUserProfile({ ...editingUserProfile, cargoComissao: e.target.value || "" })}
-                        className="w-full px-3.5 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-505 text-xs font-bold text-slate-700 cursor-pointer"
-                      >
-                        <option value="">Nenhum/Corretor</option>
-                        <option value="CORRETOR">Corretor</option>
-                        <option value="CAPTADOR">Captador</option>
-                        <option value="GESTOR">Gestor</option>
-                        <option value="SOCIO">Sócio</option>
-                      </select>
-                    </div>
+                <div className="space-y-2 border-t border-slate-100 pt-3">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Permissões de Acesso</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { id: "comissoes", label: "Comissões" },
+                      { id: "vistorias", label: "Vistorias" },
+                      { id: "financeiro", label: "Financeiro" },
+                      { id: "processos", label: "Processos" }
+                    ].map((perm) => {
+                      const isChecked = editingUserProfile.permissions?.includes(perm.id) || false;
+                      return (
+                        <label key={perm.id} className="flex items-center gap-2 px-3 py-2 border border-slate-100 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer text-xs font-semibold text-slate-700">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => {
+                              const currentPerms = editingUserProfile.permissions || [];
+                              const newPerms = currentPerms.includes(perm.id)
+                                ? currentPerms.filter(p => p !== perm.id)
+                                : [...currentPerms, perm.id];
+                              setEditingUserProfile({ ...editingUserProfile, permissions: newPerms });
+                            }}
+                            className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                          />
+                          <span>{perm.label}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
 
-                    <div className="flex items-center justify-between py-2.5 border-t border-slate-100 mt-2">
-                      <div className="space-y-0.5">
-                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block">É Sócio?</span>
-                        <span className="text-[8px] text-slate-400 block max-w-xs font-medium leading-normal">Permite participar com até 3 papéis na mesma divisão</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setEditingUserProfile({ ...editingUserProfile, isSocio: !editingUserProfile.isSocio })}
-                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors cursor-pointer ${
-                          editingUserProfile.isSocio ? "bg-slate-900" : "bg-slate-200"
-                        }`}
-                      >
-                        <span
-                          className={`inline-block h-3.2 w-3.2 transform rounded-full bg-white transition-all ${
-                            editingUserProfile.isSocio ? "translate-x-5" : "translate-x-0.7"
-                          }`}
-                        />
-                      </button>
-                    </div>
-                  </>
+                {editingUserProfile.permissions?.includes("comissoes") && (
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Cargo nas Comissões</label>
+                    <select
+                      value={editingUserProfile.cargoComissao || ""}
+                      onChange={(e) => setEditingUserProfile({ ...editingUserProfile, cargoComissao: e.target.value as any })}
+                      className="w-full px-3.5 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-bold text-slate-700 cursor-pointer"
+                    >
+                      <option value="">Nenhum/Corretor</option>
+                      <option value="CORRETOR">Corretor</option>
+                      <option value="CAPTADOR">Captador</option>
+                      <option value="GESTOR">Gestor</option>
+                      <option value="SOCIO">Sócio</option>
+                    </select>
+                  </div>
                 )}
 
                 <div className="grid grid-cols-2 gap-3 pt-4 border-t border-slate-100">

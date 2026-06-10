@@ -28,7 +28,7 @@ export interface UserProfile {
   displayName: string | null;
   email: string | null;
   photoURL: string | null;
-  role: "admin" | "user" | "none";
+  role: "admin" | "user" | "none" | "corretor" | "captador";
   permissions?: string[];
   companyId?: string;
   status?: "active" | "blocked" | "pending";
