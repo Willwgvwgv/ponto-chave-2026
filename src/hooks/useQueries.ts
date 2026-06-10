@@ -317,19 +317,6 @@ export function useSales(agencyId: string) {
           ...doc.data()
         } as BrokerSplit));
 
-        // Se o Firestore retornar totalmente vazio ou falhar, vamos inicializar ou ler do LocalStorage
-        if (salesList.length === 0) {
-          const fallback = getStoredData();
-          salesList = fallback.sales.filter(s => s.agency_id === safeAgencyId);
-          const relatedSplits = fallback.splits.filter(s => s.agency_id === safeAgencyId);
-          
-          // Join em memória
-          return salesList.map(sale => ({
-            ...sale,
-            splits: relatedSplits.filter(s => s.sale_id === sale.id)
-          })).sort((a, b) => new Date(b.sale_date).getTime() - new Date(a.sale_date).getTime());
-        }
-
         // Join em memória para vendas e splits reais do Firestore
         return salesList.map(sale => ({
           ...sale,
@@ -337,15 +324,14 @@ export function useSales(agencyId: string) {
         })).sort((a, b) => new Date(b.sale_date).getTime() - new Date(a.sale_date).getTime());
 
       } catch (err) {
-        console.warn("Erro ao ler do Firestore, carregando armazenamento local para Comissone:", err);
+        console.warn("Erro ao ler do Firestore, carregando localStorage:", err);
         const fallback = getStoredData();
-        const salesFiltered = fallback.sales.filter(s => s.agency_id === safeAgencyId);
-        const splitsFiltered = fallback.splits.filter(s => s.agency_id === safeAgencyId);
-
-        return salesFiltered.map(sale => ({
+        const salesFiltered = fallback.sales.filter((s: any) => s.agency_id === safeAgencyId);
+        const splitsFiltered = fallback.splits.filter((s: any) => s.agency_id === safeAgencyId);
+        return salesFiltered.map((sale: any) => ({
           ...sale,
-          splits: splitsFiltered.filter(s => s.sale_id === sale.id)
-        })).sort((a, b) => new Date(b.sale_date).getTime() - new Date(a.sale_date).getTime());
+          splits: splitsFiltered.filter((s: any) => s.sale_id === sale.id)
+        })).sort((a: any, b: any) => new Date(b.sale_date).getTime() - new Date(a.sale_date).getTime());
       }
     },
     staleTime: 10 * 60 * 1000,
@@ -380,7 +366,7 @@ export function useTeam(agencyId: string) {
           teamSnap = await getDocs(fallbackQuery);
         }
 
-        const usersList = teamSnap.docs.map(doc => ({
+        let usersList = teamSnap.docs.map(doc => ({
           id: doc.id,
           ...doc.data()
         }) as any);
@@ -949,11 +935,6 @@ export function useRentals(companyId: string) {
       try {
         const q = query(collection(db, "comissoes"), where("companyId", "==", safeId));
         const snap = await getDocs(q);
-        if (snap.empty) {
-          // Se o Firestore retornar vazio, retornamos das sementes locais para conveniência
-          const local = getStoredData();
-          return local.rentals;
-        }
         const list: Comissao[] = snap.docs.map(doc => ({
           id: doc.id,
           ...doc.data()
@@ -961,9 +942,9 @@ export function useRentals(companyId: string) {
         // Ordena por data de criação / mais recente
         return list.sort((a,b) => b.createdAt?.localeCompare?.(a.createdAt) || 0);
       } catch (err) {
-        console.warn("Utilizando contingência para obter comissões de locação:", err);
         const local = getStoredData();
-        return local.rentals;
+        return local.rentals.filter((r: Comissao) => r.companyId === safeId)
+          .sort((a: Comissao, b: Comissao) => b.createdAt?.localeCompare?.(a.createdAt) || 0);
       }
     }
   });
