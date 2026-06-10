@@ -25,6 +25,7 @@ export const SalesList: React.FC<SalesListProps> = ({
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedBroker, setSelectedBroker] = useState("");
   const [selectedStatus, setSelectedStatus] = useState<string>("TODAS");
+  const [showCancelled, setShowCancelled] = useState(false);
 
   // Seletor de período para exportação de PDF
   const { first: defaultFirst, last: defaultLast } = useMemo(() => {
@@ -117,6 +118,11 @@ export const SalesList: React.FC<SalesListProps> = ({
   // Filtragem unificada
   const filteredSales = useMemo(() => {
     return sales.filter((sale) => {
+      // 0. Filtro de Vendas Canceladas
+      if (sale.status === "CANCELLED" && !showCancelled) {
+        return false;
+      }
+
       // 1. Busca textual
       const matchesSearch =
         sale.property_address.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -135,7 +141,7 @@ export const SalesList: React.FC<SalesListProps> = ({
 
       return matchesSearch && matchesBroker && matchesStatus;
     });
-  }, [sales, searchTerm, selectedBroker, selectedStatus]);
+  }, [sales, searchTerm, selectedBroker, selectedStatus, showCancelled]);
 
   const [showToast, setShowToast] = useState(false);
 
@@ -1079,6 +1085,20 @@ export const SalesList: React.FC<SalesListProps> = ({
             </select>
           </div>
 
+        </div>
+
+        {/* Checkbox Mostrar Canceladas */}
+        <div className="flex items-center gap-2 px-1">
+          <input
+            type="checkbox"
+            id="showCancelledCheckbox"
+            checked={showCancelled}
+            onChange={(e) => setShowCancelled(e.target.checked)}
+            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 cursor-pointer accent-blue-600"
+          />
+          <label htmlFor="showCancelledCheckbox" className="text-[10px] font-black uppercase tracking-wider text-slate-500 hover:text-slate-700 cursor-pointer select-none">
+            Mostrar Vendas Canceladas
+          </label>
         </div>
 
         {/* Seletor de Período Simples & Exportação */}

@@ -23,7 +23,8 @@ import {
   useUpdateRentalMutation,
   useDeleteRentalMutation,
   useUpdateSaleNfMutation,
-  useDeleteSaleMutation
+  useDeleteSaleMutation,
+  useUpdateSaleStatusMutation
 } from "../hooks/useQueries";
 import { CommissionDashboard } from "./commissions/CommissionDashboard";
 import { SalesList } from "./commissions/SalesList";
@@ -86,6 +87,24 @@ export const ComissoesView: React.FC<ComissoesViewProps> = ({
   const updateRentalMutation = useUpdateRentalMutation();
   const deleteRentalMutation = useDeleteRentalMutation();
   const deleteSaleMutation = useDeleteSaleMutation();
+  const updateSaleStatusMutation = useUpdateSaleStatusMutation();
+
+  const handleUpdateSaleStatus = (saleId: string, status: "ACTIVE" | "CANCELLED" | "DRAFT") => {
+    updateSaleStatusMutation.mutate({ saleId, status }, {
+      onSuccess: () => {
+        if (status === "CANCELLED") {
+          toast.success("Venda cancelada com sucesso!");
+        } else if (status === "ACTIVE") {
+          toast.success("Venda reativada com sucesso!");
+        } else {
+          toast.success("Status de venda atualizado.");
+        }
+      },
+      onError: () => {
+        toast.error("Erro ao alterar o status da venda.");
+      }
+    });
+  };
 
   // Se detectarmos dados de processo de locação sendo passados como 'Lançar Comissão'
   useEffect(() => {
@@ -423,6 +442,7 @@ export const ComissoesView: React.FC<ComissoesViewProps> = ({
                     }}
                     onPublishSale={handlePublishSale}
                     onDeleteSale={handleDeleteSale}
+                    onUpdateStatus={handleUpdateSaleStatus}
                   />
                 )}
               </motion.div>

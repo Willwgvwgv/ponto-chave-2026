@@ -30,6 +30,7 @@ interface SaleDetailProps {
   onEditSale?: (sale: Sale) => void;
   onPublishSale?: (saleId: string) => void;
   onDeleteSale?: (saleId: string) => void;
+  onUpdateStatus?: (saleId: string, status: "ACTIVE" | "CANCELLED" | "DRAFT") => void;
 }
 
 export const SaleDetail: React.FC<SaleDetailProps> = ({
@@ -41,7 +42,8 @@ export const SaleDetail: React.FC<SaleDetailProps> = ({
   team = [],
   onEditSale,
   onPublishSale,
-  onDeleteSale
+  onDeleteSale,
+  onUpdateStatus
 }) => {
   const [selectedSplitForForecast, setSelectedSplitForForecast] = useState<BrokerSplit | null>(null);
   const [selectedSplitForPayment, setSelectedSplitForPayment] = useState<BrokerSplit | null>(null);
@@ -726,12 +728,43 @@ export const SaleDetail: React.FC<SaleDetailProps> = ({
                     onClick={() => onEditSale(sale)}
                     className="block text-[9px] font-black uppercase tracking-widest border border-blue-500 text-blue-600 hover:bg-blue-50 rounded-xl px-3 py-1.5 transition-all cursor-pointer flex items-center gap-1"
                   >
-                    <Pencil className="w-3 h-3" />
+                    <Pencil className="w-3" />
                     Editar Venda
                   </button>
                 )}
 
-                {sale.status === "ACTIVE" && (
+                {sale.status === "ACTIVE" && onUpdateStatus && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setConfirmState({
+                        open: true,
+                        title: "Confirmar Cancelamento",
+                        message: "Tem certeza que deseja cancelar esta venda? Ela não será listada nas comissões ativas por padrão.",
+                        confirmColor: "red",
+                        onConfirm: () => {
+                          setConfirmState(prev => ({ ...prev, open: false }));
+                          onUpdateStatus(sale.id, "CANCELLED");
+                        }
+                      });
+                    }}
+                    className="block text-[9px] font-black uppercase tracking-widest bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-xl px-3 py-1.5 transition-all cursor-pointer"
+                  >
+                    Cancelar Venda
+                  </button>
+                )}
+
+                {sale.status === "CANCELLED" && onUpdateStatus && (
+                  <button
+                    type="button"
+                    onClick={() => onUpdateStatus(sale.id, "ACTIVE")}
+                    className="block text-[9px] font-black uppercase tracking-widest bg-emerald-50 hover:bg-emerald-100 text-emerald-750 border border-emerald-200 rounded-xl px-3 py-1.5 transition-all cursor-pointer"
+                  >
+                    Reativar Venda
+                  </button>
+                )}
+
+                {onDeleteSale && (
                   <button
                     type="button"
                     onClick={handleDeleteSale}

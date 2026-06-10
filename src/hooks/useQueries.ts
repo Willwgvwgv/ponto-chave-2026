@@ -1106,4 +1106,28 @@ export function useUpdateSaleNfMutation() {
   });
 }
 
+export function useUpdateSaleStatusMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ saleId, status }: { saleId: string; status: 'ACTIVE' | 'CANCELLED' | 'DRAFT' }) => {
+      try {
+        await updateDoc(doc(db, "sales", saleId), { status });
+        return { saleId, status };
+      } catch (err) {
+        console.warn("Falha ao atualizar status da venda no Firestore, atualizando localmente:", err);
+        const local = getStoredData();
+        const updatedSales = local.sales.map((s: Sale) =>
+          s.id === saleId ? { ...s, status } : s
+        );
+        saveStoredData({ sales: updatedSales });
+        return { saleId, status };
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sales"] });
+    },
+  });
+}
+
 
