@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { db, collection, getDocs, query, where, orderBy, doc, addDoc, updateDoc, deleteDoc, getDoc, setDoc, limit } from "../firebase";
 import { Sale, BrokerSplit, ComissoneUser, Comissao, RateioComissao, PagamentoCorretor } from "../types";
 import { toast } from "sonner";
@@ -928,9 +929,24 @@ export function useUpdateForecastMutation() {
 export function useRentals(companyId: string) {
   const safeId = companyId || "default_agency";
 
+  useEffect(() => {
+    try {
+      localStorage.removeItem("comissone_store_rentals");
+    } catch (e) {
+      console.warn("Erro ao limpar cache local de locações:", e);
+    }
+  }, []);
+
   return useQuery({
     queryKey: ["rentals", safeId],
     queryFn: async () => {
+      // Se não estiver conectado à internet (modo offline real), carrega do localStorage
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        const local = getStoredData();
+        return local.rentals.filter((r: Comissao) => r.companyId === safeId)
+          .sort((a: Comissao, b: Comissao) => b.createdAt?.localeCompare?.(a.createdAt) || 0);
+      }
+
       try {
         const q = query(collection(db, "comissoes"), where("companyId", "==", safeId));
         const snap = await getDocs(q);
@@ -940,10 +956,18 @@ export function useRentals(companyId: string) {
         } as Comissao));
         // Ordena por data de criação / mais recente
         return list.sort((a,b) => b.createdAt?.localeCompare?.(a.createdAt) || 0);
-      } catch (err) {
-        const local = getStoredData();
-        return local.rentals.filter((r: Comissao) => r.companyId === safeId)
-          .sort((a: Comissao, b: Comissao) => b.createdAt?.localeCompare?.(a.createdAt) || 0);
+      } catch (err: any) {
+        console.error("Erro ao buscar do Firestore na query useRentals:", err);
+        const isNetworkErr = err?.message?.toLowerCase?.().includes("network") || 
+                             err?.message?.toLowerCase?.().includes("offline") ||
+                             err?.message?.toLowerCase?.().includes("failed to fetch");
+
+        if (isNetworkErr || (typeof navigator !== "undefined" && !navigator.onLine)) {
+          const local = getStoredData();
+          return local.rentals.filter((r: Comissao) => r.companyId === safeId)
+            .sort((a: Comissao, b: Comissao) => b.createdAt?.localeCompare?.(a.createdAt) || 0);
+        }
+        throw err;
       }
     }
   });
