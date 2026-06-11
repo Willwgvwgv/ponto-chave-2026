@@ -89,7 +89,6 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
   const [filterText, setFilterText] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("TUDO");
   const [selectedMonthFilter, setSelectedMonthFilter] = useState<string>("TODOS");
-  const [dashboardStatusFilter, setDashboardStatusFilter] = useState<string>("TODOS");
   const [activeCardFilter, setActiveCardFilter] = useState<"CARD1" | "CARD2" | "CARD3" | "CARD4" | null>(null);
 
   // Recebimento Manual Form state
@@ -271,10 +270,31 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
     return monthlyModels.filter(r => r.statusFinanceiro === "aguardando" && r.legacyDoc.status === "atraso").length;
   }, [monthlyModels]);
 
-  // FILTERED MODELS BY STATUS PILL
-  const currentFiltered = useMemo(() => {
-    return monthlyModels.filter(r => dashboardStatusFilter === "TODOS" || r.statusFinanceiro === dashboardStatusFilter);
-  }, [monthlyModels, dashboardStatusFilter]);
+  const getDistributionSummaryString = (r: RentalFinancialViewModel): string => {
+    const parts: string[] = [];
+    const pctFidelite = r.legacyDoc.porcentagemFidelite !== undefined ? r.legacyDoc.porcentagemFidelite : 40;
+    if (pctFidelite > 0) {
+      parts.push(`Fidelité ${pctFidelite}%`);
+    }
+    
+    if (r.distribuicao && r.distribuicao.length > 0) {
+      r.distribuicao.forEach((d) => {
+        const isFidName = d.corretorNome.toLowerCase().includes("fidelité") || d.corretorNome.toLowerCase().includes("fidelite");
+        if (isFidName) {
+          return;
+        }
+        const pct = d.porcentagem || 0;
+        if (pct > 0) {
+          parts.push(`${d.corretorNome} ${pct}%`);
+        }
+      });
+    }
+    
+    return parts.join(" · ");
+  };
+
+  // FILTERED MODELS BY MONTH REFERENCE (SINCE PILLS ARE REMOVED)
+  const currentFiltered = monthlyModels;
 
   // CARD 1 VALUE — Comissões Primeiro Aluguel
   const card1Value = useMemo(() => {
@@ -1308,36 +1328,6 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
               </button>
             </div>
 
-            {/* Top Quick Filters style pills/abas */}
-            <div className="flex flex-wrap gap-2 py-1 font-sans">
-              {[
-                { id: "TODOS", label: "TODOS", count: monthlyModels.length },
-                { id: "calculada", label: "CALCULADA", count: monthlyModels.filter(r => r.statusFinanceiro === "calculada").length },
-                { id: "aguardando_pagamento", label: "AGUARDANDO", count: monthlyModels.filter(r => r.statusFinanceiro === "aguardando_pagamento").length },
-                { id: "em_distribuicao", label: "EM DISTRIBUIÇÃO", count: monthlyModels.filter(r => r.statusFinanceiro === "em_distribuicao").length },
-                { id: "repasses_pendentes", label: "REPASSES PENDENTES", count: monthlyModels.filter(r => r.statusFinanceiro === "repasses_pendentes").length },
-                { id: "concluida", label: "CONCLUÍDA", count: monthlyModels.filter(r => r.statusFinanceiro === "concluida").length },
-              ].map(f => {
-                const isActive = dashboardStatusFilter === f.id;
-                return (
-                  <button
-                    key={f.id}
-                    onClick={() => {
-                      setDashboardStatusFilter(f.id);
-                      setActiveCardFilter(null);
-                    }}
-                    className={`px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest cursor-pointer transition-all ${
-                      isActive 
-                        ? "bg-slate-900 text-white shadow-sm font-black" 
-                        : "bg-slate-50 text-slate-450 hover:text-slate-800 border border-slate-100"
-                    }`}
-                  >
-                    {f.label} ({f.count})
-                  </button>
-                );
-              })}
-            </div>
-
             {/* Filtered rental models rendering */}
             {monthlyModels.length === 0 ? (
               <p className="text-xs text-slate-400 italic text-center py-10 border border-dashed border-slate-200 rounded-3xl">Nenhuma competência financeira cadastrada.</p>
@@ -1375,13 +1365,16 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                         onClick={() => setSelectedRentalId(r.id)}
                         className="flex flex-col sm:flex-row sm:items-center justify-between p-5 bg-slate-50/50 border border-slate-100/80 rounded-2xl cursor-pointer hover:bg-slate-50 hover:border-slate-300 transition-all duration-250 select-none shadow-sm gap-4"
                       >
-                        <div className="space-y-1">
+                        <div className="space-y-1 flex-1 min-w-0">
                           <p className="text-xs font-bold text-slate-800 block">
                             {r.imovel} <span className="text-slate-400 font-normal">—</span> <span className="text-blue-600 font-bold">{r.competencia.label}</span>
                           </p>
-                          <span className="text-[10px] text-slate-450 uppercase font-bold tracking-wider block">Inquilino: {r.inquilino}</span>
+                          <span className="text-[10px] text-slate-450 uppercase font-black tracking-wider block">INQUILINO: {r.inquilino ? r.inquilino.toUpperCase() : "NÃO INFORMADO"}</span>
+                          <span className="text-xs text-slate-400 block truncate">
+                            {getDistributionSummaryString(r)}
+                          </span>
                         </div>
-                        <div className="flex items-center gap-5 justify-between sm:justify-end">
+                        <div className="flex items-center gap-5 justify-between sm:justify-end shrink-0">
                           <div className="text-right">
                             <span className="text-[9px] text-slate-400 uppercase font-black tracking-wider block">ADMINISTRAÇÃO</span>
                             <span className="text-xs font-black text-slate-800 block">{formatCurrency(r.legacyDoc.valorFidelite)}</span>
@@ -1474,13 +1467,17 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                     onClick={() => setSelectedRentalId(r.id)}
                     className="p-5 bg-white border border-slate-100 hover:border-slate-300 rounded-[24px] shadow-sm select-none hover:shadow-md transition-all duration-200 cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-4"
                   >
-                    <div className="space-y-1">
-                      <h4 className="text-xs font-black text-slate-800 uppercase tracking-tight flex items-center gap-1.5 flex-wrap">
+                    <div className="space-y-1 flex-1 min-w-0">
+                      <h4 className="text-xs font-black text-slate-800 uppercase tracking-tight flex items-center gap-1.5 flex-wrap pb-0.5">
                         <span>{r.imovel}</span>
                         <span className="text-slate-350 font-semibold">—</span>
                         <span className="text-indigo-650 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-lg text-[9px] tracking-wide">{r.competencia.label}</span>
                       </h4>
-                      <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-slate-450 font-bold">
+                      <span className="text-[10px] text-slate-450 uppercase font-black tracking-wider block leading-tight">INQUILINO: {r.inquilino ? r.inquilino.toUpperCase() : "NÃO INFORMADO"}</span>
+                      <span className="text-xs text-slate-400 block truncate pb-1">
+                        {getDistributionSummaryString(r)}
+                      </span>
+                      <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-slate-455 font-bold pt-1 border-t border-slate-100/60">
                         <span>Primeiro Aluguel: <strong className="text-slate-700">{formatCurrency(r.legacyDoc.primeiroAluguel || r.valorAluguel || 0)}</strong></span>
                         <span className="text-slate-300">|</span>
                         <span>Comissão Total: <strong className="text-indigo-650">{formatCurrency(r.legacyDoc.valorFidelite || 0)}</strong></span>
