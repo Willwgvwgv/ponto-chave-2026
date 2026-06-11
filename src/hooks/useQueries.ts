@@ -1021,13 +1021,15 @@ export function useDeleteRentalMutation() {
         await deleteDoc(doc(db, "comissoes", id));
       } catch (err) {
         console.warn("Offline/local fallback para exclusão de comissão de locação:", err);
-        const local = getStoredData();
-        const updatedRentals = local.rentals.filter(r => r.id !== id);
-        saveStoredData({ rentals: updatedRentals });
       }
+      // Sempre remove do armazenamento local para garantir sincronização total
+      const local = getStoredData();
+      const updatedRentals = local.rentals.filter(r => r.id !== id);
+      saveStoredData({ rentals: updatedRentals });
     },
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["rentals", variables.companyId || "default_agency"] });
+      queryClient.invalidateQueries({ queryKey: ["rentals"] });
       toast.success("Comissão de locação removida.");
     },
     onError: (err) => {
