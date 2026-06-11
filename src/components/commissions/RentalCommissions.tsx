@@ -86,7 +86,13 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
   const [aluguelMensal, setAluguelMensal] = useState(initialData?.aluguelMensal || 0);
   const [primeiroAluguel, setPrimeiroAluguel] = useState(initialData?.aluguelMensal || 0);
   const [porcentagemFidelite, setPorcentagemFidelite] = useState(editingRental?.porcentagemFidelite ?? 40);
-  const [porcentagemRepasse, setPorcentagemRepasse] = useState(100 - (editingRental?.porcentagemFidelite ?? 40)); // 40% Fidelité retention, 60% repasse standard
+  const [porcentagemLocador, setPorcentagemLocador] = useState(() => {
+    if (editingRental?.rateio) {
+      const bLoc = editingRental.rateio.find(r => r.papel === "locador" || r.papel === "locacao");
+      return bLoc ? bLoc.porcentagem : 20;
+    }
+    return 20;
+  });
   const [vencimento, setVencimento] = useState("");
   const [mesReferencia, setMesReferencia] = useState(() => {
     const d = new Date();
@@ -95,21 +101,11 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
   const [observacoes, setObservacoes] = useState("");
   const [rateios, setRateios] = useState<RateioComissao[]>([]);
 
-  const handleFideliteChange = (val: number) => {
-    setPorcentagemFidelite(val);
-    setPorcentagemRepasse(Math.max(0, 100 - val));
-  };
-
-  const handleRepasseChange = (val: number) => {
-    setPorcentagemRepasse(val);
-    setPorcentagemFidelite(Math.max(0, 100 - val));
-  };
-
   // Add broker to rateio form
   const [selectedBrokerId, setSelectedBrokerId] = useState("");
-  const [brokerRole, setBrokerRole] = useState<"captador" | "locacao" | "auxiliar" | "locador">("locacao");
-  const [brokerPercent, setBrokerPercent] = useState<number>(0);
-  const [brokerValue, setBrokerValue] = useState<number>(0);
+  const [selectedCaptadorId, setSelectedCaptadorId] = useState("");
+
+  const porcentagemRepasse = useMemo(() => 100 - porcentagemFidelite, [porcentagemFidelite]);
 
   // Modal de pagamento
   const [isPayModalOpen, setIsPayModalOpen] = useState(false);
@@ -140,14 +136,12 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
     setAluguelMensal(0);
     setPrimeiroAluguel(0);
     setPorcentagemFidelite(40);
-    setPorcentagemRepasse(60);
+    setPorcentagemLocador(20);
     setVencimento("");
     setObservacoes("");
     setRateios([]);
     setSelectedBrokerId("");
-    setBrokerRole("locacao");
-    setBrokerPercent(0);
-    setBrokerValue(0);
+    setSelectedCaptadorId("");
     setEditingRental(null);
     if (onClearInitialData) onClearInitialData();
   };
@@ -163,32 +157,49 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
   }, [initialData]);
 
   // DERIVED VALUES FROM FORM
+  const porcentagemCaptadores = useMemo(() => {
+    return Math.max(0, 100 - porcentagemFidelite - porcentagemLocador);
+  }, [porcentagemFidelite, porcentagemLocador]);
+
   const valorFidelite = useMemo(() => {
-    return Math.round((primeiroAluguel * porcentagemFidelite) / 100);
-  }, [primeiroAluguel, porcentagemFidelite]);
+    return Number(((aluguelMensal * porcentagemFidelite) / 100).toFixed(2));
+  }, [aluguelMensal, porcentagemFidelite]);
+
+  const valorLocadorValue = useMemo(() => {
+    return Number(((aluguelMensal * porcentagemLocador) / 100).toFixed(2));
+  }, [aluguelMensal, porcentagemLocador]);
+
+  const valorCaptadoresValue = useMemo(() => {
+    return Number(((aluguelMensal * porcentagemCaptadores) / 100).toFixed(2));
+  }, [aluguelMensal, porcentagemCaptadores]);
 
   const valorRepasseCorretores = useMemo(() => {
-    return primeiroAluguel - valorFidelite;
-  }, [primeiroAluguel, valorFidelite]);
+    return Number((aluguelMensal - valorFidelite).toFixed(2));
+  }, [aluguelMensal, valorFidelite]);
 
-  // Sync value when pool total (valorRepasseCorretores) changes
-  React.useEffect(() => {
-    setBrokerValue(Number(((valorRepasseCorretores * brokerPercent) / 100).toFixed(2)));
-  }, [valorRepasseCorretores]);
+  const computedRateios = useMemo(() => {
+    const locadorCount = rateios.filter(r => r.papel === "locacao").length;
+    const captadorCount = rateios.filter(r => r.papel === "captador").length;
 
-  const handleBrokerPercentChange = (pct: number) => {
-    setBrokerPercent(pct);
-    setBrokerValue(Number(((valorRepasseCorretores * pct) / 100).toFixed(2)));
-  };
-
-  const handleBrokerValueChange = (val: number) => {
-    setBrokerValue(val);
-    if (valorRepasseCorretores > 0) {
-      setBrokerPercent(Number(((val * 100) / valorRepasseCorretores).toFixed(2)));
-    } else {
-      setBrokerPercent(0);
-    }
-  };
+    return rateios.map(r => {
+      if (r.papel === "locacao") {
+        return {
+          ...r,
+          porcentagem: porcentagemLocador,
+          valor: valorLocadorValue
+        };
+      } else if (r.papel === "captador") {
+        const pct = captadorCount > 0 ? Number((porcentagemCaptadores / captadorCount).toFixed(2)) : 0;
+        const val = captadorCount > 0 ? Number((valorCaptadoresValue / captadorCount).toFixed(2)) : 0;
+        return {
+          ...r,
+          porcentagem: pct,
+          valor: val
+        };
+      }
+      return r;
+    });
+  }, [rateios, porcentagemLocador, valorLocadorValue, porcentagemCaptadores, valorCaptadoresValue]);
 
   // STATS
   const stats = useMemo(() => {
@@ -253,30 +264,47 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
   }, [monthlyRentals, filterText, filterStatus]);
 
   // ACTIONS
-  const handleAddBrokerToRateio = () => {
-    const brokerObj = team.find(t => t.id === selectedBrokerId);
-    if (!brokerObj) return;
-
-    if (rateios.some(rt => rt.corretorId === selectedBrokerId)) {
-      alert("Este corretor já foi adicionado.");
+  const setLocadorBroker = (brokerId: string) => {
+    const brokerObj = team.find(t => t.id === brokerId);
+    if (!brokerObj) {
+      setRateios(rateios.filter(r => r.papel !== "locacao"));
       return;
     }
 
-    const val = Number(brokerValue.toFixed(2)) || Number(((valorRepasseCorretores * brokerPercent) / 100).toFixed(2));
-    const pct = Number(brokerPercent.toFixed(2));
+    const cleanRateios = rateios.filter(r => r.papel !== "locacao");
+    const newLocador: RateioComissao = {
+      corretorId: brokerId,
+      corretorNome: brokerObj.name,
+      papel: "locacao",
+      porcentagem: porcentagemLocador,
+      valor: valorLocadorValue
+    };
+    setRateios([...cleanRateios, newLocador]);
+  };
+
+  const handleAddCaptador = (brokerId: string) => {
+    if (!brokerId) {
+      alert("Selecione um corretor para incluir como captador.");
+      return;
+    }
+    const brokerObj = team.find(t => t.id === brokerId);
+    if (!brokerObj) return;
+
+    if (rateios.some(rt => rt.corretorId === brokerId)) {
+      alert("Este corretor já está adicionado no rateio.");
+      return;
+    }
 
     const newRateio: RateioComissao = {
-      corretorId: selectedBrokerId,
+      corretorId: brokerId,
       corretorNome: brokerObj.name,
-      papel: brokerRole,
-      porcentagem: pct,
-      valor: val
+      papel: "captador",
+      porcentagem: 0,
+      valor: 0
     };
 
     setRateios([...rateios, newRateio]);
-    setSelectedBrokerId("");
-    setBrokerPercent(0);
-    setBrokerValue(0);
+    setSelectedCaptadorId("");
   };
 
   const handleRemoveBrokerFromRateio = (id: string) => {
@@ -290,16 +318,24 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
       return;
     }
 
-    const totalRateioPercent = rateios.reduce((acc, r) => acc + (r.porcentagem || 0), 0);
-    if (rateios.length > 0 && Math.abs(totalRateioPercent - 100) > 0.1) {
-      alert(`As porcentagens dos corretores somam ${totalRateioPercent}%. Devem somar exatamente 100%.`);
+    if (porcentagemFidelite + porcentagemLocador > 100) {
+      alert("A soma das porcentagens da Imobiliária e do Locador não pode ultrapassar 100%.");
       return;
     }
 
-    const updatedRateiosWithRecalculatedValues = rateios.map(r => ({
-      ...r,
-      valor: Number(((valorRepasseCorretores * (r.porcentagem || 0)) / 100).toFixed(2))
-    }));
+    const hasLocadorBroker = rateios.some(r => r.papel === "locador" || r.papel === "locacao");
+    if (porcentagemLocador > 0 && !hasLocadorBroker) {
+      alert("Por favor, selecione um Corretor Locador, já que o percentual do locador é maior que 0%.");
+      return;
+    }
+
+    const hasCaptadorBroker = rateios.some(r => r.papel === "captador");
+    if (porcentagemCaptadores > 0 && !hasCaptadorBroker) {
+      alert(`Por favor, adicione pelo menos um Corretor Captador para receber a parte de captação (${porcentagemCaptadores}%).`);
+      return;
+    }
+
+    const updatedRateiosWithRecalculatedValues = computedRateios;
 
     if (editingRental) {
       const updatedRec: Comissao = {
@@ -497,7 +533,9 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                   setAluguelMensal(selectedRental.aluguelMensal || 0);
                   setPrimeiroAluguel(selectedRental.primeiroAluguel || selectedRental.aluguelMensal || 0);
                   setPorcentagemFidelite(selectedRental.porcentagemFidelite ?? 40);
-                  setPorcentagemRepasse(100 - (selectedRental.porcentagemFidelite ?? 40));
+
+                  const locadorItem = selectedRental.rateio?.find(r => r.papel === "locador" || r.papel === "locacao");
+                  setPorcentagemLocador(locadorItem ? locadorItem.porcentagem : 20);
                   
                   setVencimento(selectedRental.vencimento || "");
                   setMesReferencia(selectedRental.mesReferencia || "");
@@ -766,40 +804,59 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">% de Retenção da Fidelité</label>
+                    <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">% da Imobiliária (Fidelité)</label>
                     <input 
                       type="number" 
                       value={porcentagemFidelite || 0} 
-                      onChange={e => handleFideliteChange(Number(e.target.value))} 
+                      onChange={e => setPorcentagemFidelite(Number(e.target.value))} 
                       required 
                       className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-xs font-bold transition-all"
                     />
                   </div>
                   <div>
-                    <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">% de Repasse aos Corretores (Pool)</label>
+                    <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">% do Locador</label>
                     <input 
                       type="number" 
-                      value={porcentagemRepasse || 0} 
-                      onChange={e => handleRepasseChange(Number(e.target.value))} 
+                      value={porcentagemLocador || 0} 
+                      onChange={e => setPorcentagemLocador(Number(e.target.value))} 
                       required 
                       className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-xs font-bold transition-all"
                     />
                   </div>
                 </div>
 
+                <div>
+                  <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">% dos Captadores (Calculado Automaticamente)</label>
+                  <input 
+                    type="text" 
+                    readOnly
+                    value={`${porcentagemCaptadores}%`} 
+                    className="w-full px-4 py-3 bg-slate-100 border border-slate-200 rounded-xl text-xs font-black text-slate-500 font-mono select-none"
+                  />
+                  {porcentagemFidelite + porcentagemLocador > 100 && (
+                    <p className="text-red-500 font-bold text-[10px] uppercase tracking-wider animate-pulse mt-1.5">
+                      ⚠️ Atenção: A soma das porcentagens ultrapassa 100%!
+                    </p>
+                  )}
+                </div>
+
                 {/* Box de Resumo Financeiro Visual (Fundo Azul Claro) */}
                 <div className="bg-sky-50 border border-sky-100 p-4 rounded-2xl text-xs space-y-2.5 shadow-sm">
                   <div className="flex justify-between items-center text-slate-600">
-                    <span className="font-semibold">Valor do Aluguel:</span>
-                    <span className="font-bold text-slate-800 font-mono">{formatCurrency(primeiroAluguel)}</span>
+                    <span className="font-semibold">Valor da Locação (100%):</span>
+                    <span className="font-bold text-slate-800 font-mono">{formatCurrency(aluguelMensal)}</span>
                   </div>
                   <div className="flex justify-between items-center text-slate-600">
-                    <span>Retenção Fidelité ({porcentagemFidelite}%):</span>
-                    <span className="font-bold text-red-600 font-mono">- {formatCurrency(valorFidelite)}</span>
+                    <span>Imobiliária (Fidelité) ({porcentagemFidelite}%):</span>
+                    <span className="font-bold text-indigo-600 font-mono">{formatCurrency(valorFidelite)}</span>
                   </div>
-                  <div className="border-t border-sky-200/50 pt-2 flex justify-between items-center text-emerald-600 font-bold">
-                    <span>Pool Corretores ({porcentagemRepasse}%):</span>
-                    <span className="font-extrabold text-emerald-600 font-mono">= {formatCurrency(valorRepasseCorretores)}</span>
+                  <div className="flex justify-between items-center text-slate-600">
+                    <span>Locador ({porcentagemLocador}%):</span>
+                    <span className="font-bold text-amber-600 font-mono">{formatCurrency(valorLocadorValue)}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-slate-600 font-bold text-emerald-600">
+                    <span>Captadores ({porcentagemCaptadores}%):</span>
+                    <span className="font-extrabold font-mono">{formatCurrency(valorCaptadoresValue)}</span>
                   </div>
                 </div>
               </div>
@@ -808,66 +865,44 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
             {/* Bloco 2: Rateio entre Corretores */}
             <div className="space-y-5 bg-slate-50/50 p-6 rounded-3xl border border-slate-100 flex flex-col justify-between">
               <div className="space-y-4">
-                <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest border-b border-light pb-1">2. Rateio do Pool</h3>
+                <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest border-b border-light pb-1">2. Integrantes do Rateio</h3>
 
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-3 bg-white p-4 border border-slate-100 rounded-2xl shadow-sm">
-                  <div className="col-span-1 md:col-span-4">
-                    <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Escolher Corretor</label>
+                <div className="space-y-3 bg-white p-4 border border-slate-100 rounded-2xl shadow-sm">
+                  <div>
+                    <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Corretor Locador ({porcentagemLocador}%)</label>
                     <select
-                      value={selectedBrokerId}
-                      onChange={e => setSelectedBrokerId(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold"
+                      value={rateios.find(r => r.papel === "locador" || r.papel === "locacao")?.corretorId || ""}
+                      onChange={e => setLocadorBroker(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none"
                     >
-                      <option value="">Selecione...</option>
-                      {team.map(b => {
-                        const roleLabel = b.role === "ADMIN" ? "Admin" : b.role === "BROKER" ? "Corretor" : b.role === "MANAGER" ? "Gerente" : b.role;
-                        return (
-                          <option key={b.id} value={b.id}>{b.name} ({roleLabel})</option>
-                        );
-                      })}
+                      <option value="">Selecione o locador...</option>
+                      {team.map(b => (
+                        <option key={b.id} value={b.id}>{b.name}</option>
+                      ))}
                     </select>
                   </div>
-                  <div>
-                    <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Função</label>
-                    <select
-                      value={brokerRole}
-                      onChange={e => setBrokerRole(e.target.value as any)}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold"
-                    >
-                      <option value="locacao">Locador</option>
-                      <option value="captador">Captador</option>
-                      <option value="auxiliar">Auxiliar</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Porcentagem (%)</label>
-                    <input 
-                      type="number" 
-                      value={brokerPercent || ""} 
-                      onChange={e => handleBrokerPercentChange(Number(e.target.value))} 
-                      placeholder="0"
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Valor (R$)</label>
-                    <input 
-                      type="number" 
-                      step="any"
-                      value={brokerValue || ""} 
-                      onChange={e => handleBrokerValueChange(Number(e.target.value))} 
-                      placeholder="0.00"
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold"
-                    />
-                  </div>
-                  <div className="flex items-end">
-                    <button
-                      type="button"
-                      onClick={handleAddBrokerToRateio}
-                      className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all shadow-md shadow-indigo-500/15 font-bold"
-                    >
-                      Incluir
-                    </button>
+
+                  <div className="border-t border-slate-100 pt-3">
+                    <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Adicionar Corretor Captador ({porcentagemCaptadores}%)</label>
+                    <div className="flex gap-2">
+                      <select
+                        value={selectedCaptadorId}
+                        onChange={e => setSelectedCaptadorId(e.target.value)}
+                        className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none"
+                      >
+                        <option value="">Selecione para incluir...</option>
+                        {team.map(b => (
+                          <option key={b.id} value={b.id}>{b.name}</option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => handleAddCaptador(selectedCaptadorId)}
+                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all shadow-md font-bold"
+                      >
+                        Incluir
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -875,55 +910,40 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                 <div className="space-y-2 pt-2 border-t border-slate-100">
                   <div className="flex justify-between items-center text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                     <span>Progresso de Alocação</span>
-                    {(() => {
-                      const sumPercent = Number(rateios.reduce((acc, r) => acc + (r.porcentagem || 0), 0).toFixed(2));
-                      let textColor = "text-amber-600";
-                      if (sumPercent === 100) textColor = "text-emerald-600";
-                      else if (sumPercent > 100) textColor = "text-red-600";
-                      return (
-                        <span className={`${textColor} font-extrabold`}>
-                          {sumPercent.toFixed(2).replace(/\.00$/, "")}% / 100%
-                        </span>
-                      );
-                    })()}
+                    <span className="text-emerald-600 font-extrabold font-mono">
+                      {Math.min(100, porcentagemFidelite + porcentagemLocador)}% / 100%
+                    </span>
                   </div>
                   <div className="w-full bg-slate-150 rounded-full h-2 overflow-hidden border border-slate-200/40">
-                    {(() => {
-                      const sumPercent = Number(rateios.reduce((acc, r) => acc + (r.porcentagem || 0), 0).toFixed(2));
-                      let barColor = "bg-amber-500";
-                      if (sumPercent === 100) barColor = "bg-emerald-500";
-                      else if (sumPercent > 100) barColor = "bg-red-500";
-                      return (
-                        <div 
-                          className={`h-full transition-all duration-350 ${barColor}`} 
-                          style={{ width: `${Math.min(100, sumPercent)}%` }}
-                        />
-                      );
-                    })()}
+                    <div 
+                      className="h-full transition-all duration-350 bg-emerald-500" 
+                      style={{ width: `${Math.min(100, porcentagemFidelite + porcentagemLocador)}%` }}
+                    />
                   </div>
                 </div>
 
                 {/* Grid rateios adicionados */}
                 {rateios.length === 0 ? (
-                  <p className="text-xs text-slate-400 font-bold text-center italic py-6">Adicione os corretores do rateio acima.</p>
+                  <p className="text-xs text-slate-400 font-bold text-center italic py-6">Adicione os integrantes do rateio acima.</p>
                 ) : (
                   <div className="space-y-2 max-h-[180px] overflow-y-auto">
-                    {rateios.map((rt, idx) => {
-                      const computedVal = Number(((valorRepasseCorretores * (rt.porcentagem || 0)) / 100).toFixed(2));
+                    {computedRateios.map((rt, idx) => {
                       return (
-                        <div key={rt.corretorId || idx} className="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-xl shadow-sm text-xs select-none hover:bg-slate-50/50 transition-all">
+                        <div key={rt.corretorId || idx} className="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-xl shadow-sm text-xs select-none hover:bg-slate-50/50 transition-all animate-fade-in">
                           <div className="space-y-0.5">
                             <p className="font-bold text-slate-800">{rt.corretorNome}</p>
                             <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-semibold uppercase tracking-wider">
-                              <span className="px-1.5 py-0.5 bg-slate-100/80 rounded text-[9px] text-slate-500 font-bold border border-slate-200/50">
-                                {rt.papel === "locacao" ? "Locador" : rt.papel === "captador" ? "Captador" : "Auxiliar"}
+                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold border ${
+                                rt.papel === "locador" || rt.papel === "locacao" ? "bg-amber-100/75 border-amber-300 text-amber-600" : "bg-emerald-100/75 border-emerald-300 text-emerald-600"
+                              }`}>
+                                {rt.papel === "locador" || rt.papel === "locacao" ? "Locador" : "Captador"}
                               </span>
                               <span>•</span>
-                              <span>{Number(rt.porcentagem).toFixed(2).replace(/\.00$/, "")}% do pool</span>
+                              <span>{Number(rt.porcentagem).toFixed(2).replace(/\.00$/, "")}%</span>
                             </div>
                           </div>
-                          <div className="flex items-center gap-2.5">
-                            <span className="font-extrabold text-slate-850 font-mono">{formatCurrency(computedVal)}</span>
+                          <div className="flex items-center gap-2.5 font-bold">
+                            <span className="font-extrabold text-slate-850 font-mono">{formatCurrency(rt.valor)}</span>
                             <button
                               type="button"
                               onClick={() => handleRemoveBrokerFromRateio(rt.corretorId)}

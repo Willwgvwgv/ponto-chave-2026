@@ -114,6 +114,15 @@ import {
   isDemoMode
 } from "./firebase";
 
+import { getApp } from "firebase/app";
+import { 
+  getFirestore, 
+  collection as rawCollection, 
+  getDocs as rawGetDocs, 
+  doc as rawDoc, 
+  setDoc as rawSetDoc 
+} from "firebase/firestore";
+
 const handleOpenAttachment = (url: string, name: string) => {
   if (!url) return;
   
@@ -6716,6 +6725,100 @@ const SettingsView = ({ companySettings, isAdmin, onNavigate }: { companySetting
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
+  const { confirm } = useConfirm();
+  const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "success" | "error">("idle");
+  const [syncMessage, setSyncMessage] = useState("");
+  const [syncCollectionProgress, setSyncCollectionProgress] = useState<{
+    [key: string]: { status: "pending" | "syncing" | "done" | "error"; count: number };
+  }>({
+    users: { status: "pending", count: 0 },
+    sales: { status: "pending", count: 0 },
+    broker_splits: { status: "pending", count: 0 },
+    comissoes: { status: "pending", count: 0 },
+    companies: { status: "pending", count: 0 },
+  });
+
+  const handleSyncFromProduction = async () => {
+    if (!isAdmin) return;
+    setSyncStatus("syncing");
+    setSyncMessage("Conectando ao Firebase e inicializando instâncias do Firestore...");
+    
+    const resetProgress = {
+      users: { status: "pending" as const, count: 0 },
+      sales: { status: "pending" as const, count: 0 },
+      broker_splits: { status: "pending" as const, count: 0 },
+      comissoes: { status: "pending" as const, count: 0 },
+      companies: { status: "pending" as const, count: 0 },
+    };
+    setSyncCollectionProgress(resetProgress);
+
+    try {
+      const appInstance = getApp();
+      const prodDbInstance = getFirestore(appInstance, "ai-studio-75e4efee-79fe-4917-aaa8-4778a3596864");
+      const sandboxDbInstance = getFirestore(appInstance, "ai-studio-44ae2ba8-8a58-4205-8f05-6b2cdd615644");
+      
+      const collectionsToSync = ["users", "sales", "broker_splits", "comissoes", "companies"];
+      let totalCopied = 0;
+
+      for (const colName of collectionsToSync) {
+        setSyncMessage(`Sincronizando registros da coleção: "${colName}"...`);
+        setSyncCollectionProgress(prev => ({
+          ...prev,
+          [colName]: { ...prev[colName], status: "syncing" }
+        }));
+
+        try {
+          const prodColRef = rawCollection(prodDbInstance, colName);
+          const snapshot = await rawGetDocs(prodColRef);
+          
+          let count = 0;
+          for (const rawDocSnap of snapshot.docs) {
+            const docId = rawDocSnap.id;
+            const docData = rawDocSnap.data();
+
+            const sandboxDocRef = rawDoc(sandboxDbInstance, colName, docId);
+            await rawSetDoc(sandboxDocRef, docData, { merge: true });
+            
+            count++;
+            totalCopied++;
+            
+            setSyncCollectionProgress(prev => ({
+              ...prev,
+              [colName]: { ...prev[colName], count }
+            }));
+          }
+
+          setSyncCollectionProgress(prev => ({
+            ...prev,
+            [colName]: { status: "done", count }
+          }));
+
+        } catch (colErr: any) {
+          console.error(`Erro ao sincronizar partição ${colName}:`, colErr);
+          setSyncCollectionProgress(prev => ({
+            ...prev,
+            [colName]: { ...prev[colName], status: "error" }
+          }));
+          throw new Error(`Falha na coleção "${colName}": ${colErr?.message || colErr}`);
+        }
+      }
+
+      setSyncStatus("success");
+      setSyncMessage(`Sincronização concluída com sucesso! Total de ${totalCopied} registros copiados de produção para o sandbox.`);
+      toast.success("Dados de produção sincronizados com o sandbox!");
+
+      setTimeout(() => {
+        window.location.reload();
+      }, 2500);
+
+    } catch (err: any) {
+      console.error("Erro na sincronização:", err);
+      setSyncStatus("error");
+      setSyncMessage(err.message || "Erro desconhecido ao ler dados do banco de produção.");
+      toast.error("Erro na sincronização.");
+    }
+  };
+
   useEffect(() => {
     if (companySettings) {
       setName(companySettings.name);
@@ -6975,6 +7078,94 @@ const SettingsView = ({ companySettings, isAdmin, onNavigate }: { companySetting
           </button>
         </form>
       </div>
+
+      {/* FERRAMENTA DE SINCRONIZAÇÃO DE DADOS DE PRODUÇÃO PARA SANDBOX */}
+      {isAdmin && (
+        <div className="bg-slate-950 text-white rounded-[40px] border border-slate-800 shadow-xl overflow-hidden p-8 space-y-6">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 bg-blue-500/10 text-blue-400 rounded-2xl flex items-center justify-center shrink-0">
+              <Database className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="text-lg font-black tracking-tight flex items-center gap-2">
+                Sincronizador de Produção para Sandbox
+                <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 rounded-full text-[9px] font-bold uppercase tracking-wider animate-pulse">
+                  Admin Tool
+                </span>
+              </h3>
+              <p className="text-[11px] text-slate-400 font-medium leading-relaxed mt-1">
+                Importe os dados reais do banco de dados de produção do Firestore (<code className="text-blue-300 font-mono">ai-studio-75e4efee...</code>) diretamente para este sandbox ativo. Isso copiará com segurança as coleções selecionadas.
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-3 bg-slate-900/40 p-5 rounded-3xl border border-slate-900 text-xs">
+            <h4 className="text-[10px] font-black uppercase text-slate-500 tracking-wider mb-2">Coleções a serem copiadas:</h4>
+            
+            <div className="space-y-2">
+              {[
+                { key: "users", label: "Colaboradores (users)" },
+                { key: "sales", label: "Vendas Registradas (sales)" },
+                { key: "broker_splits", label: "Divisões/Splits de Corretores (broker_splits)" },
+                { key: "comissoes", label: "Comissões e Lançamentos (comissoes)" },
+                { key: "companies", label: "Dados de Agências/Parceiros (companies)" }
+              ].map(item => {
+                const prog = syncCollectionProgress[item.key] || { status: "pending", count: 0 };
+                return (
+                  <div key={item.key} className="flex items-center justify-between p-2.5 bg-slate-900/60 rounded-xl border border-slate-800/40">
+                    <span className="font-semibold text-slate-300">{item.label}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] bg-slate-800 text-slate-400 px-2.5 py-0.5 rounded-full font-bold">
+                        {prog.count} regs
+                      </span>
+                      {prog.status === "pending" && (
+                        <span className="w-2.5 h-2.5 bg-slate-600 rounded-full" title="Pendente" />
+                      )}
+                      {prog.status === "syncing" && (
+                        <div className="w-3.5 h-3.5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                      )}
+                      {prog.status === "done" && (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                      )}
+                      {prog.status === "error" && (
+                        <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {syncStatus !== "idle" && (
+            <div className={`p-4 rounded-2xl border text-xs leading-relaxed ${
+              syncStatus === "syncing" ? "bg-blue-950/40 border-blue-900/40 text-blue-300" :
+              syncStatus === "success" ? "bg-emerald-950/40 border-emerald-900/40 text-emerald-300" :
+              "bg-red-950/40 border-red-900/40 text-red-300"
+            }`}>
+              <p className="font-bold mb-1">Status do Processo:</p>
+              <p className="font-medium">{syncMessage}</p>
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() => {
+              confirm({
+                title: "Confirmar Sincronização de Produção?",
+                message: "Esta ação fará o pull dos dados das coleções de Produção e inserirá no Sandbox Atual, mesclando de forma segura sem deletar outros registros exclusivos. Deseja prosseguir?",
+                confirmColor: "blue",
+                onConfirm: handleSyncFromProduction
+              });
+            }}
+            disabled={syncStatus === "syncing"}
+            className="w-full py-4.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white rounded-2xl font-bold uppercase tracking-widest text-xs shadow-lg shadow-blue-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:scale-100"
+          >
+            <Zap className="w-4.5 h-4.5 shrink-0" />
+            {syncStatus === "syncing" ? "Sincronizando Banco de Produção..." : "Puxar Coleções de Produção"}
+          </button>
+        </div>
+      )}
 
       <div className="space-y-4">
         <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">Atalhos de Gestão</h3>
