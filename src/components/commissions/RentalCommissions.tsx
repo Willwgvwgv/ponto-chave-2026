@@ -20,7 +20,10 @@ import {
   Shield,
   FileText,
   Banknote,
-  Clock
+  Clock,
+  Home,
+  Building2,
+  Users
 } from "lucide-react";
 import { Comissao, RateioComissao, PagamentoCorretor, ComissoneUser, UserProfile } from "../../types";
 import { ConfirmModal } from "../ui/ConfirmModal";
@@ -87,6 +90,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
   const [filterStatus, setFilterStatus] = useState<string>("TUDO");
   const [selectedMonthFilter, setSelectedMonthFilter] = useState<string>("TODOS");
   const [dashboardStatusFilter, setDashboardStatusFilter] = useState<string>("TODOS");
+  const [activeCardFilter, setActiveCardFilter] = useState<"CARD1" | "CARD2" | "CARD3" | "CARD4" | null>(null);
 
   // Recebimento Manual Form state
   const [receiptDate, setReceiptDate] = useState(() => new Date().toISOString().split("T")[0]);
@@ -266,6 +270,61 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
     // legacy backward compat atraso trigger
     return monthlyModels.filter(r => r.statusFinanceiro === "aguardando" && r.legacyDoc.status === "atraso").length;
   }, [monthlyModels]);
+
+  // FILTERED MODELS BY STATUS PILL
+  const currentFiltered = useMemo(() => {
+    return monthlyModels.filter(r => dashboardStatusFilter === "TODOS" || r.statusFinanceiro === dashboardStatusFilter);
+  }, [monthlyModels, dashboardStatusFilter]);
+
+  // CARD 1 VALUE — Comissões Primeiro Aluguel
+  const card1Value = useMemo(() => {
+    return currentFiltered.reduce((acc, r) => acc + (r.legacyDoc.primeiroAluguel || r.valorAluguel || 0), 0);
+  }, [currentFiltered]);
+
+  // CARD 2 VALUE — Comissões Imobiliária
+  const card2Value = useMemo(() => {
+    return currentFiltered.reduce((acc, r) => {
+      const primeiroAluguel = r.legacyDoc.primeiroAluguel || r.valorAluguel || 0;
+      const pctFidelite = r.legacyDoc.porcentagemFidelite !== undefined ? r.legacyDoc.porcentagemFidelite : 40;
+      return acc + ((primeiroAluguel * pctFidelite) / 100);
+    }, 0);
+  }, [currentFiltered]);
+
+  // CARD 3 VALUE — Comissões Corretores
+  const card3Value = useMemo(() => {
+    return currentFiltered.reduce((acc, r) => {
+      const primeiroAluguel = r.legacyDoc.primeiroAluguel || r.valorAluguel || 0;
+      const brokerSum = (r.legacyDoc.rateio || []).reduce((sum, item) => {
+        if (item.papel === "captador") {
+          return sum + ((primeiroAluguel * item.porcentagem) / 100);
+        }
+        return sum;
+      }, 0);
+      return acc + brokerSum;
+    }, 0);
+  }, [currentFiltered]);
+
+  // CARD 4 VALUES — Repasses
+  const card4Data = useMemo(() => {
+    let pagos = 0;
+    let aPagar = 0;
+    currentFiltered.forEach(r => {
+      (r.distribuicao || []).forEach(d => {
+        pagos += (d.totalPago || 0);
+        aPagar += Math.max(0, (d.valor || 0) - (d.totalPago || 0));
+      });
+    });
+    return { pagos, aPagar };
+  }, [currentFiltered]);
+
+  // Toggle card active filter
+  const handleCardClick = (cardId: "CARD1" | "CARD2" | "CARD3" | "CARD4") => {
+    if (activeCardFilter === cardId) {
+      setActiveCardFilter(null);
+    } else {
+      setActiveCardFilter(cardId);
+    }
+  };
 
   // FILTERED RENTALS FOR THE RESTURED LIST
   const filteredRentals = useMemo(() => {
@@ -1148,6 +1207,92 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
             <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 bg-slate-100 px-2.5 py-1 rounded-lg">Visão Geral</span>
           </div>
 
+          {/* 4 Summary Cards Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Card 1 — Comissões Primeiro Aluguel */}
+            <div 
+              onClick={() => handleCardClick("CARD1")}
+              className={`p-5 rounded-2xl bg-blue-50/70 hover:bg-blue-50 border border-blue-200/80 cursor-pointer shadow-sm hover:shadow-md transition-all duration-200 flex items-center justify-between ${
+                activeCardFilter === "CARD1" ? "ring-2 ring-blue-500 ring-offset-1 border-blue-500 bg-blue-100/40" : ""
+              }`}
+            >
+              <div className="space-y-1">
+                <span className="text-[10px] font-black uppercase text-blue-500 tracking-wider font-sans">
+                  {activeCardFilter === "CARD1" ? "★ FILTRANDO" : "Primeiro Aluguel"}
+                </span>
+                <h4 className="text-xl font-extrabold text-slate-800 font-mono tracking-tight">{formatCurrency(card1Value)}</h4>
+                <p className="text-[9px] font-semibold text-slate-400 font-sans">Total das comissões</p>
+              </div>
+              <div className="p-3 bg-blue-100 text-blue-600 rounded-xl">
+                <Home className="w-5 h-5" />
+              </div>
+            </div>
+
+            {/* Card 2 — Comissões Imobiliária */}
+            <div 
+              onClick={() => handleCardClick("CARD2")}
+              className={`p-5 rounded-2xl bg-emerald-50/70 hover:bg-emerald-50 border border-emerald-200/80 cursor-pointer shadow-sm hover:shadow-md transition-all duration-200 flex items-center justify-between ${
+                activeCardFilter === "CARD2" ? "ring-2 ring-emerald-500 ring-offset-1 border-emerald-500 bg-emerald-100/40" : ""
+              }`}
+            >
+              <div className="space-y-1">
+                <span className="text-[10px] font-black uppercase text-emerald-600 tracking-wider font-sans">
+                  {activeCardFilter === "CARD2" ? "★ FILTRANDO" : "Imobiliária"}
+                </span>
+                <h4 className="text-xl font-extrabold text-slate-800 font-mono tracking-tight">{formatCurrency(card2Value)}</h4>
+                <p className="text-[9px] font-semibold text-slate-400 font-sans">Comissão retida</p>
+              </div>
+              <div className="p-3 bg-emerald-100 text-emerald-600 rounded-xl">
+                <Building2 className="w-5 h-5" />
+              </div>
+            </div>
+
+            {/* Card 3 — Comissões Corretores */}
+            <div 
+              onClick={() => handleCardClick("CARD3")}
+              className={`p-5 rounded-2xl bg-purple-50/70 hover:bg-purple-50 border border-purple-200/80 cursor-pointer shadow-sm hover:shadow-md transition-all duration-200 flex items-center justify-between ${
+                activeCardFilter === "CARD3" ? "ring-2 ring-purple-500 ring-offset-1 border-purple-500 bg-purple-100/40" : ""
+              }`}
+            >
+              <div className="space-y-1">
+                <span className="text-[10px] font-black uppercase text-purple-600 tracking-wider font-sans">
+                  {activeCardFilter === "CARD3" ? "★ FILTRANDO" : "Corretores"}
+                </span>
+                <h4 className="text-xl font-extrabold text-slate-800 font-mono tracking-tight">{formatCurrency(card3Value)}</h4>
+                <p className="text-[9px] font-semibold text-slate-400 font-sans">Comissão captadores</p>
+              </div>
+              <div className="p-3 bg-purple-100 text-purple-600 rounded-xl">
+                <Users className="w-5 h-5" />
+              </div>
+            </div>
+
+            {/* Card 4 — Repasses */}
+            <div 
+              onClick={() => handleCardClick("CARD4")}
+              className={`p-5 rounded-2xl bg-orange-50/70 hover:bg-orange-50 border border-orange-200/80 cursor-pointer shadow-sm hover:shadow-md transition-all duration-200 flex items-center justify-between ${
+                activeCardFilter === "CARD4" ? "ring-2 ring-orange-500 ring-offset-1 border-orange-500 bg-orange-100/40" : ""
+              }`}
+            >
+              <div className="space-y-1 flex-1">
+                <span className="text-[10px] font-black uppercase text-orange-600 tracking-wider font-sans">
+                  {activeCardFilter === "CARD4" ? "★ FILTRANDO" : "Repasses"}
+                </span>
+                <div className="space-y-0.5 font-sans">
+                  <p className="text-[11px] font-extrabold text-emerald-600 font-mono tracking-tight">
+                    {formatCurrency(card4Data.pagos)} <span className="text-[9px] uppercase font-black text-slate-400">Pagos</span>
+                  </p>
+                  <p className="text-[11px] font-extrabold text-orange-600 font-mono tracking-tight">
+                    {formatCurrency(card4Data.aPagar)} <span className="text-[9px] uppercase font-black text-slate-400">A pagar</span>
+                  </p>
+                </div>
+                <p className="text-[9px] font-semibold text-slate-400 font-sans">Pagos / A pagar</p>
+              </div>
+              <div className="p-3 bg-orange-100 text-orange-600 rounded-xl shrink-0">
+                <ArrowRightLeft className="w-5 h-5" />
+              </div>
+            </div>
+          </div>
+
           {/* Quick List under dashboard */}
           <div className="bg-white border border-slate-100 p-6 md:p-8 rounded-[32px] shadow-sm space-y-4">
             <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center pb-4 border-b border-slate-100 gap-4">
@@ -1177,7 +1322,10 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                 return (
                   <button
                     key={f.id}
-                    onClick={() => setDashboardStatusFilter(f.id)}
+                    onClick={() => {
+                      setDashboardStatusFilter(f.id);
+                      setActiveCardFilter(null);
+                    }}
                     className={`px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest cursor-pointer transition-all ${
                       isActive 
                         ? "bg-slate-900 text-white shadow-sm font-black" 
@@ -1193,12 +1341,32 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
             {/* Filtered rental models rendering */}
             {monthlyModels.length === 0 ? (
               <p className="text-xs text-slate-400 italic text-center py-10 border border-dashed border-slate-200 rounded-3xl">Nenhuma competência financeira cadastrada.</p>
-            ) : monthlyModels.filter(r => dashboardStatusFilter === "TODOS" || r.statusFinanceiro === dashboardStatusFilter).length === 0 ? (
+            ) : currentFiltered.length === 0 ? (
               <p className="text-xs text-slate-400 italic text-center py-10 border border-dashed border-slate-200 rounded-3xl">Nenhum contrato corresponde a este filtro de comissão.</p>
+            ) : currentFiltered.filter(r => {
+              if (!activeCardFilter) return true;
+              if (activeCardFilter === "CARD1") return true;
+              if (activeCardFilter === "CARD2") return (r.legacyDoc.porcentagemFidelite ?? 40) > 0;
+              if (activeCardFilter === "CARD3") return (r.legacyDoc.rateio || []).some(item => item.papel === "captador");
+              if (activeCardFilter === "CARD4") {
+                return (r.distribuicao || []).some(d => (d.totalPago || 0) < (d.valor || 0));
+              }
+              return true;
+            }).length === 0 ? (
+              <p className="text-xs text-slate-400 italic text-center py-10 border border-dashed border-slate-200 rounded-3xl">Nenhum contrato corresponde ao card de destaque selecionado.</p>
             ) : (
               <div className="space-y-3 pt-2">
-                {monthlyModels
-                  .filter(r => dashboardStatusFilter === "TODOS" || r.statusFinanceiro === dashboardStatusFilter)
+                {currentFiltered
+                  .filter(r => {
+                    if (!activeCardFilter) return true;
+                    if (activeCardFilter === "CARD1") return true;
+                    if (activeCardFilter === "CARD2") return (r.legacyDoc.porcentagemFidelite ?? 40) > 0;
+                    if (activeCardFilter === "CARD3") return (r.legacyDoc.rateio || []).some(item => item.papel === "captador");
+                    if (activeCardFilter === "CARD4") {
+                      return (r.distribuicao || []).some(d => (d.totalPago || 0) < (d.valor || 0));
+                    }
+                    return true;
+                  })
                   .slice(0, 8)
                   .map((r, rIdx) => {
                     return (
