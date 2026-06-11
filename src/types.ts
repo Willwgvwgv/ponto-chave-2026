@@ -345,6 +345,14 @@ export interface FinancialCategory {
   icon: string;           // nome do ícone lucide
   isDefault: boolean;     // categorias padrão não podem ser excluídas
   createdAt: any;
+
+  // Novos campos do DRE gerencial imobiliário
+  nome: string;
+  grupo: 'locacao' | 'caixa';
+  natureza: 'entrada' | 'saida';
+  comportamento: 'fixo' | 'variavel' | 'nao_aplicavel';
+  origem: 'locacao' | 'venda' | 'administracao' | 'servicos' | 'outros';
+  agencyId?: string;
 }
 
 export interface FinancialTransaction {

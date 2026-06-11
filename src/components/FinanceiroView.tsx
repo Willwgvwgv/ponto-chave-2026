@@ -92,28 +92,66 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
 
     const q = query(collection(db, "financial_categories"), where("companyId", "==", companyId));
     const unsubscribe = onSnapshot(q, async (snapshot) => {
-      let data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FinancialCategory));
+      let data = snapshot.docs.map(doc => {
+        const cat = doc.data() as any;
+        
+        // Intelligent backwards compatibility fallbacks
+        const naturezaVal = cat.natureza || (cat.type === 'RECEITA' ? 'entrada' : 'saida');
+        const grupoVal = cat.grupo || (
+          cat.group === 'Locações' ? 'locacao' : 
+          ['Pessoal', 'Estrutura', 'Marketing', 'Tecnologia', 'Impostos', 'Deslocamento', 'Diversas', 'Caixa'].includes(cat.group) ? 'caixa' : 'caixa'
+        );
+        let comportamentoVal = cat.comportamento;
+        if (!comportamentoVal) {
+          if (naturezaVal === 'entrada') {
+            comportamentoVal = 'nao_aplicavel';
+          } else {
+            comportamentoVal = ['Aluguel Escritório', 'Internet', 'Telefone', 'Energia', 'Pró-labore', 'Salários', 'Imobilead', 'Contador', 'Assinaturas'].includes(cat.name) ? 'fixo' : 'variavel';
+          }
+        }
+        let origemVal = cat.origem;
+        if (!origemVal) {
+          if (cat.name === 'Comissão de Venda' || cat.name === 'Comissão de Locação') {
+            origemVal = 'venda';
+          } else if (cat.name === 'Taxa de Administração' || cat.name === 'Honorários') {
+            origemVal = 'administracao';
+          } else {
+            origemVal = grupoVal === 'locacao' ? 'locacao' : 'outros';
+          }
+        }
+
+        return {
+          id: doc.id,
+          ...cat,
+          name: cat.name || cat.nome || '',
+          nome: cat.nome || cat.name || '',
+          type: cat.type || (naturezaVal === 'entrada' ? 'RECEITA' : 'DESPESA'),
+          group: cat.group || (grupoVal === 'locacao' ? 'Locações' : 'Caixa'),
+          grupo: grupoVal,
+          natureza: naturezaVal,
+          comportamento: comportamentoVal,
+          origem: origemVal
+        } as FinancialCategory;
+      });
 
       // Auto-complement missing categories individually if they are not in Firestore
-      if (snapshot.metadata.fromCache === false) {
-        const existingNames = new Set(data.map(cat => cat.name.trim().toLowerCase()));
-        const missingDefaultCats = DEFAULT_FINANCIAL_CATEGORIES.filter(
-          c => !existingNames.has(c.name.trim().toLowerCase())
-        );
+      const existingNames = new Set(data.map(cat => cat.nome.trim().toLowerCase()));
+      const missingDefaultCats = DEFAULT_FINANCIAL_CATEGORIES.filter(
+        c => !existingNames.has(c.nome.trim().toLowerCase())
+      );
 
-        if (missingDefaultCats.length > 0) {
-          try {
-            for (const rawCat of missingDefaultCats) {
-              const catId = `cat_${companyId}_${rawCat.name.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '')}`;
-              await setDoc(doc(db, "financial_categories", catId), {
-                ...rawCat,
-                companyId,
-                createdAt: serverTimestamp()
-              });
-            }
-          } catch (err) {
-            console.error("Erro ao complementar Seed de categorias financeiras padrão:", err);
+      if (missingDefaultCats.length > 0) {
+        try {
+          for (const rawCat of missingDefaultCats) {
+            const catId = `cat_${companyId}_${rawCat.name.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '')}`;
+            await setDoc(doc(db, "financial_categories", catId), {
+              ...rawCat,
+              companyId,
+              createdAt: serverTimestamp()
+            });
           }
+        } catch (err) {
+          console.error("Erro ao complementar Seed de categorias financeiras padrão:", err);
         }
       }
       
@@ -318,17 +356,26 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
     type: 'RECEITA' | 'DESPESA',
     group: string,
     color: string,
-    icon: string
+    icon: string,
+    grupo: 'locacao' | 'caixa',
+    natureza: 'entrada' | 'saida',
+    comportamento: 'fixo' | 'variavel' | 'nao_aplicavel',
+    origem: 'locacao' | 'venda' | 'administracao' | 'servicos' | 'outros'
   ) => {
     try {
       const id = `cat_${Date.now()}`;
       await setDoc(doc(db, "financial_categories", id), {
         companyId,
         name,
+        nome: name,
         type,
         group,
         color,
         icon,
+        grupo,
+        natureza,
+        comportamento,
+        origem,
         isDefault: false,
         createdAt: serverTimestamp()
       });
@@ -347,12 +394,26 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
     }
   };
 
-  const handleUpdateCategory = async (id: string, name: string, group: string, color: string) => {
+  const handleUpdateCategory = async (
+    id: string,
+    name: string,
+    group: string,
+    color: string,
+    grupo: 'locacao' | 'caixa',
+    natureza: 'entrada' | 'saida',
+    comportamento: 'fixo' | 'variavel' | 'nao_aplicavel',
+    origem: 'locacao' | 'venda' | 'administracao' | 'servicos' | 'outros'
+  ) => {
     try {
       await updateDoc(doc(db, "financial_categories", id), {
         name,
+        nome: name,
         group,
-        color
+        color,
+        grupo,
+        natureza,
+        comportamento,
+        origem
       });
       toast.success("Categoria atualizada com sucesso!");
     } catch (err) {
