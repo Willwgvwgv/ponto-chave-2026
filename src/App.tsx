@@ -762,7 +762,8 @@ const UserManagement = ({
         email: editingUserProfile.email ? editingUserProfile.email.trim().toLowerCase() : "",
         role: editingUserProfile.role,
         cargoComissao: editingUserProfile.cargoComissao || null,
-        permissions: editingUserProfile.permissions || []
+        permissions: editingUserProfile.permissions || [],
+        permRateioLocacao: editingUserProfile.permRateioLocacao ?? false
       };
       
       await updateDoc(userRef, updates);
@@ -1329,6 +1330,71 @@ const UserManagement = ({
                     </select>
                   </div>
                 )}
+
+                {/* Seção Nova: Lista de Seleção para Rateio de Locações */}
+                <div className="space-y-2 border-t border-slate-100 pt-3">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">
+                    Elegibilidade para Rateio de Locações
+                  </span>
+                  <p className="text-[10px] text-slate-450 leading-tight block">
+                    Selecione todos os usuários que podem ser incluídos no rateio financeiro de qualquer comissão de locação:
+                  </p>
+                  
+                  <div className="max-h-[140px] overflow-y-auto border border-slate-200 rounded-xl bg-slate-50/50 p-2 divide-y divide-slate-100 space-y-1">
+                    {users.map((usr) => {
+                      const isEligible = usr.permRateioLocacao === true || usr.permissions?.includes("rateio_locacao");
+                      return (
+                        <div key={usr.uid} className="flex items-center justify-between py-1.5 px-2 hover:bg-white rounded-lg transition-colors">
+                          <label className="flex items-center gap-2 cursor-pointer flex-1">
+                            <input
+                              type="checkbox"
+                              checked={isEligible}
+                              onChange={async () => {
+                                const newEligible = !isEligible;
+                                const userRef = doc(db, "users", usr.uid);
+                                const currentPerms = usr.permissions || [];
+                                const newPerms = newEligible
+                                  ? [...currentPerms.filter(p => p !== "rateio_locacao"), "rateio_locacao"]
+                                  : currentPerms.filter(p => p !== "rateio_locacao");
+                                try {
+                                  await updateDoc(userRef, {
+                                    permRateioLocacao: newEligible,
+                                    permissions: newPerms
+                                  });
+                                  setUsers(prev => prev.map(u => u.uid === usr.uid ? {
+                                    ...u,
+                                    permRateioLocacao: newEligible,
+                                    permissions: newPerms
+                                  } : u));
+                                  if (usr.uid === editingUserProfile.uid) {
+                                    setEditingUserProfile({
+                                      ...editingUserProfile,
+                                      permRateioLocacao: newEligible,
+                                      permissions: newPerms
+                                    });
+                                  }
+                                  toast.success(`Rateio de locação atualizado para ${usr.displayName || usr.email}`);
+                                } catch (error) {
+                                  toast.error("Erro ao atualizar elegibilidade de rateio.");
+                                }
+                              }}
+                              className="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 cursor-pointer"
+                            />
+                            <div className="text-left leading-none py-0.5">
+                              <span className="text-[11px] font-bold text-slate-700 block">{usr.displayName || usr.email}</span>
+                              <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block mt-0.5">{usr.role === "admin" ? "Admin" : usr.role === "corretor" ? "Corretor" : usr.role === "captador" ? "Captador" : "Colaborador"}</span>
+                            </div>
+                          </label>
+                          <span className={`text-[8.5px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest ${
+                            isEligible ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-slate-100 text-slate-400 border border-slate-200"
+                          }`}>
+                            {isEligible ? "Elegível" : "Inativo"}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
 
                 <div className="grid grid-cols-2 gap-3 pt-4 border-t border-slate-100">
                   <button

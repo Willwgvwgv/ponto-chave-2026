@@ -403,7 +403,8 @@ export function useTeam(agencyId: string) {
             perm_comissoes: u.perm_comissoes,
             permissions: u.permissions,
             isSocio: u.isSocio,
-            cargoComissao: u.cargoComissao
+            cargoComissao: u.cargoComissao,
+            permRateioLocacao: u.permRateioLocacao
           };
         });
 

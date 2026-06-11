@@ -1090,7 +1090,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                       className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none"
                     >
                       <option value="">Buscar locador...</option>
-                      {team.map(b => (
+                      {team.filter(b => b.permRateioLocacao === true || b.permissions?.includes("rateio_locacao") || b.id === (rateios.find(r => r.papel === "locador" || r.papel === "locacao")?.corretorId)).map(b => (
                         <option key={b.id} value={b.id}>{b.name}</option>
                       ))}
                     </select>
@@ -1105,7 +1105,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                         className="flex-1 px-3 py-2 bg-slate-50 border border-slate-205 rounded-xl text-xs font-bold focus:outline-none"
                       >
                         <option value="">Buscar captador...</option>
-                        {team.map(b => (
+                        {team.filter(b => b.permRateioLocacao === true || b.permissions?.includes("rateio_locacao") || b.id === selectedCaptadorId).map(b => (
                           <option key={b.id} value={b.id}>{b.name}</option>
                         ))}
                       </select>

@@ -38,6 +38,7 @@ export interface UserProfile {
   isSocio?: boolean;        // true = pode ter múltiplos papéis na divisão de comissões
   cargoComissao?: 'CORRETOR' | 'CAPTADOR' | 'GESTOR' | 'SOCIO' | null; // cargo específico para comissões
   cpf?: string;             // CPF para PDF fiscal e RPA
+  permRateioLocacao?: boolean; // permite inclusão no rateio de comissões de locação
 }
 
 export type Priority = "low" | "medium" | "high";
@@ -307,6 +308,7 @@ export interface ComissoneUser {
   permissions?: string[];
   isSocio?: boolean;
   cargoComissao?: 'CORRETOR' | 'CAPTADOR' | 'GESTOR' | 'SOCIO' | null;
+  permRateioLocacao?: boolean;
 }
 
 export interface Agency {
