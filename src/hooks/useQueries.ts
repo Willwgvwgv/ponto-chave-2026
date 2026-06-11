@@ -960,7 +960,7 @@ export function useCreateRentalMutation() {
       delete (docData as any).processId;
 
       try {
-        await addDoc(collection(db, "comissoes"), docData);
+        await setDoc(doc(db, "comissoes", generatedId), docData);
         if (procId) {
           await updateDoc(doc(db, "processes", procId), { 
             isCommissionLaunched: true, 
@@ -993,7 +993,14 @@ export function useUpdateRentalMutation() {
   return useMutation({
     mutationFn: async (rental: Comissao) => {
       try {
-        await updateDoc(doc(db, "comissoes", rental.id), { ...rental });
+        const q = query(collection(db, "comissoes"), where("id", "==", rental.id));
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          const updatePromises = snap.docs.map(d => updateDoc(doc(db, "comissoes", d.id), { ...rental }));
+          await Promise.all(updatePromises);
+        } else {
+          await updateDoc(doc(db, "comissoes", rental.id), { ...rental });
+        }
       } catch (err) {
         console.warn("Offline/local fallback para atualização de comissão de locação:", err);
         const local = getStoredData();
@@ -1018,7 +1025,14 @@ export function useDeleteRentalMutation() {
   return useMutation({
     mutationFn: async ({ id, companyId }: { id: string; companyId: string }) => {
       try {
-        await deleteDoc(doc(db, "comissoes", id));
+        const q = query(collection(db, "comissoes"), where("id", "==", id));
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          const deletePromises = snap.docs.map(d => deleteDoc(doc(db, "comissoes", d.id)));
+          await Promise.all(deletePromises);
+        } else {
+          await deleteDoc(doc(db, "comissoes", id));
+        }
       } catch (err) {
         console.warn("Offline/local fallback para exclusão de comissão de locação:", err);
       }
