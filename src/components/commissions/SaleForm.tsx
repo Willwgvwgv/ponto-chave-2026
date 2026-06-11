@@ -414,18 +414,13 @@ export const SaleForm: React.FC<SaleFormProps> = ({
     return val === 0;
   });
 
-  // Filtro de corretores autorizados para aparecer no dropdown
+  // Filtro de corretores autorizados para aparecer no dropdown (qualquer usuário no sistema/capatador/sócio/corretor)
   const filteredBrokers = useMemo(() => team.filter(b => {
     const isCompanyProfile = b.name?.toLowerCase().includes("fidelité") || b.email?.toLowerCase().includes("fidelite");
     if (isCompanyProfile) return false;
 
-    const rawRole = String(b.role || "").toLowerCase();
-    const hasCommPerm = b.permComissoes === true || b.perm_comissoes === true || 
-                        b.permissions?.includes("comissoes") || b.permissions?.includes("comissão");
-
-    const isBrokerRole = ["broker", "corretor", "captador", "manager", "gestor", "admin"].includes(rawRole);
-
-    return isBrokerRole || hasCommPerm;
+    // Permitir qualquer usuário ativo no sistema poder receber splits de vendas
+    return true;
   }), [team]);
 
   const getBrokerDisplayRole = (b: ComissoneUser): string => {

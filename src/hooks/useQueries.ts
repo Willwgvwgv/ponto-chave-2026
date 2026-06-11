@@ -377,24 +377,8 @@ export function useTeam(agencyId: string) {
           const isNone = u.role === "none";
           if (isBlocked || isNone) return false;
 
-          const hasComissoesPerm = 
-            (Array.isArray(u.permissions) && u.permissions.includes("comissoes")) ||
-            u.permComissoes === true ||
-            u.perm_comissoes === true;
-          
-          const isSocio = u.isSocio === true;
-          const isAdminRole = u.role === "admin" || u.role === "ADMIN" || u.role === "socio" || u.role === "SOCIO";
-          const isManagerRole = u.role === "manager" || u.role === "MANAGER" || u.role === "gerente" || u.role === "GERENTE";
-          
-          // Todo corretor ou colaborador ativo na empresa deve poder receber splits de vendas!
-          const isBrokerStaff = 
-            u.role === "broker" || u.role === "BROKER" || 
-            u.role === "corretor" || u.role === "CORRETOR" ||
-            u.role === "collaborator" || u.role === "COLLABORATOR" ||
-            u.role === "vendedor" || u.role === "VENDEDOR" ||
-            u.role === "captador" || u.role === "CAPTADOR";
-
-          return hasComissoesPerm || isSocio || isAdminRole || isManagerRole || isBrokerStaff || !u.role;
+          // Qualquer usuário ativo no sistema pode entrar no rateio de comissões, corretores, captador, sócios, etc.
+          return true;
         });
 
         // Mapeia para o formato ComissoneUser
