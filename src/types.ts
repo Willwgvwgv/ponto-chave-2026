@@ -366,7 +366,7 @@ export interface FinancialTransaction {
   categoryId?: string;
   categoryName?: string;
   status: 'PENDENTE' | 'CONCILIADO' | 'IGNORADO' | 'AGENDADO' | 'CANCELADO';
-  origin: 'MANUAL' | 'IMPORTADO' | 'AUTOMATICO';
+  origin: 'MANUAL' | 'IMPORTADO' | 'AUTOMATICO' | 'AUTO';
   commissionRef?: string;          // ID da venda ou slip se for comissão
   notes?: string;
   createdAt: any;
@@ -377,6 +377,9 @@ export interface FinancialTransaction {
   originalDescription?: string;
   creditCardStatus?: 'FATURA_ABERTA' | 'FATURA_FECHADA' | 'FATURA_PAGA';
   creditCardMonth?: string; // YYYY-MM
+  isTransfer?: boolean;
+  transferAccountId?: string;
+  transferGroupId?: string;
 }
 
 export interface DREEntry {

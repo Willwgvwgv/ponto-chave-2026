@@ -16,7 +16,8 @@ import {
   AlertCircle,
   Pencil,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  ArrowLeftRight
 } from 'lucide-react';
 import { BankAccount, FinancialCategory, FinancialTransaction } from '../../types';
 import { db, doc, deleteDoc } from '../../firebase';
@@ -266,6 +267,8 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
   const [editDesc, setEditDesc] = useState('');
   const [editNotes, setEditNotes] = useState('');
   const [editStatus, setEditStatus] = useState<'PENDENTE' | 'CONCILIADO' | 'IGNORADO' | 'AGENDADO' | 'CANCELADO'>('PENDENTE');
+  const [editTfFrom, setEditTfFrom] = useState('');
+  const [editTfTo, setEditTfTo] = useState('');
 
   // Modal de perguntas de recorrência (Editar / Excluir)
   const [recurrencePromptOpen, setRecurrencePromptOpen] = useState(false);
@@ -375,8 +378,56 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
 
   const handleSaveEdit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingTx || !editAmount || !editAccountId || !editDesc) return;
+    if (!editingTx || !editAmount || !editDesc) return;
 
+    if (editingTx.isTransfer && editingTx.transferGroupId) {
+      const otherTx = transactions.find(tx => tx.transferGroupId === editingTx.transferGroupId && tx.id !== editingTx.id);
+      const despesaId = editingTx.type === 'DESPESA' ? editingTx.id : (otherTx?.id || '');
+      const receitaId = editingTx.type === 'RECEITA' ? editingTx.id : (otherTx?.id || '');
+      const nameFrom = accounts.find(a => a.id === editTfFrom)?.name || 'N/A';
+      const nameTo = accounts.find(a => a.id === editTfTo)?.name || 'N/A';
+      const updatesList: { id: string, updates: Partial<FinancialTransaction> }[] = [];
+
+      if (despesaId) {
+        updatesList.push({
+          id: despesaId,
+          updates: {
+            accountId: editTfFrom,
+            transferAccountId: editTfTo,
+            amount: parseFloat(editAmount),
+            date: editDate,
+            description: `${editDesc} (Saída)`,
+            status: editStatus,
+            notes: editNotes || `Transferência destinada para a conta ${nameTo}`
+          }
+        });
+      }
+
+      if (receitaId) {
+        updatesList.push({
+          id: receitaId,
+          updates: {
+            accountId: editTfTo,
+            transferAccountId: editTfFrom,
+            amount: parseFloat(editAmount),
+            date: editDate,
+            description: `${editDesc} (Entrada)`,
+            status: editStatus,
+            notes: editNotes || `Transferência vinda da conta ${nameFrom}`
+          }
+        });
+      }
+
+      if (updatesList.length > 0) {
+        onUpdateTransactions(updatesList);
+      }
+
+      setIsEditOpen(false);
+      setEditingTx(null);
+      return;
+    }
+
+    if (!editAccountId) return;
     const cat = categories.find(c => c.id === editCategoryId);
     const account = accounts.find(a => a.id === editAccountId);
     const isCard = account?.accountType === 'CREDITO';
@@ -433,6 +484,33 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
   };
 
   const handleEditClick = (t: FinancialTransaction) => {
+    if (t.isTransfer && t.transferGroupId) {
+      const otherTx = transactions.find(tx => tx.transferGroupId === t.transferGroupId && tx.id !== t.id);
+      setEditingTx(t);
+      setEditScope('SINGLE');
+      setEditType(t.type as any); // usually DESPESA or RECEITA
+      setEditAmount(Math.abs(t.amount).toString());
+      setEditAccountId(t.accountId);
+      setEditCategoryId('');
+      setEditDate(t.date);
+      
+      const cleanDesc = t.description.replace(/\s*\(Saída\)\s*$/, '').replace(/\s*\(Entrada\)\s*$/, '');
+      setEditDesc(cleanDesc);
+      
+      setEditNotes(t.notes || '');
+      setEditStatus(t.status);
+      
+      if (t.type === 'DESPESA') {
+        setEditTfFrom(t.accountId);
+        setEditTfTo(otherTx ? otherTx.accountId : '');
+      } else {
+        setEditTfFrom(otherTx ? otherTx.accountId : '');
+        setEditTfTo(t.accountId);
+      }
+      setIsEditOpen(true);
+      return;
+    }
+
     if (t.recurrenceGroupId) {
       setSelectedRecurrenceTx(t);
       // prefill variables
@@ -458,11 +536,30 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
       setEditDesc(t.description);
       setEditNotes(t.notes || '');
       setEditStatus(t.status);
+      setEditTfFrom('');
+      setEditTfTo('');
       setIsEditOpen(true);
     }
   };
 
   const handleDeleteClick = (t: FinancialTransaction) => {
+    if (t.isTransfer && t.transferGroupId) {
+      const otherTx = transactions.find(tx => tx.transferGroupId === t.transferGroupId && tx.id !== t.id);
+      if (otherTx) {
+        setConfirmState({
+          open: true,
+          title: 'Excluir Transferência',
+          message: 'Deseja realmente excluir ambas as partes desta transferência entre contas? Os saldos de ambas as contas afetadas serão recalculados correspondendo a esta exclusão.',
+          confirmColor: 'red',
+          onConfirm: () => {
+            setConfirmState(prev => ({ ...prev, open: false }));
+            onDeleteTransactions([t.id, otherTx.id]);
+          }
+        });
+        return;
+      }
+    }
+
     if (t.recurrenceGroupId) {
       setSelectedRecurrenceTx(t);
       setRecurrencePromptType('DELETE');
@@ -486,30 +583,36 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
     if (!tfAmount || !tfFrom || !tfTo || tfFrom === tfTo) return;
 
     const amount = parseFloat(tfAmount);
+    const transferGroupId = `transfer_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
-    // Cria saída (DESPESA) da conta origem
-    onAddTransaction({
-      accountId: tfFrom,
-      date: tfDate,
-      description: `${tfDesc} (Saída)`,
-      amount: amount,
-      type: 'DESPESA',
-      status: isFutureDate(tfDate) ? 'AGENDADO' : 'PENDENTE',
-      origin: 'MANUAL',
-      notes: `Transferência destinada para a conta ${accounts.find(a => a.id === tfTo)?.name}`
-    });
-
-    // Cria entrada (RECEITA) na conta destino
-    onAddTransaction({
-      accountId: tfTo,
-      date: tfDate,
-      description: `${tfDesc} (Entrada)`,
-      amount: amount,
-      type: 'RECEITA',
-      status: isFutureDate(tfDate) ? 'AGENDADO' : 'PENDENTE',
-      origin: 'MANUAL',
-      notes: `Transferência vinda da conta ${accounts.find(a => a.id === tfFrom)?.name}`
-    });
+    onAddTransactions([
+      {
+        accountId: tfFrom,
+        date: tfDate,
+        description: `${tfDesc} (Saída)`,
+        amount: amount,
+        type: 'DESPESA',
+        status: isFutureDate(tfDate) ? 'AGENDADO' : 'PENDENTE',
+        origin: 'MANUAL',
+        notes: `Transferência destinada para a conta ${accounts.find(a => a.id === tfTo)?.name}`,
+        isTransfer: true,
+        transferAccountId: tfTo,
+        transferGroupId: transferGroupId
+      },
+      {
+        accountId: tfTo,
+        date: tfDate,
+        description: `${tfDesc} (Entrada)`,
+        amount: amount,
+        type: 'RECEITA',
+        status: isFutureDate(tfDate) ? 'AGENDADO' : 'PENDENTE',
+        origin: 'MANUAL',
+        notes: `Transferência vinda da conta ${accounts.find(a => a.id === tfFrom)?.name}`,
+        isTransfer: true,
+        transferAccountId: tfFrom,
+        transferGroupId: transferGroupId
+      }
+    ]);
 
     setTfAmount('');
     setIsTransferOpen(false);
@@ -928,6 +1031,15 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
                         <div>
                           <p className="font-semibold text-slate-800 flex items-center gap-1.5 flex-wrap">
                             {t.description}
+                            {t.isTransfer && (() => {
+                              const counterpart = accounts.find(a => a.id === t.transferAccountId);
+                              return (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-sky-50 text-sky-600 border border-sky-100 font-extrabold text-[8px] uppercase tracking-wider rounded-md" title={`Conta contrapartida: ${counterpart?.name || 'N/A'}`}>
+                                  <ArrowLeftRight className="w-2.5 h-2.5 shrink-0 text-sky-500" />
+                                  TRANSFERÊNCIA {t.type === 'DESPESA' ? `→ ${counterpart?.name || 'Destino'}` : `← ${counterpart?.name || 'Origem'}`}
+                                </span>
+                              );
+                            })()}
                             {t.origin === 'AUTOMATICO' && (
                               <span className="px-1.5 py-0.5 bg-blue-50 text-blue-500 font-extrabold text-[8px] uppercase tracking-wider rounded-md" title="Gerado automaticamente via Módulo de Comissões">
                                 COMISSÃO AUTO
@@ -1447,47 +1559,23 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
             <form onSubmit={handleSaveEdit} className="flex-1 flex flex-col overflow-hidden font-sans">
               {/* Conteúdo rolável */}
               <div className="flex-1 overflow-y-auto px-8 py-6 space-y-4">
-                <div className="flex bg-slate-100 p-1 rounded-2xl">
-                  <button
-                    type="button"
-                    disabled={accounts.find(a => a.id === editAccountId)?.accountType === 'CREDITO'}
-                    onClick={() => { setEditType('RECEITA'); setEditCategoryId(''); }}
-                    className={`flex-1 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${(accounts.find(a => a.id === editAccountId)?.accountType === 'CREDITO') ? 'opacity-45 cursor-not-allowed' : ''} ${editType === 'RECEITA' ? 'bg-white text-emerald-600 shadow' : 'text-slate-500 hover:text-slate-700'}`}
-                  >
-                    Receita
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setEditType('DESPESA'); setEditCategoryId(''); }}
-                    className={`flex-1 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${editType === 'DESPESA' ? 'bg-white text-rose-500 shadow' : 'text-slate-500 hover:text-slate-700'}`}
-                  >
-                    Despesa
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 animate-fadeIn">Valor</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      placeholder="R$ 0,00"
-                      value={editAmount}
-                      onChange={(e) => setEditAmount(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm font-black"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    {editScope === 'UPCOMING' ? (
-                      <div className="flex flex-col justify-center h-full">
-                        <p className="text-[9px] text-blue-600 font-extrabold uppercase bg-blue-50/50 p-2.5 rounded-xl border border-blue-100/50">
-                          As datas das ocorrências futuras serão preservadas.
-                        </p>
+                {editingTx.isTransfer ? (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 animate-fadeIn">Valor</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          placeholder="R$ 0,00"
+                          value={editAmount}
+                          onChange={(e) => setEditAmount(e.target.value)}
+                          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm font-black"
+                          required
+                        />
                       </div>
-                    ) : (
-                      <>
+
+                      <div>
                         <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Data</label>
                         <input
                           type="date"
@@ -1496,47 +1584,136 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
                           className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm font-bold text-slate-700 text-center"
                           required
                         />
-                      </>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Conta Origem</label>
+                        <select
+                          value={editTfFrom}
+                          onChange={(e) => setEditTfFrom(e.target.value)}
+                          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-xs font-bold text-slate-700"
+                          required
+                        >
+                          {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Conta Destino</label>
+                        <select
+                          value={editTfTo}
+                          onChange={(e) => setEditTfTo(e.target.value)}
+                          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-xs font-bold text-slate-700"
+                          required
+                        >
+                          {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                        </select>
+                      </div>
+                    </div>
+
+                    {editTfFrom === editTfTo && (
+                      <div className="p-3 bg-rose-50 border border-rose-100 rounded-xl flex items-center gap-2 text-rose-500 text-[10px] font-bold animate-pulse">
+                        <AlertCircle className="w-4 h-4" />
+                        Conta de Origem e Destino devem ser diferentes.
+                      </div>
                     )}
                   </div>
-                </div>
+                ) : (
+                  <>
+                    <div className="flex bg-slate-100 p-1 rounded-2xl">
+                      <button
+                        type="button"
+                        disabled={accounts.find(a => a.id === editAccountId)?.accountType === 'CREDITO'}
+                        onClick={() => { setEditType('RECEITA'); setEditCategoryId(''); }}
+                        className={`flex-1 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${(accounts.find(a => a.id === editAccountId)?.accountType === 'CREDITO') ? 'opacity-45 cursor-not-allowed' : ''} ${editType === 'RECEITA' ? 'bg-white text-emerald-600 shadow' : 'text-slate-500 hover:text-slate-700'}`}
+                      >
+                        Receita
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setEditType('DESPESA'); setEditCategoryId(''); }}
+                        className={`flex-1 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${editType === 'DESPESA' ? 'bg-white text-rose-500 shadow' : 'text-slate-500 hover:text-slate-700'}`}
+                      >
+                        Despesa
+                      </button>
+                    </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Conta Origem/Destino</label>
-                    <select
-                      value={editAccountId}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setEditAccountId(val);
-                        const acc = accounts.find(a => a.id === val);
-                        if (acc?.accountType === 'CREDITO') {
-                          setEditType('DESPESA');
-                        }
-                      }}
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-xs font-bold text-slate-700"
-                      required
-                    >
-                      {accounts.map(a => (
-                        <option key={a.id} value={a.id}>
-                          {a.name}{a.accountType === 'CREDITO' ? ' [CARTÃO]' : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 animate-fadeIn">Valor</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          placeholder="R$ 0,00"
+                          value={editAmount}
+                          onChange={(e) => setEditAmount(e.target.value)}
+                          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm font-black"
+                          required
+                        />
+                      </div>
 
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Categoria</label>
-                    <select
-                      value={editCategoryId}
-                      onChange={(e) => setEditCategoryId(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-xs font-bold text-slate-700 cursor-pointer"
-                    >
-                      <option value="">Sem Categoria</option>
-                      {filteredCategoriesEdit.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
-                  </div>
-                </div>
+                      <div>
+                        {editScope === 'UPCOMING' ? (
+                          <div className="flex flex-col justify-center h-full">
+                            <p className="text-[9px] text-blue-600 font-extrabold uppercase bg-blue-50/50 p-2.5 rounded-xl border border-blue-100/50">
+                              As datas das ocorrências futuras serão preservadas.
+                            </p>
+                          </div>
+                        ) : (
+                          <>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Data</label>
+                            <input
+                              type="date"
+                              value={editDate}
+                              onChange={(e) => setEditDate(e.target.value)}
+                              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm font-bold text-slate-700 text-center"
+                              required
+                            />
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Conta Origem/Destino</label>
+                        <select
+                          value={editAccountId}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setEditAccountId(val);
+                            const acc = accounts.find(a => a.id === val);
+                            if (acc?.accountType === 'CREDITO') {
+                              setEditType('DESPESA');
+                            }
+                          }}
+                          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-xs font-bold text-slate-700"
+                          required
+                        >
+                          {accounts.map(a => (
+                            <option key={a.id} value={a.id}>
+                              {a.name}{a.accountType === 'CREDITO' ? ' [CARTÃO]' : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Categoria</label>
+                        <select
+                          value={editCategoryId}
+                          onChange={(e) => setEditCategoryId(e.target.value)}
+                          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-xs font-bold text-slate-700 cursor-pointer"
+                        >
+                          <option value="">Sem Categoria</option>
+                          {filteredCategoriesEdit.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                  </>
+                )}
 
                 <div>
                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Descrição</label>

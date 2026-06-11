@@ -919,6 +919,7 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
               categories={categories} 
               transactions={transactions} 
               onAddTransaction={handleCreateTransaction} 
+              onAddTransactions={handleCreateTransactions}
               onUpdateStatus={handleUpdateTransactionStatus}
               onUpdateTransactions={handleUpdateTransactions}
             />
