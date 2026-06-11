@@ -146,6 +146,8 @@ export interface RateioComissao {
   papel: "captador" | "locacao" | "auxiliar";
   valor: number;
   porcentagem?: number;
+  totalPago?: number;
+  status?: "pendente" | "pago";
 }
 
 export interface PagamentoCorretor {

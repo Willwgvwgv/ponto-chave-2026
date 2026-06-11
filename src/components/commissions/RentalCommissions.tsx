@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { Comissao, RateioComissao, PagamentoCorretor, ComissoneUser, UserProfile } from "../../types";
 import { ConfirmModal } from "../ui/ConfirmModal";
+import { toast } from "sonner";
 
 export const formatCurrency = (val: number) => {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(val);
@@ -124,6 +125,9 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
   });
   const [payBrokerId, setPayBrokerId] = useState("");
   const [payBrokerName, setPayBrokerName] = useState("");
+  const [payBrokerRole, setPayBrokerRole] = useState("");
+  const [payBrokerTotalDue, setPayBrokerTotalDue] = useState(0);
+  const [payBrokerAlreadyPaid, setPayBrokerAlreadyPaid] = useState(0);
   const [payValue, setPayValue] = useState(0);
   const [payType, setPayType] = useState<'pagamento' | 'adiantamento' | 'desconto_adiantamento'>('pagamento');
   const [payNotes, setPayNotes] = useState("");
@@ -397,8 +401,15 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
 
     setPayBrokerId(rt.corretorId);
     setPayBrokerName(rt.corretorNome);
+    
+    const roleLabel = rt.papel === "locacao" ? "Locador" : rt.papel === "captador" ? "Captador" : "Auxiliar";
+    setPayBrokerRole(roleLabel);
+    setPayBrokerTotalDue(rt.valor);
+    setPayBrokerAlreadyPaid(totalPago);
+
     setPayValue(saldoDevido);
     setPayNotes("");
+    setPayDate(new Date().toISOString().split("T")[0]);
     setIsPayModalOpen(true);
   };
 
@@ -420,16 +431,29 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
 
     const nextPayments = [...(selectedRental.pagamentosCorretores || []), newPayment];
 
+    // Atualizar totalPago e status daquele participante no array rateio do documento
+    const updatedRateio = selectedRental.rateio.map(rt => {
+      if (rt.corretorId === payBrokerId) {
+        const brokerPago = nextPayments
+          ?.filter(p => p.corretorId === rt.corretorId)
+          ?.reduce((acc, curr) => {
+            if (curr.tipo === "pagamento" || curr.tipo === "adiantamento") return acc + curr.valor;
+            return acc - curr.valor;
+          }, 0) || 0;
+
+        return {
+          ...rt,
+          totalPago: Number(brokerPago.toFixed(2)),
+          status: brokerPago >= rt.valor ? ("pago" as const) : ("pendente" as const)
+        };
+      }
+      return rt;
+    });
+
     // Verificar se todos os corretores já receberam seu valor total de rateio
     let checksAllPaid = true;
-    selectedRental.rateio.forEach(rt => {
-      const brokerPago = nextPayments
-        ?.filter(p => p.corretorId === rt.corretorId)
-        ?.reduce((acc, curr) => {
-          if (curr.tipo === "pagamento" || curr.tipo === "adiantamento") return acc + curr.valor;
-          return acc - curr.valor;
-        }, 0) || 0;
-      if (brokerPago < rt.valor) {
+    updatedRateio.forEach(rt => {
+      if ((rt.totalPago || 0) < rt.valor) {
         checksAllPaid = false;
       }
     });
@@ -437,8 +461,8 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
     const updatedRental: Comissao = {
       ...selectedRental,
       pagamentosCorretores: nextPayments,
+      rateio: updatedRateio,
       jaPagoCorretores: checksAllPaid,
-      // Se todos os corretores estão pagos e a fidelidade foi paga, podemos marcar opcionalmente status como pago geral
       status: checksAllPaid ? "pago" : selectedRental.status,
       updatedAt: new Date().toISOString()
     };
@@ -446,18 +470,72 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
     onUpdateRental(updatedRental);
     setSelectedRental(updatedRental);
     setIsPayModalOpen(false);
+    toast.success("Pagamento registrado com sucesso");
   };
 
   const handleToggleRentalStatus = (r: Comissao) => {
     const nextStatus = r.status === "pago" ? "pendente" : "pago";
-    onUpdateRental({
+    
+    let updatedPayments = [...(r.pagamentosCorretores || [])];
+    let updatedRateio = [...(r.rateio || [])];
+
+    if (nextStatus === "pago") {
+      // Registrar pagamento para cada participante em sequência
+      updatedRateio = r.rateio.map(rt => {
+        const currentPaid = updatedPayments
+          ?.filter(p => p.corretorId === rt.corretorId)
+          ?.reduce((sum, curr) => {
+            if (curr.tipo === "pagamento" || curr.tipo === "adiantamento") return sum + curr.valor;
+            return sum - curr.valor;
+          }, 0) || 0;
+
+        const diff = Math.max(0, rt.valor - currentPaid);
+        if (diff > 0) {
+          const newPay: PagamentoCorretor = {
+            id: "pay-" + Date.now() + "-" + Math.random().toString(36).substring(2, 5),
+            corretorId: rt.corretorId,
+            corretorNome: rt.corretorNome,
+            tipo: "pagamento",
+            valor: Number(diff.toFixed(2)),
+            data: new Date().toISOString().split("T")[0],
+            observacao: "Quitação Geral automática",
+            registradoPorUid: userProfile.uid,
+            registradoPorNome: userProfile.displayName || "Administrador",
+            registradoEm: Date.now()
+          };
+          updatedPayments.push(newPay);
+        }
+
+        return {
+          ...rt,
+          totalPago: rt.valor,
+          status: "pago" as const
+        };
+      });
+    } else {
+      // Se voltando a pendente, zera os status e pagamentos
+      updatedRateio = r.rateio.map(rt => ({
+        ...rt,
+        status: "pendente" as const,
+        totalPago: 0
+      }));
+      updatedPayments = [];
+    }
+
+    const updatedRental: Comissao = {
       ...r,
+      rateio: updatedRateio,
+      pagamentosCorretores: updatedPayments,
+      jaPagoCorretores: nextStatus === "pago",
       status: nextStatus,
       updatedAt: new Date().toISOString()
-    });
+    };
+
+    onUpdateRental(updatedRental);
     if (selectedRental?.id === r.id) {
-      setSelectedRental({ ...selectedRental, status: nextStatus });
+      setSelectedRental(updatedRental);
     }
+    toast.success(nextStatus === "pago" ? "Quitação geral realizada com sucesso" : "Comissão marcada como pendente");
   };
 
   return (
@@ -1253,8 +1331,19 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
             
             <div className="space-y-4">
               <div>
-                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Favorecido (Corretor)</span>
-                <p className="text-xs font-bold text-slate-700">{payBrokerName}</p>
+                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Participante</span>
+                <p className="text-xs font-bold text-slate-700">{payBrokerName} — {payBrokerRole}</p>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Valor Devido</span>
+                  <p className="text-xs font-bold text-slate-700">{formatCurrency(payBrokerTotalDue)}</p>
+                </div>
+                <div>
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Valor Já Pago</span>
+                  <p className="text-xs font-bold text-emerald-600">{formatCurrency(payBrokerAlreadyPaid)}</p>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -1264,16 +1353,16 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                     type="number" 
                     value={payValue || ""} 
                     onChange={e => setPayValue(Number(e.target.value))} 
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none"
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Data de Lançamento</label>
+                  <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Data do Pagamento</label>
                   <input 
                     type="date" 
                     value={payDate} 
                     onChange={e => setPayDate(e.target.value)} 
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none"
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                   />
                 </div>
               </div>
@@ -1283,7 +1372,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                 <select
                   value={payType}
                   onChange={e => setPayType(e.target.value as any)}
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none"
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer"
                 >
                   <option value="pagamento">Pagamento Integral (Quitação)</option>
                   <option value="adiantamento">Adiantamento Parcial</option>
@@ -1298,23 +1387,25 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                   value={payNotes} 
                   onChange={e => setPayNotes(e.target.value)} 
                   placeholder="Ex: Transferido via PIX chave celular" 
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none"
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                 />
               </div>
             </div>
-
+ 
             <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
               <button 
+                type="button"
                 onClick={() => setIsPayModalOpen(false)}
                 className="px-5 py-2.5 border border-slate-200 text-slate-500 rounded-xl text-[10px] font-black uppercase tracking-widest cursor-pointer"
               >
                 Cancelar
               </button>
               <button 
+                type="button"
                 onClick={handleSavePayment}
                 className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest cursor-pointer shadow-md"
               >
-                Confirmar Lançamento
+                Confirmar Pagamento
               </button>
             </div>
           </div>
