@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { db, collection, getDocs, query, where, orderBy, doc, addDoc, updateDoc, deleteDoc, getDoc, setDoc, limit } from "../firebase";
-import { Sale, BrokerSplit, ComissoneUser, Comissao, RateioComissao, PagamentoCorretor } from "../types";
+import { Sale, BrokerSplit, ComissoneUser, Comissao, RateioComissao, PagamentoCorretor, Despejo } from "../types";
 import { toast } from "sonner";
 
 // Lógica de arredondamento de duas casas decimais
@@ -1168,5 +1168,146 @@ export function useUpdateSaleStatusMutation() {
     },
   });
 }
+
+// ==========================================
+// AÇÕES DE DESPEJO INTEGRATION
+// ==========================================
+
+const getStoredDespejos = (): Despejo[] => {
+  try {
+    const s = localStorage.getItem("comissone_store_despejos");
+    return s ? JSON.parse(s) : [];
+  } catch {
+    return [];
+  }
+};
+
+const saveStoredDespejos = (despejos: Despejo[]) => {
+  try {
+    localStorage.setItem("comissone_store_despejos", JSON.stringify(despejos));
+  } catch (err) {
+    console.error("Falha ao salvar despejos no localStore", err);
+  }
+};
+
+export function useDespejos(companyId: string) {
+  const safeId = companyId || "default_agency";
+
+  return useQuery({
+    queryKey: ["despejos", safeId],
+    queryFn: async () => {
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        const local = getStoredDespejos();
+        return local.filter((d: Despejo) => d.companyId === safeId)
+          .sort((a, b) => b.createdAt?.localeCompare?.(a.createdAt) || 0);
+      }
+
+      try {
+        const q = query(collection(db, "despejos"), where("companyId", "==", safeId));
+        const snap = await getDocs(q);
+        const list: Despejo[] = snap.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        } as Despejo));
+        
+        // Save to local cache as sync
+        const otherCompanyDespejos = getStoredDespejos().filter(d => d.companyId !== safeId);
+        saveStoredDespejos([...otherCompanyDespejos, ...list]);
+
+        return list.sort((a, b) => b.createdAt?.localeCompare?.(a.createdAt) || 0);
+      } catch (err: any) {
+        console.error("Erro ao buscar despejos do Firestore:", err);
+        const local = getStoredDespejos();
+        return local.filter((d: Despejo) => d.companyId === safeId)
+          .sort((a, b) => b.createdAt?.localeCompare?.(a.createdAt) || 0);
+      }
+    }
+  });
+}
+
+export function useCreateDespejoMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (despejo: Omit<Despejo, "id"> & { id?: string }) => {
+      const generatedId = despejo.id || "despejo-" + Math.random().toString(36).substring(2, 9);
+      const docData = { ...despejo, id: generatedId, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } as Despejo;
+
+      try {
+        await setDoc(doc(db, "despejos", generatedId), docData);
+      } catch (err) {
+        console.warn("Offline fallback para criação de ação de despejo:", err);
+      }
+
+      // Always save locally to persist/contingency
+      const local = getStoredDespejos();
+      const updated = [docData, ...local.filter(d => d.id !== generatedId)];
+      saveStoredDespejos(updated);
+
+      return generatedId;
+    },
+    onSuccess: (data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["despejos", variables.companyId || "default_agency"] });
+      toast.success("Ação de despejo cadastrada com sucesso!");
+    },
+    onError: (err) => {
+      console.error(err);
+      toast.error("Erro ao cadastrar ação de despejo.");
+    }
+  });
+}
+
+export function useUpdateDespejoMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (despejo: Despejo) => {
+      const docData = { ...despejo, updatedAt: new Date().toISOString() };
+      try {
+        await updateDoc(doc(db, "despejos", despejo.id), { ...docData });
+      } catch (err) {
+        console.warn("Offline fallback para atualização de ação de despejo:", err);
+      }
+
+      const local = getStoredDespejos();
+      const updated = local.map(d => d.id === despejo.id ? docData : d);
+      saveStoredDespejos(updated);
+    },
+    onSuccess: (data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["despejos", variables.companyId || "default_agency"] });
+      toast.success("Ação de despejo atualizada com sucesso!");
+    },
+    onError: (err) => {
+      console.error(err);
+      toast.error("Erro ao atualizar ação de despejo.");
+    }
+  });
+}
+
+export function useDeleteDespejoMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, companyId }: { id: string; companyId: string }) => {
+      try {
+        await deleteDoc(doc(db, "despejos", id));
+      } catch (err) {
+        console.warn("Offline fallback para exclusão de ação de despejo:", err);
+      }
+      const local = getStoredDespejos();
+      const updated = local.filter(d => d.id !== id);
+      saveStoredDespejos(updated);
+    },
+    onSuccess: (data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["despejos", variables.companyId || "default_agency"] });
+      toast.success("Ação de despejo removida com sucesso.");
+    },
+    onError: (err) => {
+      console.error(err);
+      toast.error("Erro ao excluir ação de despejo.");
+    }
+  });
+}
+
 
 

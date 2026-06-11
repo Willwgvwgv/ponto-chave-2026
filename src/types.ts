@@ -389,3 +389,73 @@ export interface CashFlowEntry {
   transactions: FinancialTransaction[];
 }
 
+export interface IndenizacaoCredPago {
+  id: string;
+  data: string;
+  valor: number;
+}
+
+export interface Despejo {
+  id: string;
+  companyId: string; // ou agencyId
+  status: "NOTIFICADO" | "PRAZO_VENCIDO" | "AJUIZADO" | "LIMINAR_CONCEDIDA" | "DESPEJO_REALIZADO";
+  
+  // Locador
+  locadorNome: string;
+  locadorNacionalidade: string;
+  locadorEstadoCivil: string;
+  locadorRG: string;
+  locadorCPF: string;
+  locadorEmail: string;
+  locadorEndereco: string;
+
+  // Imóvel
+  imovelEndereco: string;
+  imovelComarca: string;
+  imovelEstado: string;
+
+  // Inquilino
+  inquilinoNome: string;
+  inquilinoNacionalidade: string;
+  inquilinoEstadoCivil: string;
+  inquilinoRG: string;
+  inquilinoCPF: string;
+  inquilinoEmail: string;
+  inquilinoEndereco: string;
+
+  // Contrato
+  contratoDataInicio: string;
+  contratoDataTermino: string;
+  contratoValorMensal: number;
+  contratoDiaVencimento: number;
+  contratoIndiceReajuste: string;
+  contratoEncargos: string;
+  contratoInadimplenciaTotal: number;
+
+  // Garantia
+  credPagoContratoNum: string;
+  credPagoIndenizacoes: IndenizacaoCredPago[];
+  credPagoDataExoneracao: string;
+  credPagoDataNotificacao: string;
+  credPagoDataLimite: string; // auto-calculated
+
+  // Trâmite Jurídico
+  advogadoNome: string;
+  advogadoOAB: string;
+  processoNumero?: string;
+  portalTJLink?: string;
+  caucionado: boolean; // sim/não
+  caucaoValor: number; // 3x aluguel calculado
+  
+  // Anexos
+  anexoContratoUrl?: string;
+  anexoExoneracaoUrl?: string;
+  anexoNotificacaoUrl?: string;
+  anexoInicialUrl?: string;
+
+  observacoes?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+

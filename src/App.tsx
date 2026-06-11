@@ -80,6 +80,7 @@ import {
 } from "recharts";
 import { cn } from "./lib/utils";
 const VistoriaView = lazy(() => import('./components/VistoriaView').then(m => ({ default: m.VistoriaView })));
+const DespejoView = lazy(() => import('./components/DespejoView').then(m => ({ default: m.DespejoView })));
 const ComissoesView = lazy(() => import('./components/ComissoesView').then(m => ({ default: m.ComissoesView })));
 const SimuladorView = lazy(() => import('./components/SimuladorView').then(m => ({ default: m.SimuladorView })));
 const FinanceiroView = lazy(() => import('./components/FinanceiroView').then(m => ({ default: m.FinanceiroView })));
@@ -1814,7 +1815,8 @@ const getManualDataForTool = (name: string, url: string) => {
 
 function AppContent() {
   const { user, profile, isAdmin, companySettings } = useAuth();
-  const [activeTab, setActiveTab] = useState<"dashboard" | "calendar" | "processes" | "process_config" | "users" | "profile" | "settings" | "vistorias" | "comissoes" | "simulador">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "calendar" | "processes" | "process_config" | "users" | "profile" | "settings" | "contratos" | "vistorias" | "comissoes" | "simulador" | "financeiro">("dashboard");
+  const [contractsSubTab, setContractsSubTab] = useState<"vistorias" | "despejos">("vistorias");
   const [isSidebarOpen, setIsSidebarOpen] = useState(() => window.innerWidth > 1024);
   const [viewingManualTool, setViewingManualTool] = useState<Tool | null>(null);
   const [activeManualTab, setActiveManualTab] = useState<"overview" | "tutorial" | "dicas" | "faq">("overview");
@@ -1838,6 +1840,13 @@ function AppContent() {
   }, [companySettings]);
 
   // Listener global para alternar abas do sistema
+  useEffect(() => {
+    if (activeTab === "vistorias") {
+      setContractsSubTab("vistorias");
+      setActiveTab("contratos");
+    }
+  }, [activeTab]);
+
   useEffect(() => {
     const handleTabChange = (e: Event) => {
       const customEvent = e as CustomEvent<string>;
@@ -2392,7 +2401,7 @@ function AppContent() {
     return [
       { id: "dashboard" as const, label: "Painel", icon: LayoutDashboard },
       { id: "calendar" as const, label: "Calendário", icon: CalendarIcon },
-      { id: "vistorias" as const, label: "Vistorias", icon: Camera },
+      { id: "contratos" as const, label: "Contratos", icon: FileText },
       ...(hasComissions ? [
         { id: "comissoes" as const, label: "Comissões", icon: DollarSign },
       ] : []),
@@ -3083,6 +3092,45 @@ function AppContent() {
           <Suspense fallback={<div className="flex items-center justify-center h-64 text-gray-400">Carregando financeiro...</div>}>
             <FinanceiroView isAdmin={isAdmin} user={user} profile={profile} companySettings={companySettings} />
           </Suspense>
+        ) : activeTab === "contratos" ? (
+          <div className="space-y-6">
+            {/* Sub-tabs header/selector */}
+            <div className="flex border-b border-slate-200">
+              <button
+                onClick={() => setContractsSubTab("vistorias")}
+                className={cn(
+                  "py-3 px-5 text-[11px] font-black uppercase tracking-wider border-b-2 transition-all cursor-pointer",
+                  contractsSubTab === "vistorias"
+                    ? "border-indigo-600 text-indigo-700"
+                    : "border-transparent text-slate-450 hover:text-slate-700"
+                )}
+              >
+                Laudos de Vistoria
+              </button>
+              <button
+                onClick={() => setContractsSubTab("despejos")}
+                className={cn(
+                  "py-3 px-5 text-[11px] font-black uppercase tracking-wider border-b-2 transition-all cursor-pointer",
+                  contractsSubTab === "despejos"
+                    ? "border-indigo-600 text-indigo-700"
+                    : "border-transparent text-slate-450 hover:text-slate-700"
+                )}
+              >
+                Ações de Despejo (CredPago)
+              </button>
+            </div>
+
+            {/* Sub-tab view renderer */}
+            {contractsSubTab === "vistorias" ? (
+              <Suspense fallback={<div className="flex items-center justify-center h-64 text-gray-400">Carregando vistorias...</div>}>
+                <VistoriaView isAdmin={isAdmin} user={user} profile={profile} companySettings={companySettings} />
+              </Suspense>
+            ) : (
+              <Suspense fallback={<div className="flex items-center justify-center h-64 text-gray-400 font-bold uppercase tracking-widest text-[10px]">Carregando ações de despejo...</div>}>
+                <DespejoView isAdmin={isAdmin} user={user} profile={profile} companySettings={companySettings} />
+              </Suspense>
+            )}
+          </div>
         ) : activeTab === "vistorias" ? (
           <Suspense fallback={<div className="flex items-center justify-center h-64 text-gray-400">Carregando vistorias...</div>}>
             <VistoriaView isAdmin={isAdmin} user={user} profile={profile} companySettings={companySettings} />

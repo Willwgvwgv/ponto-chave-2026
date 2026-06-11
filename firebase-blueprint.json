@@ -235,6 +235,56 @@
         "reconciledAt": { "type": "string" }
       },
       "required": ["companyId", "accountId", "date", "description", "amount", "type", "status", "origin"]
+    },
+    "Despejo": {
+      "title": "Despejo",
+      "description": "Ação de Despejo da CredPago",
+      "type": "object",
+      "properties": {
+        "companyId": { "type": "string", "description": "Agency id" },
+        "status": { "type": "string", "enum": ["NOTIFICADO", "PRAZO_VENCIDO", "AJUIZADO", "LIMINAR_CONCEDIDA", "DESPEJO_REALIZADO"] },
+        "locadorNome": { "type": "string" },
+        "locadorNacionalidade": { "type": "string" },
+        "locadorEstadoCivil: ": { "type": "string" },
+        "locadorRG": { "type": "string" },
+        "locadorCPF": { "type": "string" },
+        "locadorEmail": { "type": "string" },
+        "locadorEndereco": { "type": "string" },
+        "imovelEndereco": { "type": "string" },
+        "imovelComarca": { "type": "string" },
+        "imovelEstado": { "type": "string" },
+        "inquilinoNome": { "type": "string" },
+        "inquilinoNacionalidade": { "type": "string" },
+        "inquilinoEstadoCivil": { "type": "string" },
+        "inquilinoRG": { "type": "string" },
+        "inquilinoCPF": { "type": "string" },
+        "inquilinoEmail": { "type": "string" },
+        "inquilinoEndereco": { "type": "string" },
+        "contratoDataInicio": { "type": "string" },
+        "contratoDataTermino": { "type": "string" },
+        "contratoValorMensal": { "type": "number" },
+        "contratoDiaVencimento": { "type": "integer" },
+        "contratoIndiceReajuste": { "type": "string" },
+        "contratoEncargos": { "type": "string" },
+        "contratoInadimplenciaTotal": { "type": "number" },
+        "credPagoContratoNum": { "type": "string" },
+        "credPagoIndenizacoes": { "type": "array" },
+        "credPagoDataExoneracao": { "type": "string" },
+        "credPagoDataNotificacao": { "type": "string" },
+        "credPagoDataLimite": { "type": "string" },
+        "advogadoNome": { "type": "string" },
+        "advogadoOAB": { "type": "string" },
+        "processoNumero": { "type": "string" },
+        "portalTJLink": { "type": "string" },
+        "caucionado": { "type": "boolean" },
+        "caucaoValor": { "type": "number" },
+        "anexoContratoUrl": { "type": "string" },
+        "anexoExoneracaoUrl": { "type": "string" },
+        "anexoNotificacaoUrl": { "type": "string" },
+        "anexoInicialUrl": { "type": "string" },
+        "observacoes": { "type": "string" }
+      },
+      "required": ["companyId", "status", "locadorNome", "imovelEndereco", "inquilinoNome", "contratoValorMensal", "credPagoDataNotificacao", "credPagoDataLimite"]
     }
   },
   "firestore": {
@@ -289,6 +339,10 @@
     "/financial_transactions/{txId}": {
       "schema": "FinancialTransaction",
       "description": "Financial revenue or expense transactions"
+    },
+    "/despejos/{despejoId}": {
+      "schema": "Despejo",
+      "description": "Eviction lawsuit tracking"
     }
   }
 }
