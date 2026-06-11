@@ -238,6 +238,10 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
     });
 
     const totalRetidoImobiliaria = faturamentoFidelite - repassadoCorretores;
+    const totalRepasse = repassadoCorretores + pendenteRepasse;
+    const totalRetidoPct = faturamentoFidelite > 0 ? (totalRetidoImobiliaria / faturamentoFidelite) * 100 : 0;
+    const repassadoPct = totalRepasse > 0 ? (repassadoCorretores / totalRepasse) * 100 : 0;
+    const pendentePct = totalRepasse > 0 ? (pendenteRepasse / totalRepasse) * 100 : 0;
 
     return {
       faturamentoFidelite,
@@ -245,7 +249,10 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
       pendenteRepasse,
       totalRetidoImobiliaria,
       pagosTotal,
-      pendentesTotal
+      pendentesTotal,
+      totalRetidoPct,
+      repassadoPct,
+      pendentePct
     };
   }, [monthlyRentals]);
 
@@ -629,11 +636,15 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
               </button>
             </div>
             <div className="text-right">
-              <span className={`text-[9px] font-black uppercase tracking-widest px-3 py-1.5 rounded-xl leading-none ${
-                selectedRental.status === "pago" ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600 animate-pulse"
-              }`}>
-                Comissão {selectedRental.status}
-              </span>
+              {selectedRental.status === "pago" ? (
+                <span className="text-[8px] font-black uppercase tracking-widest px-3 py-1.5 rounded-xl leading-none bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center gap-1 inline-flex">
+                  <span>✅</span> COMISSÃO PAGO
+                </span>
+              ) : (
+                <span className="text-[8px] font-black uppercase tracking-widest px-3 py-1.5 rounded-xl leading-none bg-orange-50 text-orange-650 border border-orange-100 flex items-center justify-center gap-1 inline-flex animate-pulse">
+                  <span>⏰</span> COMISSÃO PENDENTE
+                </span>
+              )}
             </div>
           </div>
 
@@ -710,16 +721,26 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                       const saldoRestante = Math.max(0, rt.valor - totalPagoCorretor);
                       const isBrokerFullyPaid = totalPagoCorretor >= rt.valor;
 
+                      const isFidelite = rt.corretorNome.toLowerCase().includes("fidelité") || rt.corretorNome.toLowerCase().includes("fidelite");
+                      let avatarBg = "bg-slate-500 text-white";
+                      if (isFidelite) {
+                        avatarBg = "bg-emerald-600 text-white";
+                      } else if (rt.papel === "captador") {
+                        avatarBg = "bg-blue-600 text-white";
+                      } else if (rt.papel === "locacao") {
+                        avatarBg = "bg-purple-600 text-white";
+                      }
+
                       return (
                         <div key={idx} className="flex items-center justify-between py-4 select-none">
                           <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 text-xs font-bold">
-                              {rt.corretorNome.charAt(0)}
+                            <div className={`w-8 h-8 rounded-full ${avatarBg} flex items-center justify-center text-xs font-bold`}>
+                              {rt.corretorNome.charAt(0).toUpperCase()}
                             </div>
                             <div>
                               <p className="text-xs font-bold text-slate-800">{rt.corretorNome}</p>
                               <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                                {rt.papel === "locacao" ? "Locator" : rt.papel === "captador" ? "Captador" : "Auxiliar"} • {rt.porcentagem}% do split
+                                {rt.papel === "locacao" ? "Locador" : rt.papel === "captador" ? "Captador" : "Auxiliar"} • {rt.porcentagem}% do split
                               </span>
                             </div>
                           </div>
@@ -735,7 +756,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                                 {formatCurrency(totalPagoCorretor)}
                               </span>
                             </div>
-                            <div className="w-28">
+                            <div className="min-w-[130px]">
                               {isBrokerFullyPaid ? (
                                 <span className="text-[8px] bg-emerald-50 text-emerald-600 font-black tracking-widest uppercase px-3 py-1.5 rounded-xl border border-emerald-100 flex items-center gap-1.5 justify-center">
                                   <Check className="w-3 h-3" /> Concluído
@@ -743,9 +764,10 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                               ) : (
                                 <button 
                                   onClick={() => handleOpenPayModal(rt, selectedRental)}
-                                  className="w-full py-1.5 bg-indigo-50 border border-indigo-100 hover:bg-indigo-100 text-indigo-600 rounded-xl text-[9px] font-black uppercase tracking-widest cursor-pointer transition-all"
+                                  className="w-full py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-[9px] font-black uppercase tracking-widest cursor-pointer transition-all flex items-center justify-center gap-1 px-3 shadow-sm shadow-emerald-500/10"
                                 >
-                                  Pagar Saldo ({formatCurrency(saldoRestante)})
+                                  <DollarSign className="w-3.5 h-3.5" />
+                                  <span>Pagar Saldo ({formatCurrency(saldoRestante)})</span>
                                 </button>
                               )}
                             </div>
@@ -779,22 +801,38 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
               ) : (
                 <div className="space-y-3 max-h-[350px] overflow-y-auto pr-1">
                   {selectedRental.pagamentosCorretores.map((pay, pIdx) => {
+                    const participant = selectedRental.rateio.find(rt => rt.corretorId === pay.corretorId);
+                    const papelLabel = participant 
+                      ? (participant.papel === "locacao" ? "Locador" : participant.papel === "captador" ? "Captador" : "Auxiliar")
+                      : "";
+
                     return (
-                      <div key={pIdx} className="bg-white p-3 border border-slate-100 rounded-2xl shadow-sm space-y-1.5 text-xs">
-                        <div className="flex justify-between font-bold">
-                          <span className="text-slate-800">{pay.corretorNome}</span>
-                          <span className="text-emerald-600 font-extrabold">{formatCurrency(pay.valor)}</span>
+                      <div key={pIdx} className="space-y-3">
+                        {pIdx > 0 && <div className="border-t border-slate-200/65 my-2" />}
+                        <div className="bg-white p-3 border border-slate-100 rounded-2xl shadow-sm space-y-1.5 text-xs">
+                          <div className="flex justify-between font-bold">
+                            <span className="text-slate-800 flex flex-col">
+                              <span className="flex items-center gap-1">
+                                <span className="text-emerald-500">✅</span>
+                                <span className="font-bold">{pay.corretorNome}</span>
+                              </span>
+                              {papelLabel && (
+                                <span className="text-[10px] text-slate-450 font-normal mt-0.5 ml-5">{papelLabel}</span>
+                              )}
+                            </span>
+                            <span className="text-emerald-600 font-extrabold">{formatCurrency(pay.valor)}</span>
+                          </div>
+                          <div className="flex justify-between text-[9px] text-slate-400 uppercase tracking-wider font-bold">
+                            <span className="ml-5">{pay.tipo === "pagamento" ? "Repasse" : pay.tipo === "adiantamento" ? "Adiantamento" : "Desconto"}</span>
+                            <span>{pay.data}</span>
+                          </div>
+                          {pay.observacao && (
+                            <p className="text-[10px] text-slate-500 italic border-t border-slate-50 pt-1 leading-relaxed ml-5">
+                              {pay.observacao}
+                            </p>
+                          )}
+                          <p className="text-[8px] text-slate-400 text-right">Por {pay.registradoPorNome}</p>
                         </div>
-                        <div className="flex justify-between text-[9px] text-slate-400 uppercase tracking-wider font-bold">
-                          <span>{pay.tipo === "pagamento" ? "Repasse" : pay.tipo === "adiantamento" ? "Adiantamento" : "Desconto"}</span>
-                          <span>{pay.data}</span>
-                        </div>
-                        {pay.observacao && (
-                          <p className="text-[10px] text-slate-500 italic border-t border-slate-50 pt-1 leading-relaxed">
-                            {pay.observacao}
-                          </p>
-                        )}
-                        <p className="text-[8px] text-slate-400 text-right">Por {pay.registradoPorNome}</p>
                       </div>
                     );
                   })}
@@ -1087,49 +1125,76 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
         <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* Box 1 */}
-            <div className="bg-white border border-slate-100 rounded-[30px] p-6 shadow-sm space-y-2 select-none relative overflow-hidden">
-              <div className="absolute top-0 right-0 p-4 font-black uppercase text-[7px] text-slate-300">Receitas</div>
+            <div className="bg-emerald-50 border border-emerald-100 rounded-[30px] p-6 shadow-sm space-y-4 select-none relative overflow-hidden">
+              <div className="absolute top-0 right-0 p-4 font-black uppercase text-[7px] text-emerald-600/40">Receita Retida</div>
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-emerald-500/10 text-emerald-500 rounded-2xl flex items-center justify-center">
+                <div className="w-10 h-10 bg-emerald-500/10 text-emerald-600 rounded-2xl flex items-center justify-center">
                   <Building className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total retido pela imobiliária</h3>
-                  <p className="text-2xl font-black text-slate-800 tracking-tight mt-1">
+                  <h3 className="text-[10px] font-black uppercase tracking-widest text-emerald-650 font-semibold">Total retido pela imobiliária</h3>
+                  <p className="text-2xl font-black text-emerald-800 tracking-tight mt-1">
                     {formatCurrency(stats.totalRetidoImobiliaria)}
                   </p>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <div className="flex justify-between text-[10px] font-bold text-emerald-750">
+                  <span>Retido vs Faturado</span>
+                  <span>{stats.totalRetidoPct.toFixed(1)}%</span>
+                </div>
+                <div className="w-full bg-emerald-200/50 rounded-full h-2 overflow-hidden">
+                  <div className="bg-emerald-600 h-full rounded-full transition-all duration-500" style={{ width: `${Math.min(100, stats.totalRetidoPct)}%` }}></div>
                 </div>
               </div>
             </div>
 
             {/* Box 2 */}
-            <div className="bg-white border border-slate-100 rounded-[30px] p-6 shadow-sm space-y-2 select-none relative overflow-hidden">
-              <div className="absolute top-0 right-0 p-4 font-black uppercase text-[7px] text-slate-300">Resíduos</div>
+            <div className="bg-blue-50 border border-blue-100 rounded-[30px] p-6 shadow-sm space-y-4 select-none relative overflow-hidden">
+              <div className="absolute top-0 right-0 p-4 font-black uppercase text-[7px] text-blue-600/40">Resíduos</div>
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-indigo-500/10 text-indigo-500 rounded-2xl flex items-center justify-center">
+                <div className="w-10 h-10 bg-blue-500/10 text-blue-600 rounded-2xl flex items-center justify-center">
                   <DollarSign className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total repassado a corretores</h3>
-                  <p className="text-2xl font-black text-slate-800 tracking-tight mt-1">
+                  <h3 className="text-[10px] font-black uppercase tracking-widest text-blue-650 font-semibold">Total repassado a corretores</h3>
+                  <p className="text-2xl font-black text-blue-700 tracking-tight mt-1">
                     {formatCurrency(stats.repassadoCorretores)}
                   </p>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <div className="flex justify-between text-[10px] font-bold text-blue-750">
+                  <span>Pago vs Total Rateio</span>
+                  <span>{stats.repassadoPct.toFixed(1)}%</span>
+                </div>
+                <div className="w-full bg-blue-200/50 rounded-full h-2 overflow-hidden">
+                  <div className="bg-blue-600 h-full rounded-full transition-all duration-500" style={{ width: `${Math.min(100, stats.repassadoPct)}%` }}></div>
                 </div>
               </div>
             </div>
 
             {/* Box 3 */}
-            <div className="bg-white border border-slate-100 rounded-[30px] p-6 shadow-sm space-y-2 select-none relative overflow-hidden">
-              <div className="absolute top-0 right-0 p-4 font-black uppercase text-[7px] text-slate-300">Compromisso</div>
+            <div className="bg-orange-50 border border-orange-100 rounded-[30px] p-6 shadow-sm space-y-4 select-none relative overflow-hidden">
+              <div className="absolute top-0 right-0 p-4 font-black uppercase text-[7px] text-orange-600/40">Compromisso</div>
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-amber-500/10 text-amber-500 rounded-2xl flex items-center justify-center">
+                <div className="w-10 h-10 bg-orange-500/10 text-orange-600 rounded-2xl flex items-center justify-center">
                   <AlertCircle className="w-5 h-5 animate-pulse" />
                 </div>
                 <div>
-                  <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Repasses pendentes</h3>
-                  <p className="text-2xl font-black text-slate-800 tracking-tight mt-1">
+                  <h3 className="text-[10px] font-black uppercase tracking-widest text-orange-650 font-semibold">Repasses pendentes</h3>
+                  <p className="text-2xl font-black text-orange-605 tracking-tight mt-1">
                     {formatCurrency(stats.pendenteRepasse)}
                   </p>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <div className="flex justify-between text-[10px] font-bold text-orange-755 font-semibold">
+                  <span>Pendente vs Total Rateio</span>
+                  <span>{stats.pendentePct.toFixed(1)}%</span>
+                </div>
+                <div className="w-full bg-orange-200/50 rounded-full h-2 overflow-hidden">
+                  <div className="bg-orange-500 h-full rounded-full transition-all duration-500" style={{ width: `${Math.min(100, stats.pendentePct)}%` }}></div>
                 </div>
               </div>
             </div>
@@ -1167,11 +1232,15 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                           <span className="text-[9px] text-slate-400 uppercase font-bold block">ADMINISTRAÇÃO</span>
                           <span className="text-xs font-black text-slate-800">{formatCurrency(r.valorFidelite)}</span>
                         </div>
-                        <span className={`text-[8px] font-black uppercase tracking-widest px-2.5 py-1 rounded-lg ${
-                          r.status === "pago" ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600"
-                        }`}>
-                          {r.status}
-                        </span>
+                        {r.status === "pago" ? (
+                          <span className="text-[8px] font-black uppercase tracking-widest px-2.5 py-1.5 rounded-xl leading-none bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center gap-1 inline-flex">
+                            <span>✅</span> COMISSÃO PAGO
+                          </span>
+                        ) : (
+                          <span className="text-[8px] font-black uppercase tracking-widest px-2.5 py-1.5 rounded-xl leading-none bg-orange-50 text-orange-650 border border-orange-100 flex items-center justify-center gap-1 inline-flex animate-pulse">
+                            <span>⏰</span> COMISSÃO PENDENTE
+                          </span>
+                        )}
                       </div>
                     </div>
                   );
@@ -1279,11 +1348,15 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                           {formatMesReferencia(r.mesReferencia)}
                         </td>
                         <td className="py-4 text-center">
-                          <span className={`text-[8px] font-black uppercase tracking-widest px-2.5 py-1.5 rounded-xl leading-none ${
-                            r.status === "pago" ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600 animate-pulse"
-                          }`}>
-                            {r.status}
-                          </span>
+                          {r.status === "pago" ? (
+                            <span className="text-[8px] font-black uppercase tracking-widest px-2.5 py-1.5 rounded-xl leading-none bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center gap-1 inline-flex">
+                              <span>✅</span> COMISSÃO PAGO
+                            </span>
+                          ) : (
+                            <span className="text-[8px] font-black uppercase tracking-widest px-2.5 py-1.5 rounded-xl leading-none bg-orange-50 text-orange-655 border border-orange-100 flex items-center justify-center gap-1 inline-flex animate-pulse">
+                              <span>⏰</span> COMISSÃO PENDENTE
+                            </span>
+                          )}
                         </td>
                         <td className="py-4 text-right pr-4" onClick={e => e.stopPropagation()}>
                           <div className="flex gap-2 justify-end">
