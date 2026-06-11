@@ -37,7 +37,6 @@ import { RentalStatusBadge, FinancialStatus } from "../rentals-finance/RentalSta
 import { CompetenceCard } from "../rentals-finance/CompetenceCard";
 import { DistributionCard } from "../rentals-finance/DistributionCard";
 import { RepasseTimeline } from "../rentals-finance/RepasseTimeline";
-import { FinancialSummary } from "../rentals-finance/FinancialSummary";
 
 export const formatCurrency = (val: number) => {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(val);
@@ -87,6 +86,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
   const [filterText, setFilterText] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("TUDO");
   const [selectedMonthFilter, setSelectedMonthFilter] = useState<string>("TODOS");
+  const [dashboardStatusFilter, setDashboardStatusFilter] = useState<string>("TODOS");
 
   // Recebimento Manual Form state
   const [receiptDate, setReceiptDate] = useState(() => new Date().toISOString().split("T")[0]);
@@ -1140,49 +1140,90 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
       ) : activeTab === "dashboard" ? (
         /* RENTAL DASHBOARD SCREEN */
         <div className="space-y-6 animate-fade-in select-none">
-          {/* Modular sub-component Financial Summary */}
-          <FinancialSummary rentals={monthlyModels} />
+          {/* Simple summary above the list */}
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 bg-slate-50/50 border border-slate-100 p-4 px-6 rounded-[24px]">
+            <p className="text-xs font-semibold text-slate-500">
+              {monthlyModels.length} {monthlyModels.length === 1 ? 'competência' : 'competências'} | <strong className="text-slate-700">{formatCurrency(monthlyModels.reduce((acc, r) => acc + (r.legacyDoc.valorFidelite || 0), 0))}</strong> em comissões
+            </p>
+            <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 bg-slate-100 px-2.5 py-1 rounded-lg">Visão Geral</span>
+          </div>
 
           {/* Quick List under dashboard */}
           <div className="bg-white border border-slate-100 p-6 md:p-8 rounded-[32px] shadow-sm space-y-4">
-            <div className="flex justify-between items-center pb-2 border-b border-slate-55">
-              <h3 className="text-xs font-black uppercase tracking-widest text-slate-700">Competências em Aberto / Recentes ({monthlyModels.length})</h3>
+            <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center pb-4 border-b border-slate-100 gap-4">
+              <div className="space-y-1">
+                <h3 className="text-xs font-black uppercase tracking-widest text-slate-700">Contratos de Locação Recentes</h3>
+                <p className="text-[10px] text-slate-400 font-bold">Listando as competências de locação com base nos filtros selecionados</p>
+              </div>
               <button 
                 onClick={() => setActiveTab("list")}
-                className="text-[10px] font-black uppercase text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer transition-all"
+                className="text-[11px] font-black uppercase text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer transition-all self-start lg:self-auto"
               >
-                Ver Histórico <ChevronRight className="w-4 h-4" />
+                Ver Histórico Completo <ChevronRight className="w-4 h-4" />
               </button>
             </div>
 
+            {/* Top Quick Filters style pills/abas */}
+            <div className="flex flex-wrap gap-2 py-1 font-sans">
+              {[
+                { id: "TODOS", label: "TODOS", count: monthlyModels.length },
+                { id: "calculada", label: "CALCULADA", count: monthlyModels.filter(r => r.statusFinanceiro === "calculada").length },
+                { id: "aguardando_pagamento", label: "AGUARDANDO", count: monthlyModels.filter(r => r.statusFinanceiro === "aguardando_pagamento").length },
+                { id: "em_distribuicao", label: "EM DISTRIBUIÇÃO", count: monthlyModels.filter(r => r.statusFinanceiro === "em_distribuicao").length },
+                { id: "repasses_pendentes", label: "REPASSES PENDENTES", count: monthlyModels.filter(r => r.statusFinanceiro === "repasses_pendentes").length },
+                { id: "concluida", label: "CONCLUÍDA", count: monthlyModels.filter(r => r.statusFinanceiro === "concluida").length },
+              ].map(f => {
+                const isActive = dashboardStatusFilter === f.id;
+                return (
+                  <button
+                    key={f.id}
+                    onClick={() => setDashboardStatusFilter(f.id)}
+                    className={`px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest cursor-pointer transition-all ${
+                      isActive 
+                        ? "bg-slate-900 text-white shadow-sm font-black" 
+                        : "bg-slate-50 text-slate-450 hover:text-slate-800 border border-slate-100"
+                    }`}
+                  >
+                    {f.label} ({f.count})
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Filtered rental models rendering */}
             {monthlyModels.length === 0 ? (
               <p className="text-xs text-slate-400 italic text-center py-10 border border-dashed border-slate-200 rounded-3xl">Nenhuma competência financeira cadastrada.</p>
+            ) : monthlyModels.filter(r => dashboardStatusFilter === "TODOS" || r.statusFinanceiro === dashboardStatusFilter).length === 0 ? (
+              <p className="text-xs text-slate-400 italic text-center py-10 border border-dashed border-slate-200 rounded-3xl">Nenhum contrato corresponde a este filtro de comissão.</p>
             ) : (
               <div className="space-y-3 pt-2">
-                {monthlyModels.slice(0, 5).map((r, rIdx) => {
-                  return (
-                    <div 
-                      key={r.id} 
-                      onClick={() => setSelectedRentalId(r.id)}
-                      className="flex flex-col sm:flex-row sm:items-center justify-between p-5 bg-slate-50/50 border border-slate-100/80 rounded-2xl cursor-pointer hover:bg-slate-50 hover:border-slate-300 transition-all duration-250 select-none shadow-sm gap-4"
-                    >
-                      <div className="space-y-1">
-                        <p className="text-xs font-bold text-slate-800 block">
-                          {r.imovel} <span className="text-slate-400 font-normal">—</span> <span className="text-blue-600 font-bold">{r.competencia.label}</span>
-                        </p>
-                        <span className="text-[10px] text-slate-450 uppercase font-bold tracking-wider block">Inquilino: {r.inquilino}</span>
-                      </div>
-                      <div className="flex items-center gap-5 justify-between sm:justify-end">
-                        <div className="text-right">
-                          <span className="text-[9px] text-slate-400 uppercase font-black tracking-wider block">Faturamento Fidelidade</span>
-                          <span className="text-xs font-black text-slate-800 block">{formatCurrency(r.legacyDoc.valorFidelite)}</span>
+                {monthlyModels
+                  .filter(r => dashboardStatusFilter === "TODOS" || r.statusFinanceiro === dashboardStatusFilter)
+                  .slice(0, 8)
+                  .map((r, rIdx) => {
+                    return (
+                      <div 
+                        key={r.id} 
+                        onClick={() => setSelectedRentalId(r.id)}
+                        className="flex flex-col sm:flex-row sm:items-center justify-between p-5 bg-slate-50/50 border border-slate-100/80 rounded-2xl cursor-pointer hover:bg-slate-50 hover:border-slate-300 transition-all duration-250 select-none shadow-sm gap-4"
+                      >
+                        <div className="space-y-1">
+                          <p className="text-xs font-bold text-slate-800 block">
+                            {r.imovel} <span className="text-slate-400 font-normal">—</span> <span className="text-blue-600 font-bold">{r.competencia.label}</span>
+                          </p>
+                          <span className="text-[10px] text-slate-450 uppercase font-bold tracking-wider block">Inquilino: {r.inquilino}</span>
                         </div>
-                        <RentalStatusBadge status={r.statusFinanceiro} />
-                        <ChevronRight className="w-4 h-4 text-slate-300" />
+                        <div className="flex items-center gap-5 justify-between sm:justify-end">
+                          <div className="text-right">
+                            <span className="text-[9px] text-slate-400 uppercase font-black tracking-wider block">ADMINISTRAÇÃO</span>
+                            <span className="text-xs font-black text-slate-800 block">{formatCurrency(r.legacyDoc.valorFidelite)}</span>
+                          </div>
+                          <RentalStatusBadge status={r.statusFinanceiro} />
+                          <ChevronRight className="w-4 h-4 text-slate-300" />
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
               </div>
             )}
           </div>
