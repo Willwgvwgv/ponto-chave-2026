@@ -184,6 +184,9 @@ export interface Comissao {
   createdAt: any;
   updatedAt: any;
   pagamentosCorretores?: PagamentoCorretor[];
+  statusFinanceiro?: string;
+  dataRecebimento?: string;
+  contaBancariaRecebimento?: string;
 }
 
 export interface Vistoria {

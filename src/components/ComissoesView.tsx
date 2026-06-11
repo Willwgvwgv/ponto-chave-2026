@@ -306,8 +306,15 @@ export const ComissoesView: React.FC<ComissoesViewProps> = ({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight uppercase">Comissão & Repasses</h1>
+              <h1 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight uppercase">
+                {commissionType === "locacao" ? "Comissões de Locações" : "Gestão de Comissões"}
+              </h1>
             </div>
+            {commissionType === "locacao" && (
+              <p className="text-xs font-bold text-slate-400 mt-1">
+                Controle de primeiro aluguel, divisão e repasses
+              </p>
+            )}
           </div>
         </div>
 
@@ -331,7 +338,7 @@ export const ComissoesView: React.FC<ComissoesViewProps> = ({
                 : "text-slate-500 hover:text-slate-800 font-bold"
             }`}
           >
-            Comissão de Locação
+            Comissões de Locações
           </button>
         </div>
       </div>
