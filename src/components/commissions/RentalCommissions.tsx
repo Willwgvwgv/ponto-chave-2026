@@ -929,7 +929,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                   <div className="space-y-2 max-h-[180px] overflow-y-auto">
                     {computedRateios.map((rt, idx) => {
                       return (
-                        <div key={rt.corretorId || idx} className="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-xl shadow-sm text-xs select-none hover:bg-slate-50/50 transition-all animate-fade-in">
+                        <div key={`${rt.corretorId}-${rt.papel}-${idx}`} className="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-xl shadow-sm text-xs select-none hover:bg-slate-50/50 transition-all animate-fade-in">
                           <div className="space-y-0.5">
                             <p className="font-bold text-slate-800">{rt.corretorNome}</p>
                             <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-semibold uppercase tracking-wider">
