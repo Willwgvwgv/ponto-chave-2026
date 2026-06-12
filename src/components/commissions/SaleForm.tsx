@@ -416,7 +416,11 @@ export const SaleForm: React.FC<SaleFormProps> = ({
 
   // Filtro de corretores autorizados para aparecer no dropdown (qualquer usuário no sistema/capatador/sócio/corretor)
   const filteredBrokers = useMemo(() => team.filter(b => {
-    const isCompanyProfile = b.name?.toLowerCase().includes("fidelité") || b.email?.toLowerCase().includes("fidelite");
+    const nameLower = b.name?.toLowerCase() || "";
+    const emailLower = b.email?.toLowerCase() || "";
+    const isCompanyProfile = 
+      nameLower === "fidelité imobiliária" || 
+      emailLower === "fideliteimobiliaria@gmail.com";
     if (isCompanyProfile) return false;
 
     // Permitir qualquer usuário ativo no sistema poder receber splits de vendas
