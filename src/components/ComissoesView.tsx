@@ -437,6 +437,7 @@ export const ComissoesView: React.FC<ComissoesViewProps> = ({
                     splits={allSplits} 
                     onOpenCreateForm={() => setActiveSubTab("create")}
                     team={team}
+                    onRegisterPayment={handleRegisterPayment}
                   />
                 )}
 

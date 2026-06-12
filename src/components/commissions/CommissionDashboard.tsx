@@ -1,24 +1,54 @@
 import React, { useMemo, useState } from "react";
-import { DollarSign, BarChart3, TrendingUp, Calendar, ArrowUpRight, TrendingDown, Clock, Search, Filter } from "lucide-react";
+import { DollarSign, BarChart3, TrendingUp, Calendar, ArrowUpRight, TrendingDown, Clock, Search, Filter, CheckCircle } from "lucide-react";
 import { Sale, BrokerSplit } from "../../types";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart as RechartsPie, Pie, Cell, Legend } from "recharts";
 import { round2, useCreateBrokerAdvanceMutation } from "../../hooks/useQueries";
 import { toast } from "sonner";
 import { BrokerAdvanceModal } from "./BrokerAdvanceModal";
 import { StatusBadge } from "./StatusBadge";
+import { PaymentModal } from "./PaymentModal";
+
+const traduzirCargo = (role?: string): string => {
+  if (!role) return "Corretor";
+  const normalized = role.toLowerCase().trim();
+  if (normalized === "undefined" || normalized === "null" || normalized === "") {
+    return "Corretor";
+  }
+  const mapping: Record<string, string> = {
+    admin: "Administrador",
+    broker: "Corretor",
+    manager: "Gestor",
+    captador: "Captador",
+    colaborador: "Colaborador",
+    vendedor: "Vendedor"
+  };
+  return mapping[normalized] || role;
+};
 
 interface CommissionDashboardProps {
   sales: Sale[];
   splits: BrokerSplit[];
   onOpenCreateForm: () => void;
   team: any[];
+  onRegisterPayment?: (
+    splitId: string,
+    paidValue: number,
+    isPartial: boolean,
+    remainingValue: number,
+    newForecastDate: string,
+    paymentMethod: "PIX" | "TED" | "CHEQUE",
+    notes: string,
+    receiptData: string | null,
+    appliedDiscount?: number
+  ) => void;
 }
 
 export const CommissionDashboard: React.FC<CommissionDashboardProps> = ({
   sales,
   splits,
   onOpenCreateForm,
-  team = []
+  team = [],
+  onRegisterPayment
 }) => {
   const [agenSearch, setAgenSearch] = useState("");
   const [agenStatus, setAgenStatus] = useState<"ALL" | "PENDING" | "PARTIAL" | "PAID">("ALL");
@@ -27,6 +57,7 @@ export const CommissionDashboard: React.FC<CommissionDashboardProps> = ({
   const [selectedBrokerId, setSelectedBrokerId] = useState<string>("");
   const [selectedBrokerName, setSelectedBrokerName] = useState<string>("");
   const [showAdvanceModal, setShowAdvanceModal] = useState<boolean>(false);
+  const [selectedSplitForPayment, setSelectedSplitForPayment] = useState<BrokerSplit | null>(null);
 
   const createAdvanceMutation = useCreateBrokerAdvanceMutation();
 
@@ -573,7 +604,7 @@ export const CommissionDashboard: React.FC<CommissionDashboardProps> = ({
                       </div>
                       <div className="min-w-0">
                         <strong className="text-xs font-extrabold text-slate-800 tracking-tight block truncate pr-1">{brokerName}</strong>
-                        <span className="text-[10px] text-slate-400 font-semibold uppercase block truncate">{u.role || "Corretor"}</span>
+                        <span className="text-[10px] text-slate-400 font-semibold uppercase block truncate">{u.role ? traduzirCargo(u.role) : "Corretor"}</span>
                       </div>
                     </div>
                     {/* Botão + Lançar Movimentação */}
@@ -697,7 +728,7 @@ export const CommissionDashboard: React.FC<CommissionDashboardProps> = ({
                           <StatusBadge status={item.status} />
                         </div>
                         <div className="flex items-center gap-2 text-[10px] text-slate-400 font-semibold uppercase tracking-tight">
-                          <span>{item.role}</span>
+                          <span>{item.role ? traduzirCargo(item.role) : "Corretor"}</span>
                           {item.installment_number && (
                             <span className="bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded border border-slate-150 normal-case font-bold">
                               Parc. {item.installment_number}
@@ -721,6 +752,25 @@ export const CommissionDashboard: React.FC<CommissionDashboardProps> = ({
                         {item.status === "PARTIAL" && (
                           <span className="text-[9px] text-slate-400 font-bold block mt-0.5">
                             Pago: {formatCurrency(item.partial_payment || 0)} | Resta: {formatCurrency(item.remaining || 0)}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Botão Pagar ou Badge Pago */}
+                      <div className="shrink-0 ml-1">
+                        {item.status !== "PAID" ? (
+                          <button
+                            type="button"
+                            onClick={() => onRegisterPayment && setSelectedSplitForPayment(item)}
+                            disabled={!onRegisterPayment}
+                            className="flex items-center gap-1 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 hover:text-emerald-800 text-[10px] font-black px-2.5 py-1.5 rounded-xl uppercase tracking-widest transition-all cursor-pointer shadow-sm hover:shadow active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                            Pagar
+                          </button>
+                        ) : (
+                          <span className="inline-block bg-emerald-50 text-emerald-700 border border-emerald-150 text-[10px] font-bold px-2.5 py-1.5 rounded-xl uppercase tracking-widest select-none">
+                            Pago
                           </span>
                         )}
                       </div>
@@ -750,6 +800,17 @@ export const CommissionDashboard: React.FC<CommissionDashboardProps> = ({
         brokerName={selectedBrokerName}
         onSave={handleSaveAdvance}
       />
+
+      {/* Modal de confirmação de pagamento */}
+      {selectedSplitForPayment && onRegisterPayment && (
+        <PaymentModal
+          isOpen={selectedSplitForPayment !== null}
+          onClose={() => setSelectedSplitForPayment(null)}
+          split={selectedSplitForPayment}
+          discountBalance={team.find(u => (u.uid === selectedSplitForPayment.broker_id || u.id === selectedSplitForPayment.broker_id))?.adiantamento || 0}
+          onRegisterPayment={onRegisterPayment}
+        />
+      )}
 
     </div>
   );
