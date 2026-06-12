@@ -4193,6 +4193,7 @@ const ProcessesView = ({
   const { profile } = useAuth();
   const [viewMode, setViewMode] = useState<"list" | "kanban">("list");
   const [isMaximized, setIsMaximized] = useState(false);
+  const [highlightedColumnId, setHighlightedColumnId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [newProcessTitle, setNewProcessTitle] = useState("");
@@ -4699,13 +4700,15 @@ const ProcessesView = ({
               });
 
               return (
-                <div 
+                <motion.div 
                   key={column.id} 
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={async (e) => {
                     e.preventDefault();
                     const procId = e.dataTransfer.getData("procId");
                     if (!procId) return;
+                    setHighlightedColumnId(column.id);
+                    setTimeout(() => setHighlightedColumnId(null), 500);
                     try {
                       const proc = filteredProcesses.find(p => p.id === procId);
                       let fromStatus = proc?.kanbanStatus || "prospeccao";
@@ -4734,9 +4737,18 @@ const ProcessesView = ({
                     }
                   }}
                   className={cn(
-                    "w-72 flex flex-col h-full bg-slate-100/30 rounded-[32px] border border-slate-200 p-4 transition-all shadow-sm",
-                    isMaximized && "w-80 shadow-md bg-white border-slate-300"
+                    "w-72 flex flex-col h-full rounded-[32px] border p-4 shadow-sm",
+                    isMaximized && "w-80 shadow-md border-slate-300"
                   )}
+                  animate={{ 
+                    backgroundColor: highlightedColumnId === column.id 
+                      ? "#f0fdf4" 
+                      : (isMaximized ? "#ffffff" : "rgba(241, 245, 249, 0.3)"),
+                    borderColor: highlightedColumnId === column.id
+                      ? "#10b981"
+                      : (isMaximized ? "#cbd5e1" : "#e2e8f0")
+                  }}
+                  transition={{ duration: 0.5, ease: "easeOut" }}
                 >
                   <div className="flex items-center justify-between mb-4 px-1 pb-3 border-b border-slate-200">
                     <div className="flex items-center gap-2 flex-1 group/header">
@@ -4771,102 +4783,112 @@ const ProcessesView = ({
                   </div>
 
                   <div className="flex-1 space-y-3 overflow-y-auto pr-1 custom-scrollbar">
-                    {columnProcesses.map((proc) => {
-                      const procTemplate = templates.find(t => t.type === proc.type);
-                      if (!procTemplate) return null;
-                      const Icon = ICON_MAP[procTemplate.icon] || ClipboardList;
-                      const progress = Math.round((proc.completedSteps.length / procTemplate.steps.length) * 100);
+                    <AnimatePresence mode="popLayout">
+                      {columnProcesses.map((proc) => {
+                        const procTemplate = templates.find(t => t.type === proc.type);
+                        if (!procTemplate) return null;
+                        const Icon = ICON_MAP[procTemplate.icon] || ClipboardList;
+                        const progress = Math.round((proc.completedSteps.length / procTemplate.steps.length) * 100);
 
-                      return (
-                        <motion.div 
-                          layoutId={proc.id}
-                          key={proc.id}
-                          draggable
-                          onDragStart={(e) => {
-                            e.dataTransfer.setData("procId", proc.id);
-                            e.dataTransfer.effectAllowed = "move";
-                          }}
-                          onClick={() => {
-                            setActiveInstanceId(proc.id);
-                            if (isMaximized) setIsMaximized(false);
-                            setViewMode("list");
-                          }}
-                          className="bg-slate-50 p-3 rounded-2xl border border-slate-200/60 shadow-sm hover:shadow-md hover:bg-white hover:border-blue-200 transition-all cursor-grab active:cursor-grabbing group active:scale-95"
-                        >
-                          <div className="flex items-start justify-between mb-2">
-                            <div className={cn("w-7 h-7 rounded-lg flex items-center justify-center shadow-sm", (procTemplate.color || "text-blue-500").replace('text-', 'bg-').replace('500', '100'))}>
-                              <Icon className={cn("w-3.5 h-3.5", procTemplate.color)} />
-                            </div>
-                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <button 
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  let currentStatusId = proc.kanbanStatus || "prospeccao";
-                                  if (currentStatusId === "todo") currentStatusId = "prospeccao";
-                                  else if (currentStatusId === "in_progress") currentStatusId = "visita";
-                                  else if (currentStatusId === "waiting") currentStatusId = "proposta";
-                                  else if (currentStatusId === "done") currentStatusId = "concluido";
+                        return (
+                          <motion.div 
+                            layout
+                            key={proc.id}
+                            draggable
+                            onDragStart={(e) => {
+                              e.dataTransfer.setData("procId", proc.id);
+                              e.dataTransfer.effectAllowed = "move";
+                            }}
+                            onClick={() => {
+                              setActiveInstanceId(proc.id);
+                              if (isMaximized) setIsMaximized(false);
+                              setViewMode("list");
+                            }}
+                            initial={{ opacity: 0, y: -20, scale: 0.95 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, x: 50, scale: 0.95 }}
+                            whileDrag={{ scale: 1.05, boxShadow: "0 10px 30px rgba(0,0,0,0.2)", zIndex: 50 }}
+                            transition={{ duration: 0.25, ease: "easeOut" }}
+                            className="bg-slate-50 p-3 rounded-2xl border border-slate-200/60 shadow-sm hover:shadow-md hover:bg-white hover:border-blue-200 transition-all cursor-grab active:cursor-grabbing group active:scale-95"
+                          >
+                            <div className="flex items-start justify-between mb-2">
+                              <div className={cn("w-7 h-7 rounded-lg flex items-center justify-center shadow-sm", (procTemplate.color || "text-blue-500").replace('text-', 'bg-').replace('500', '100'))}>
+                                <Icon className={cn("w-3.5 h-3.5", procTemplate.color)} />
+                              </div>
+                              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    let currentStatusId = proc.kanbanStatus || "prospeccao";
+                                    if (currentStatusId === "todo") currentStatusId = "prospeccao";
+                                    else if (currentStatusId === "in_progress") currentStatusId = "visita";
+                                    else if (currentStatusId === "waiting") currentStatusId = "proposta";
+                                    else if (currentStatusId === "done") currentStatusId = "concluido";
 
-                                  const currentIndex = kanbanColumns.findIndex(c => c.id === currentStatusId);
-                                  const nextCol = kanbanColumns[(currentIndex + 1) % kanbanColumns.length];
-                                  const fromLabel = kanbanColumns[currentIndex]?.label || "Início";
-                                  const isLast = (currentIndex + 1) === kanbanColumns.length;
+                                    const currentIndex = kanbanColumns.findIndex(c => c.id === currentStatusId);
+                                    const nextCol = kanbanColumns[(currentIndex + 1) % kanbanColumns.length];
+                                    const fromLabel = kanbanColumns[currentIndex]?.label || "Início";
+                                    const isLast = (currentIndex + 1) === kanbanColumns.length;
 
-                                  updateDoc(doc(db, "processes", proc.id), { 
-                                    kanbanStatus: nextCol.id,
-                                    status: isLast ? "completed" : "active",
-                                    updatedAt: serverTimestamp(),
-                                    kanbanHistory: arrayUnion({
-                                      from: fromLabel,
-                                      to: nextCol.label,
-                                      timestamp: new Date().toISOString(),
-                                      userId: user?.uid,
-                                      userName: profile?.displayName || user?.displayName || "Sistema"
-                                    })
-                                  });
-                                  toast.info(`Movido para ${nextCol.label}`);
-                                }}
-                                className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-blue-600 transition-colors"
-                              >
-                                <ChevronRight className="w-3 h-3" />
-                              </button>
-                            </div>
-                          </div>
-                          
-                          <h4 className="font-bold text-slate-900 text-[11px] mb-1.5 line-clamp-2 leading-tight">{proc.title}</h4>
-                          
-                          <div className="space-y-2">
-                            <div className="flex justify-between items-center text-[8px] font-black uppercase tracking-wider">
-                              <span className="text-slate-500">{procTemplate.title}</span>
-                              <span className="text-blue-700">{progress}%</span>
-                            </div>
-                            <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                              <div 
-                                className="h-full bg-blue-600 transition-all duration-500 shadow-[0_0_8px_rgba(37,99,235,0.4)]" 
-                                style={{ width: `${progress}%` }}
-                              />
+                                    setHighlightedColumnId(nextCol.id);
+                                    setTimeout(() => setHighlightedColumnId(null), 500);
+
+                                    updateDoc(doc(db, "processes", proc.id), { 
+                                      kanbanStatus: nextCol.id,
+                                      status: isLast ? "completed" : "active",
+                                      updatedAt: serverTimestamp(),
+                                      kanbanHistory: arrayUnion({
+                                        from: fromLabel,
+                                        to: nextCol.label,
+                                        timestamp: new Date().toISOString(),
+                                        userId: user?.uid,
+                                        userName: profile?.displayName || user?.displayName || "Sistema"
+                                      })
+                                    });
+                                    toast.info(`Movido para ${nextCol.label}`);
+                                  }}
+                                  className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-blue-600 transition-colors"
+                                >
+                                  <ChevronRight className="w-3 h-3" />
+                                </button>
+                              </div>
                             </div>
                             
-                            <div className="flex items-center justify-between pt-0.5">
-                              <div className="flex -space-x-1">
-                                <div className="w-4.5 h-4.5 rounded-full bg-blue-100 border border-white flex items-center justify-center text-[8px] font-bold text-blue-600" title={proc.uid ? allUsers.find(u => u.uid === proc.uid)?.displayName || "Sistema" : user?.displayName}>
-                                  {proc.uid ? (allUsers.find(u => u.uid === proc.uid)?.displayName || "U")?.charAt(0) : user?.displayName?.charAt(0)}
-                                </div>
+                            <h4 className="font-bold text-slate-900 text-[11px] mb-1.5 line-clamp-2 leading-tight">{proc.title}</h4>
+                            
+                            <div className="space-y-2">
+                              <div className="flex justify-between items-center text-[8px] font-black uppercase tracking-wider">
+                                <span className="text-slate-500">{procTemplate.title}</span>
+                                <span className="text-blue-700">{progress}%</span>
                               </div>
-                              {proc.dueDate && (
-                                <div className={cn(
-                                  "flex items-center gap-0.5 text-[8px] font-bold",
-                                  proc.dueDate < TODAY_ISO ? "text-red-500" : "text-slate-400"
-                                )}>
-                                  <Clock className="w-2.5 h-2.5" />
-                                  {format(parseISO(proc.dueDate), "dd MMM", { locale: ptBR })}
+                              <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                                <div 
+                                  className="h-full bg-blue-600 transition-all duration-500 shadow-[0_0_8px_rgba(37,99,235,0.4)]" 
+                                  style={{ width: `${progress}%` }}
+                                />
+                              </div>
+                              
+                              <div className="flex items-center justify-between pt-0.5">
+                                <div className="flex -space-x-1">
+                                  <div className="w-4.5 h-4.5 rounded-full bg-blue-100 border border-white flex items-center justify-center text-[8px] font-bold text-blue-600" title={proc.uid ? allUsers.find(u => u.uid === proc.uid)?.displayName || "Sistema" : user?.displayName}>
+                                    {proc.uid ? (allUsers.find(u => u.uid === proc.uid)?.displayName || "U")?.charAt(0) : user?.displayName?.charAt(0)}
+                                  </div>
                                 </div>
-                              )}
+                                {proc.dueDate && (
+                                  <div className={cn(
+                                    "flex items-center gap-0.5 text-[8px] font-bold",
+                                    proc.dueDate < TODAY_ISO ? "text-red-500" : "text-slate-400"
+                                  )}>
+                                    <Clock className="w-2.5 h-2.5" />
+                                    {format(parseISO(proc.dueDate), "dd MMM", { locale: ptBR })}
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        </motion.div>
-                      );
-                    })}
+                          </motion.div>
+                        );
+                      })}
+                    </AnimatePresence>
                     {columnProcesses.length === 0 && (
                       <div className="py-8 border-2 border-dashed border-slate-300 bg-slate-100/50 rounded-2xl flex flex-col items-center justify-center text-slate-500">
                         <PlusCircle className="w-6 h-6 mb-1.5 opacity-40" />
@@ -4874,7 +4896,7 @@ const ProcessesView = ({
                       </div>
                     )}
                   </div>
-                </div>
+                </motion.div>
               );
             })}
           </div>
