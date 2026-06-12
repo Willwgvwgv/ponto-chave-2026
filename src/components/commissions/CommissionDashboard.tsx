@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { DollarSign, BarChart3, TrendingUp, Calendar, ArrowUpRight, TrendingDown, Clock, Search, Filter, CheckCircle } from "lucide-react";
+import { DollarSign, BarChart3, TrendingUp, Calendar, ArrowUpRight, TrendingDown, Clock, Search, Filter, CheckCircle, Building2, ArrowRightLeft } from "lucide-react";
 import { Sale, BrokerSplit } from "../../types";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart as RechartsPie, Pie, Cell, Legend } from "recharts";
 import { round2, useCreateBrokerAdvanceMutation } from "../../hooks/useQueries";
@@ -8,22 +8,21 @@ import { BrokerAdvanceModal } from "./BrokerAdvanceModal";
 import { StatusBadge } from "./StatusBadge";
 import { PaymentModal } from "./PaymentModal";
 
-const traduzirCargo = (role?: string): string => {
-  if (!role) return "Corretor";
-  const normalized = role.toLowerCase().trim();
-  if (normalized === "undefined" || normalized === "null" || normalized === "") {
-    return "Corretor";
-  }
-  const mapping: Record<string, string> = {
+function traduzirCargo(role?: string): string {
+  if (!role || role === "undefined" || role === "null" || role.trim() === "") return "Corretor";
+  const mapa: Record<string, string> = {
     admin: "Administrador",
+    administrador: "Administrador", 
     broker: "Corretor",
+    corretor: "Corretor",
     manager: "Gestor",
+    gestor: "Gestor",
     captador: "Captador",
     colaborador: "Colaborador",
     vendedor: "Vendedor"
   };
-  return mapping[normalized] || role;
-};
+  return mapa[role.toLowerCase().trim()] || "Corretor";
+}
 
 interface CommissionDashboardProps {
   sales: Sale[];
@@ -59,6 +58,13 @@ export const CommissionDashboard: React.FC<CommissionDashboardProps> = ({
   const [showAdvanceModal, setShowAdvanceModal] = useState<boolean>(false);
   const [selectedSplitForPayment, setSelectedSplitForPayment] = useState<BrokerSplit | null>(null);
 
+  // Caixa de Comissões states
+  const [caixaPeriod, setCaixaPeriod] = useState<"ESTE_MES" | "MES_ANTERIOR" | "ESTE_ANO" | "PERSONALIZADO">("ESTE_MES");
+  const defaultStart = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}-01`;
+  const defaultEnd = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}-${String(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate()).padStart(2, "0")}`;
+  const [caixaStartDate, setCaixaStartDate] = useState<string>(defaultStart);
+  const [caixaEndDate, setCaixaEndDate] = useState<string>(defaultEnd);
+
   const createAdvanceMutation = useCreateBrokerAdvanceMutation();
 
   const handleSaveAdvance = (data: {
@@ -85,6 +91,119 @@ export const CommissionDashboard: React.FC<CommissionDashboardProps> = ({
 
   const formatCurrency = (val: number) =>
     new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(val);
+
+  // Calculations for Caixa de Comissões
+  const caixaTotals = useMemo(() => {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = d.getMonth();
+    
+    let start = "";
+    let end = "";
+    
+    if (caixaPeriod === "ESTE_MES") {
+      start = `${y}-${String(m + 1).padStart(2, "0")}-01`;
+      end = `${y}-${String(m + 1).padStart(2, "0")}-${String(new Date(y, m + 1, 0).getDate()).padStart(2, "0")}`;
+    } else if (caixaPeriod === "MES_ANTERIOR") {
+      const prevM = m === 0 ? 11 : m - 1;
+      const prevY = m === 0 ? y - 1 : y;
+      start = `${prevY}-${String(prevM + 1).padStart(2, "0")}-01`;
+      end = `${prevY}-${String(prevM + 1).padStart(2, "0")}-${String(new Date(prevY, prevM + 1, 0).getDate()).padStart(2, "0")}`;
+    } else if (caixaPeriod === "ESTE_ANO") {
+      start = `${y}-01-01`;
+      end = `${y}-12-31`;
+    } else {
+      start = caixaStartDate;
+      end = caixaEndDate;
+    }
+
+    const isWithin = (dateStr: string | null | undefined) => {
+      if (!dateStr) return false;
+      const cleaned = dateStr.trim().split("T")[0];
+      if (start && cleaned < start) return false;
+      if (end && cleaned > end) return false;
+      return true;
+    };
+
+    const isInstitucional = (brokerName: string, brokerId: string) => {
+      const nameLower = (brokerName || "").toLowerCase();
+      if (
+        nameLower.includes("imobiliária") ||
+        nameLower.includes("agência") ||
+        nameLower.includes("fidelite") ||
+        nameLower.includes("institucional") ||
+        nameLower.includes("fidelité")
+      ) {
+        return true;
+      }
+      const member = team.find(t => (t.uid === brokerId || t.id === brokerId));
+      if (member) {
+        const emailLower = (member.email || "").toLowerCase();
+        if (
+          emailLower.includes("fideliteimobiliaria") ||
+          emailLower.includes("imobiliaria") ||
+          emailLower.includes("agencia") ||
+          emailLower.includes("institucional")
+        ) {
+          return true;
+        }
+        const mNameLower = (member.displayName || member.name || "").toLowerCase();
+        if (
+          mNameLower.includes("imobiliária") ||
+          mNameLower.includes("agência") ||
+          mNameLower.includes("fidelite") ||
+          mNameLower.includes("fidelité")
+        ) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    // Calculate Card 1 — Comissão Bruta Total
+    let comissaoBrutaTotal = 0;
+    sales.forEach(s => {
+      if (s.status === "ACTIVE" && isWithin(s.sale_date)) {
+        const value = s.total_commission || (s.sale_value * (s.commission_percentage || 0)) / 100;
+        comissaoBrutaTotal += value;
+      }
+    });
+
+    // Calculate Card 2 — Repasses a Pagar & Repasses Pagos
+    let repassesAPagar = 0;
+    let repassesPagos = 0;
+
+    splits.forEach(sp => {
+      const parent = sales.find(s => s.id === sp.sale_id);
+      if (!parent || parent.status !== "ACTIVE") return;
+
+      if (isInstitucional(sp.broker_name, sp.broker_id)) return;
+
+      if (sp.status !== "PAID") {
+        if (isWithin(sp.forecast_date)) {
+          repassesAPagar += (sp.calculated_value || 0);
+        }
+      } else {
+        const dateUsed = sp.payment_date || sp.forecast_date;
+        if (isWithin(dateUsed)) {
+          repassesPagos += (sp.calculated_value || 0);
+        }
+      }
+    });
+
+    const receitaLiquidaCard = comissaoBrutaTotal - repassesAPagar;
+    const receitaLiquidaDre = comissaoBrutaTotal - repassesPagos - repassesAPagar;
+
+    return {
+      comissaoBrutaTotal: round2(comissaoBrutaTotal),
+      repassesAPagar: round2(repassesAPagar),
+      repassesPagos: round2(repassesPagos),
+      receitaLiquidaCard: round2(receitaLiquidaCard),
+      receitaLiquidaDre: round2(receitaLiquidaDre),
+      startDate: start,
+      endDate: end
+    };
+  }, [sales, splits, team, caixaPeriod, caixaStartDate, caixaEndDate]);
 
   // Filtrar dados ativos
   const activeSales = useMemo(() => sales.filter(s => s.status === "ACTIVE"), [sales]);
@@ -462,6 +581,149 @@ export const CommissionDashboard: React.FC<CommissionDashboardProps> = ({
 
       </div>
 
+      {/* Bloco: Caixa de Comissões */}
+      <div className="bg-white p-6 rounded-[32px] border border-slate-150/80 shadow-sm space-y-6">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div>
+            <h3 className="text-xs font-black uppercase tracking-widest text-slate-700 flex items-center gap-2">
+              <Building2 className="w-4 h-4 text-blue-600" />
+              Caixa de Comissões
+            </h3>
+            <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">
+              Acompanhamento de fluxo de caixa &amp; saúde financeira do escritório
+            </p>
+          </div>
+
+          {/* Filtro rápido */}
+          <div className="flex flex-wrap items-center gap-2">
+            {[
+              { id: "ESTE_MES", label: "Este Mês" },
+              { id: "MES_ANTERIOR", label: "Mês Anterior" },
+              { id: "ESTE_ANO", label: "Este Ano" },
+              { id: "PERSONALIZADO", label: "Personalizado" }
+            ].map((pVal) => (
+              <button
+                key={pVal.id}
+                type="button"
+                onClick={() => setCaixaPeriod(pVal.id as any)}
+                className={`px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer border ${
+                  caixaPeriod === pVal.id
+                    ? "bg-slate-800 text-white border-slate-800 shadow-sm"
+                    : "bg-slate-50 hover:bg-slate-100 text-slate-600 border-slate-200"
+                }`}
+              >
+                {pVal.label}
+              </button>
+            ))}
+
+            {caixaPeriod === "PERSONALIZADO" && (
+              <div className="flex items-center gap-1.5 ml-0 lg:ml-2 mt-2 lg:mt-0 bg-slate-50 p-1 rounded-xl border border-slate-200">
+                <input
+                  type="date"
+                  value={caixaStartDate}
+                  onChange={(e) => setCaixaStartDate(e.target.value)}
+                  className="bg-transparent border-none text-[10px] font-bold text-slate-700 focus:outline-none p-1"
+                />
+                <span className="text-[10px] font-black text-slate-400 uppercase">a</span>
+                <input
+                  type="date"
+                  value={caixaEndDate}
+                  onChange={(e) => setCaixaEndDate(e.target.value)}
+                  className="bg-transparent border-none text-[10px] font-bold text-slate-700 focus:outline-none p-1"
+                />
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* 3 cards de cores */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          {/* Card 1 */}
+          <div className="p-5 bg-blue-50 border border-blue-200 rounded-2xl flex items-center justify-between group hover:shadow-sm transition-all">
+            <div className="space-y-1">
+              <span className="text-[9px] font-black uppercase text-blue-500 tracking-widest block">Comissão Bruta</span>
+              <strong className="text-xl font-black text-blue-950 leading-none block">
+                {formatCurrency(caixaTotals.comissaoBrutaTotal)}
+              </strong>
+              <p className="text-[10px] text-blue-750 font-semibold uppercase mt-0.5">Total gerado pelas vendas</p>
+            </div>
+            <div className="p-3 bg-blue-100 text-blue-700 rounded-xl shrink-0 group-hover:scale-105 transition-transform">
+              <TrendingUp className="w-5 h-5 text-blue-600" />
+            </div>
+          </div>
+
+          {/* Card 2 */}
+          <div className="p-5 bg-orange-50 border border-orange-200 rounded-2xl flex items-center justify-between group hover:shadow-sm transition-all">
+            <div className="space-y-1">
+              <span className="text-[9px] font-black uppercase text-orange-500 tracking-widest block">Repasses a Pagar</span>
+              <strong className="text-xl font-black text-orange-950 leading-none block">
+                {formatCurrency(caixaTotals.repassesAPagar)}
+              </strong>
+              <p className="text-[10px] text-orange-755 font-semibold uppercase mt-0.5">Obrigações com corretores</p>
+            </div>
+            <div className="p-3 bg-orange-100 text-orange-700 rounded-xl shrink-0 group-hover:scale-105 transition-transform">
+              <ArrowRightLeft className="w-5 h-5 text-orange-600" />
+            </div>
+          </div>
+
+          {/* Card 3 */}
+          <div className="p-5 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center justify-between group hover:shadow-sm transition-all">
+            <div className="space-y-1">
+              <span className="text-[9px] font-black uppercase text-emerald-600 tracking-widest block">Receita Líquida</span>
+              <strong className={`text-xl font-black leading-none block ${caixaTotals.receitaLiquidaCard >= 0 ? "text-emerald-800" : "text-rose-600"}`}>
+                {formatCurrency(caixaTotals.receitaLiquidaCard)}
+              </strong>
+              <p className="text-[10px] text-emerald-750 font-semibold uppercase mt-0.5">Caixa real da imobiliária</p>
+            </div>
+            <div className="p-3 bg-emerald-100 text-emerald-700 rounded-xl shrink-0 group-hover:scale-105 transition-transform">
+              <Building2 className="w-5 h-5 text-emerald-600" />
+            </div>
+          </div>
+        </div>
+
+        {/* DRE simplificado */}
+        <div className="bg-slate-50/80 border border-slate-150 p-4.5 rounded-2xl space-y-3.5">
+          <div className="flex items-center justify-between border-b border-slate-200/60 pb-2">
+            <h4 className="text-[10px] font-black uppercase text-slate-500 tracking-widest">
+              Demonstração de Resultados (DRE Simplificado)
+            </h4>
+            <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider">
+              Período de {caixaTotals.startDate.split("-").reverse().join("/")} a {caixaTotals.endDate.split("-").reverse().join("/")}
+            </span>
+          </div>
+          
+          <div className="space-y-2.5 font-mono text-xs text-slate-600 max-w-xl">
+            <div className="flex justify-between items-center">
+              <span>Comissão bruta:</span>
+              <strong className="text-slate-800 font-extrabold">{formatCurrency(caixaTotals.comissaoBrutaTotal)}</strong>
+            </div>
+
+            <div className="flex justify-between items-center pl-4 border-l-2 border-emerald-200/60 py-0.5">
+              <div className="flex items-center gap-1.5 font-sans">
+                <span>(-) Repasses pagos:</span>
+                <span className="text-[9px] text-slate-400 font-bold bg-slate-100 px-1 py-0.2 rounded border border-slate-200">já pagos</span>
+              </div>
+              <strong className="text-slate-800 font-extrabold">{formatCurrency(caixaTotals.repassesPagos)}</strong>
+            </div>
+
+            <div className="flex justify-between items-center pl-4 border-l-2 border-orange-200/60 py-0.5">
+              <div className="flex items-center gap-1.5 font-sans font-sans">
+                <span>(-) Repasses pend.:</span>
+                <span className="text-[9px] text-slate-400 font-bold bg-slate-100 px-1 py-0.2 rounded border border-slate-200">ainda a pagar</span>
+              </div>
+              <strong className="text-slate-800 font-extrabold">{formatCurrency(caixaTotals.repassesAPagar)}</strong>
+            </div>
+
+            <div className="flex justify-between items-center pt-2.5 border-t border-slate-200">
+              <strong className="text-slate-700 font-bold uppercase tracking-wide text-[10px]">(=) Receita líquida:</strong>
+              <strong className={`text-sm font-black ${caixaTotals.receitaLiquidaDre >= 0 ? "text-emerald-700" : "text-rose-600"}`}>
+                {formatCurrency(caixaTotals.receitaLiquidaDre)}
+              </strong>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Seção de Gráficos Recharts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
@@ -554,6 +816,7 @@ export const CommissionDashboard: React.FC<CommissionDashboardProps> = ({
             <div>
               <h3 className="text-xs font-black uppercase tracking-widest text-slate-700">Saldo por Corretor</h3>
               <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">Visão consolidada de recebíveis, adiantamentos e saldo líquido</p>
+              <p className="text-[10px] text-emerald-600 font-bold uppercase mt-0.5">Exibindo apenas profissionais com movimentações financeiras ativas</p>
             </div>
             <span className="text-[10px] bg-slate-50 border border-slate-150 text-slate-500 font-bold px-2.5 py-1 rounded-full uppercase tracking-wider">
               Profissionais Ativos
@@ -564,7 +827,18 @@ export const CommissionDashboard: React.FC<CommissionDashboardProps> = ({
             {team.filter(u => {
               const nameLower = (u.displayName || u.name || "").toLowerCase();
               const emailLower = (u.email || "").toLowerCase();
-              return nameLower !== "fidelité imobiliária" && emailLower !== "fideliteimobiliaria@gmail.com";
+              if (nameLower === "fidelité imobiliária" || emailLower === "fideliteimobiliaria@gmail.com") {
+                return false;
+              }
+
+              const brokerId = u.uid || u.id;
+              const aReceber = activeSplits
+                .filter(s => s.broker_id === brokerId && s.status !== "PAID")
+                .reduce((acc, s) => acc + (s.calculated_value || 0), 0);
+              const aDescontar = u.adiantamento || 0;
+              const saldoLiquido = aReceber - aDescontar;
+
+              return aReceber > 0 || aDescontar > 0 || saldoLiquido !== 0;
             }).map((u) => {
               const brokerId = u.uid || u.id;
               const brokerName = u.displayName || u.name || "Corretor";
@@ -595,6 +869,8 @@ export const CommissionDashboard: React.FC<CommissionDashboardProps> = ({
               const colorHash = Math.abs(brokerName.split("").reduce((acc: number, char: string) => acc + char.charCodeAt(0), 0));
               const assignedColor = colors[colorHash % colors.length];
 
+              const cargo = traduzirCargo(u?.role) || traduzirCargo(u?.cargo) || "Corretor";
+
               return (
                 <div key={brokerId} className="p-4 border border-slate-150 rounded-2xl flex flex-col justify-between space-y-3 bg-slate-50/20 hover:shadow-sm transition-all text-sm">
                   <div className="flex items-center justify-between gap-2">
@@ -604,7 +880,7 @@ export const CommissionDashboard: React.FC<CommissionDashboardProps> = ({
                       </div>
                       <div className="min-w-0">
                         <strong className="text-xs font-extrabold text-slate-800 tracking-tight block truncate pr-1">{brokerName}</strong>
-                        <span className="text-[10px] text-slate-400 font-semibold uppercase block truncate">{u.role ? traduzirCargo(u.role) : "Corretor"}</span>
+                        <span className="text-[10px] text-slate-400 font-semibold uppercase block truncate">{cargo}</span>
                       </div>
                     </div>
                     {/* Botão + Lançar Movimentação */}
@@ -728,7 +1004,7 @@ export const CommissionDashboard: React.FC<CommissionDashboardProps> = ({
                           <StatusBadge status={item.status} />
                         </div>
                         <div className="flex items-center gap-2 text-[10px] text-slate-400 font-semibold uppercase tracking-tight">
-                          <span>{item.role ? traduzirCargo(item.role) : "Corretor"}</span>
+                          <span>{traduzirCargo(item?.role) || traduzirCargo(item?.cargo) || "Corretor"}</span>
                           {item.installment_number && (
                             <span className="bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded border border-slate-150 normal-case font-bold">
                               Parc. {item.installment_number}
