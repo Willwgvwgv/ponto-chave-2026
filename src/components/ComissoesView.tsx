@@ -26,6 +26,7 @@ import {
   useDeleteSaleMutation,
   useUpdateSaleStatusMutation
 } from "../hooks/useQueries";
+import { db, doc, getDoc, updateDoc, addDoc, collection } from "../firebase";
 import { CommissionDashboard } from "./commissions/CommissionDashboard";
 import { SalesList } from "./commissions/SalesList";
 import { SaleForm } from "./commissions/SaleForm";
@@ -211,7 +212,7 @@ export const ComissoesView: React.FC<ComissoesViewProps> = ({
     });
   };
 
-  const handleRegisterPayment = (
+  const handleRegisterPayment = async (
     splitId: string,
     paidValue: number,
     isPartial: boolean,
@@ -219,22 +220,57 @@ export const ComissoesView: React.FC<ComissoesViewProps> = ({
     newForecastDate: string,
     paymentMethod: "PIX" | "TED" | "CHEQUE",
     notes: string,
-    receiptData: string | null
+    receiptData: string | null,
+    appliedDiscount?: number
   ) => {
     const today = new Date().toISOString().split("T")[0];
     const currentSplitObj = allSplits.find(s => s.id === splitId);
 
     if (!currentSplitObj) return;
 
+    // Se houver desconto aplicado, atualiza o saldo de adiantamento e grava movimentação de Acerto
+    if (appliedDiscount && appliedDiscount > 0) {
+      try {
+        const userRef = doc(db, "users", currentSplitObj.broker_id);
+        const userSnap = await getDoc(userRef);
+        let currentAdiantamento = 0;
+        if (userSnap.exists()) {
+          const userData = userSnap.data();
+          currentAdiantamento = userData.adiantamento || 0;
+        }
+        const newAdiantamento = Math.max(0, currentAdiantamento - appliedDiscount);
+        await updateDoc(userRef, { adiantamento: newAdiantamento });
+
+        // Lançar na coleção broker_advances:
+        const advRef = collection(db, "broker_advances");
+        const newDoc = {
+          agency_id: agencyId,
+          broker_id: currentSplitObj.broker_id,
+          broker_name: currentSplitObj.broker_name,
+          value: appliedDiscount,
+          type: "Acerto",
+          description: `Acerto e abatimento de adiantamento descontado no pagamento do split ${splitId}`,
+          date: today,
+          created_at: new Date().toISOString()
+        };
+        await addDoc(advRef, newDoc);
+      } catch (err) {
+        console.error("Erro ao aplicar desconto / abatimento de adiantamento:", err);
+      }
+    }
+
     if (isPartial) {
       // 1. Atualizações do split atual: marca status parciais, calculated_value vira o valor pago, registra históricos
       const updates: Partial<BrokerSplit> = {
         status: "PARTIAL",
-        calculated_value: paidValue,
+        paid: false,
+        partial_payment: paidValue,
+        remaining: remainingValue,
         payment_date: today,
         payment_method: paymentMethod,
         notes: notes || "Pagamento parcial registrado",
-        receipt_data: receiptData
+        receipt_data: receiptData,
+        discount_value: appliedDiscount || 0
       };
 
       // 2. Criação do novo split de saldo restante: mesmo compromisso, valor restante, nova previsão, parcela seguinte
@@ -264,10 +300,12 @@ export const ComissoesView: React.FC<ComissoesViewProps> = ({
       // Pagamento integral
       const updates: Partial<BrokerSplit> = {
         status: "PAID",
+        paid: true,
         payment_date: today,
         payment_method: paymentMethod,
         notes,
-        receipt_data: receiptData
+        receipt_data: receiptData,
+        discount_value: appliedDiscount || 0
       };
 
       updateSplitMutation.mutate({
@@ -398,6 +436,7 @@ export const ComissoesView: React.FC<ComissoesViewProps> = ({
                     sales={sales} 
                     splits={allSplits} 
                     onOpenCreateForm={() => setActiveSubTab("create")}
+                    team={team}
                   />
                 )}
 

@@ -1538,6 +1538,7 @@ export const SaleDetail: React.FC<SaleDetailProps> = ({
           isOpen={selectedSplitForPayment !== null}
           onClose={() => setSelectedSplitForPayment(null)}
           split={selectedSplitForPayment}
+          discountBalance={team.find(u => (u.uid === selectedSplitForPayment.broker_id || u.id === selectedSplitForPayment.broker_id))?.adiantamento || 0}
           onRegisterPayment={onRegisterPayment}
         />
       )}

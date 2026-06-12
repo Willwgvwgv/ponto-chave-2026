@@ -1,21 +1,57 @@
-import React, { useMemo } from "react";
-import { DollarSign, BarChart3, TrendingUp, Calendar, ArrowUpRight, TrendingDown, Clock } from "lucide-react";
+import React, { useMemo, useState } from "react";
+import { DollarSign, BarChart3, TrendingUp, Calendar, ArrowUpRight, TrendingDown, Clock, Search, Filter } from "lucide-react";
 import { Sale, BrokerSplit } from "../../types";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart as RechartsPie, Pie, Cell, Legend } from "recharts";
-import { round2 } from "../../hooks/useQueries";
+import { round2, useCreateBrokerAdvanceMutation } from "../../hooks/useQueries";
 import { toast } from "sonner";
+import { BrokerAdvanceModal } from "./BrokerAdvanceModal";
+import { StatusBadge } from "./StatusBadge";
 
 interface CommissionDashboardProps {
   sales: Sale[];
   splits: BrokerSplit[];
   onOpenCreateForm: () => void;
+  team: any[];
 }
 
 export const CommissionDashboard: React.FC<CommissionDashboardProps> = ({
   sales,
   splits,
-  onOpenCreateForm
+  onOpenCreateForm,
+  team = []
 }) => {
+  const [agenSearch, setAgenSearch] = useState("");
+  const [agenStatus, setAgenStatus] = useState<"ALL" | "PENDING" | "PARTIAL" | "PAID">("ALL");
+  const [agenRole, setAgenRole] = useState<"ALL" | "VENDEDOR" | "CAPTADOR" | "GESTOR">("ALL");
+
+  const [selectedBrokerId, setSelectedBrokerId] = useState<string>("");
+  const [selectedBrokerName, setSelectedBrokerName] = useState<string>("");
+  const [showAdvanceModal, setShowAdvanceModal] = useState<boolean>(false);
+
+  const createAdvanceMutation = useCreateBrokerAdvanceMutation();
+
+  const handleSaveAdvance = (data: {
+    value: number;
+    type: "Adiantamento" | "Desconto" | "Acerto";
+    description: string;
+    date: string;
+  }) => {
+    const agencyId = splits[0]?.agency_id || "default_agency";
+    createAdvanceMutation.mutate({
+      agencyId,
+      brokerId: selectedBrokerId,
+      brokerName: selectedBrokerName,
+      value: data.value,
+      type: data.type,
+      description: data.description,
+      date: data.date
+    }, {
+      onSuccess: () => {
+        toast.success("Movimentação financeira registrada para o corretor!");
+      }
+    });
+  };
+
   const formatCurrency = (val: number) =>
     new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(val);
 
@@ -225,13 +261,25 @@ export const CommissionDashboard: React.FC<CommissionDashboardProps> = ({
     return Object.values(roles).map(r => ({ name: r.name, value: round2(r.value) }));
   }, [activeSplits]);
 
-  // Próximos Pagamentos Pendentes Cronológicos
-  const nextPendingSplits = useMemo(() => {
-    return activeSplits
-      .filter(sp => sp.status !== "PAID")
-      .sort((a, b) => new Date(a.forecast_date).getTime() - new Date(b.forecast_date).getTime())
-      .slice(0, 5);
-  }, [activeSplits]);
+  // Próximos Pagamentos com Filtros Aplicados
+  const filteredSplits = useMemo(() => {
+    return activeSplits.filter(sp => {
+      // 1. busca por nome
+      if (agenSearch.trim() !== "") {
+        const name = (sp.broker_name || "").toLowerCase();
+        if (!name.includes(agenSearch.toLowerCase())) return false;
+      }
+      // 2. status filter
+      if (agenStatus !== "ALL") {
+        if (sp.status !== agenStatus) return false;
+      }
+      // 3. role/papel/cargo filter
+      if (agenRole !== "ALL") {
+        if (sp.role !== agenRole) return false;
+      }
+      return true;
+    }).sort((a, b) => new Date(a.forecast_date).getTime() - new Date(b.forecast_date).getTime());
+  }, [activeSplits, agenSearch, agenStatus, agenRole]);
 
   const COLORS = ["#2563eb", "#10b981", "#f59e0b", "#7c3aed", "#ec4899", "#14b8a6"];
 
@@ -464,47 +512,217 @@ export const CommissionDashboard: React.FC<CommissionDashboardProps> = ({
           </div>
         </div>
 
-        {/* Listagem lateral de Próximas previsões */}
+      </div>
+
+      {/* Bloco de Balanços e Próximos Fluxos */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+        {/* Bloco: Saldo por Corretor */}
         <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4 lg:col-span-2">
           <div className="flex justify-between items-center">
             <div>
-              <h3 className="text-xs font-black uppercase tracking-widest text-slate-700">Agenda de Próximos Pagamentos</h3>
-              <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">Estimativa de liberação cronológica de comissões pendentes</p>
+              <h3 className="text-xs font-black uppercase tracking-widest text-slate-700">Saldo por Corretor</h3>
+              <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">Visão consolidada de recebíveis, adiantamentos e saldo líquido</p>
             </div>
-            <span className="text-[9px] bg-slate-50 text-slate-500 font-black tracking-widest uppercase border border-slate-150 px-2.5 py-1 rounded-full">
+            <span className="text-[10px] bg-slate-50 border border-slate-150 text-slate-500 font-bold px-2.5 py-1 rounded-full uppercase tracking-wider">
+              Profissionais Ativos
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {team.filter(u => {
+              const nameLower = (u.displayName || u.name || "").toLowerCase();
+              const emailLower = (u.email || "").toLowerCase();
+              return nameLower !== "fidelité imobiliária" && emailLower !== "fideliteimobiliaria@gmail.com";
+            }).map((u) => {
+              const brokerId = u.uid || u.id;
+              const brokerName = u.displayName || u.name || "Corretor";
+              
+              // A Receber: soma de todos os repasses pendentes/parciais dele
+              const aReceber = activeSplits
+                .filter(s => s.broker_id === brokerId && s.status !== "PAID")
+                .reduce((acc, s) => acc + (s.calculated_value || 0), 0);
+
+              // A Descontar: adiantamento
+              const aDescontar = u.adiantamento || 0;
+
+              // Saldo líquido
+              const saldoLiquido = aReceber - aDescontar;
+
+              // Colors for initial letter avatar
+              const names = brokerName.split(" ");
+              const initials = names.length > 1 ? (names[0][0] + names[1][0]).toUpperCase() : names[0][0].toUpperCase();
+              
+              const colors = [
+                "bg-indigo-50 text-indigo-700 border-indigo-100",
+                "bg-emerald-50 text-emerald-700 border-emerald-100",
+                "bg-violet-50 text-violet-700 border-violet-100",
+                "bg-pink-50 text-pink-700 border-pink-100",
+                "bg-amber-50 text-amber-700 border-amber-100",
+                "bg-cyan-50 text-cyan-700 border-cyan-100"
+              ];
+              const colorHash = Math.abs(brokerName.split("").reduce((acc: number, char: string) => acc + char.charCodeAt(0), 0));
+              const assignedColor = colors[colorHash % colors.length];
+
+              return (
+                <div key={brokerId} className="p-4 border border-slate-150 rounded-2xl flex flex-col justify-between space-y-3 bg-slate-50/20 hover:shadow-sm transition-all text-sm">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className={`w-9 h-9 rounded-full shrink-0 flex items-center justify-center text-xs font-black border uppercase ${assignedColor}`}>
+                        {initials}
+                      </div>
+                      <div className="min-w-0">
+                        <strong className="text-xs font-extrabold text-slate-800 tracking-tight block truncate pr-1">{brokerName}</strong>
+                        <span className="text-[10px] text-slate-400 font-semibold uppercase block truncate">{u.role || "Corretor"}</span>
+                      </div>
+                    </div>
+                    {/* Botão + Lançar Movimentação */}
+                    <button
+                      onClick={() => {
+                        setSelectedBrokerId(brokerId);
+                        setSelectedBrokerName(brokerName);
+                        setShowAdvanceModal(true);
+                      }}
+                      className="text-[9px] bg-slate-50 hover:bg-indigo-50 border border-slate-150 hover:border-indigo-150 text-slate-600 hover:text-indigo-600 font-black px-2.5 py-1 rounded-lg uppercase tracking-widest transition-all cursor-pointer shrink-0"
+                    >
+                      + Lançar Movimentação
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 border-t border-slate-100 pt-2 text-center">
+                    <div>
+                      <span className="text-[8px] text-slate-400 font-black uppercase tracking-wider block">A Receber</span>
+                      <strong className="text-xs font-black text-slate-700 block">{formatCurrency(aReceber)}</strong>
+                    </div>
+                    <div>
+                      <span className="text-[8px] text-slate-400 font-black uppercase tracking-wider block">Adiantado</span>
+                      <strong className="text-xs font-black text-rose-600 block">{formatCurrency(aDescontar)}</strong>
+                    </div>
+                    <div>
+                      <span className="text-[8px] text-slate-400 font-black uppercase tracking-wider block">Saldo Líquido</span>
+                      <strong className={`text-xs font-black block ${saldoLiquido >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                        {formatCurrency(saldoLiquido)}
+                      </strong>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Listagem lateral de Próximas previsões com Filtros Avançados */}
+        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-5 lg:col-span-2">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h3 className="text-xs font-black uppercase tracking-widest text-slate-700">Agenda de Próximos Pagamentos</h3>
+              <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">Estimativa de liberação cronológica de comissões</p>
+            </div>
+            <span className="text-[9px] bg-slate-50 text-slate-500 font-black tracking-widest uppercase border border-slate-150 px-2.5 py-1 rounded-full w-fit">
               Próximos fluxos
             </span>
           </div>
 
-          <div className="divide-y divide-slate-100 font-sans">
-            {nextPendingSplits.length > 0 ? (
-              nextPendingSplits.map((item) => {
+          {/* Filtros */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-100">
+            {/* Busca */}
+            <div className="flex flex-col">
+              <label className="text-[8px] font-black uppercase tracking-widest text-slate-400 mb-1">Buscar por Corretor</label>
+              <input
+                type="text"
+                placeholder="Ex: Carlos Silva..."
+                value={agenSearch}
+                onChange={(e) => setAgenSearch(e.target.value)}
+                className="w-full bg-white border border-slate-150 focus:border-indigo-500 rounded-xl px-3 py-1.5 text-xs text-slate-800 font-semibold focus:outline-none transition-colors"
+              />
+            </div>
+
+            {/* Papel */}
+            <div className="flex flex-col">
+              <label className="text-[8px] font-black uppercase tracking-widest text-slate-400 mb-1">Papel</label>
+              <select
+                value={agenRole}
+                onChange={(e: any) => setAgenRole(e.target.value)}
+                className="w-full bg-white border border-slate-150 focus:border-indigo-500 rounded-xl px-2 py-1.5 text-xs text-slate-700 font-extrabold focus:outline-none transition-colors cursor-pointer"
+              >
+                <option value="ALL">Todos os Papéis</option>
+                <option value="VENDEDOR">Vendedor</option>
+                <option value="CAPTADOR">Captador</option>
+                <option value="GESTOR">Gestor</option>
+              </select>
+            </div>
+
+            {/* Status Pills */}
+            <div className="flex flex-col justify-end">
+              <label className="text-[8px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Status do Repasse</label>
+              <div className="flex bg-slate-200/60 p-0.5 rounded-xl gap-0.5 w-full">
+                {(["ALL", "PENDING", "PARTIAL", "PAID"] as const).map((st) => {
+                  const labelMap = { ALL: "Todos", PENDING: "Pend.", PARTIAL: "Parc.", PAID: "Pago" };
+                  return (
+                    <button
+                      key={st}
+                      type="button"
+                      onClick={() => setAgenStatus(st)}
+                      className={`flex-1 text-[9px] font-black uppercase tracking-wider py-1 px-0.5 rounded-lg transition-all cursor-pointer ${
+                        agenStatus === st
+                          ? "bg-white text-slate-800 shadow-sm"
+                          : "text-slate-500 hover:text-slate-700"
+                      }`}
+                    >
+                      {labelMap[st]}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          <div className="divide-y divide-slate-100 font-sans max-h-[380px] overflow-y-auto pr-1">
+            {filteredSplits.length > 0 ? (
+              filteredSplits.map((item) => {
                 const parts = item.forecast_date.split("-");
                 const formattedForecast = parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : item.forecast_date;
 
                 return (
-                  <div key={item.id} className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 first:pt-0 last:pb-0 animate-fadeIn text-sm">
+                  <div key={item.id} className="py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 first:pt-0 last:pb-0 animate-fadeIn text-sm">
                     <div className="flex items-start sm:items-center gap-3">
-                      <div className="w-10 h-10 bg-amber-50 rounded-xl flex flex-col items-center justify-center text-amber-700">
-                        <Calendar className="w-4 h-4" />
+                      <div className="w-10 h-10 bg-slate-50 border border-slate-150 rounded-xl flex flex-col items-center justify-center text-slate-500">
+                        <Calendar className="w-4 h-4 text-indigo-500" />
                       </div>
-                      <div>
-                        <strong className="text-xs font-extrabold text-slate-800 uppercase tracking-tight block">
-                          {item.broker_name}
-                        </strong>
-                        <span className="text-[10px] text-slate-400 font-semibold">{item.role}</span>
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-2">
+                          <strong className="text-xs font-extrabold text-slate-800 uppercase tracking-tight block">
+                            {item.broker_name}
+                          </strong>
+                          <StatusBadge status={item.status} />
+                        </div>
+                        <div className="flex items-center gap-2 text-[10px] text-slate-400 font-semibold uppercase tracking-tight">
+                          <span>{item.role}</span>
+                          {item.installment_number && (
+                            <span className="bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded border border-slate-150 normal-case font-bold">
+                              Parc. {item.installment_number}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-5 sm:text-right">
+                    <div className="flex items-center justify-between sm:justify-end gap-5 sm:text-right">
                       <div className="text-left sm:text-right">
-                        <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider">Liberação Prevista</span>
+                        <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider">Liberação</span>
                         <span className="text-xs font-black text-slate-700">{formattedForecast}</span>
                       </div>
                       <div className="text-right">
                         <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider">Valor do Repasse</span>
-                        <strong className="text-xs sm:text-sm font-black text-amber-600">
+                        <strong className={`text-xs sm:text-sm font-black block ${
+                          item.status === 'PAID' ? "text-emerald-600" : item.status === 'PARTIAL' ? "text-amber-500" : "text-amber-600"
+                        }`}>
                           {formatCurrency(item.calculated_value)}
                         </strong>
+                        {item.status === "PARTIAL" && (
+                          <span className="text-[9px] text-slate-400 font-bold block mt-0.5">
+                            Pago: {formatCurrency(item.partial_payment || 0)} | Resta: {formatCurrency(item.remaining || 0)}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -515,7 +733,7 @@ export const CommissionDashboard: React.FC<CommissionDashboardProps> = ({
                 <Calendar className="w-12 h-12 text-slate-200 mb-2 font-bold" />
                 <strong className="text-sm font-black text-slate-700 block">Nenhum pagamento agendado</strong>
                 <p className="text-xs text-slate-400 mt-1 max-w-[280px] mx-auto leading-relaxed">
-                  As previsões de pagamento aparecem após lançar vendas parceladas ou com repasses pendentes
+                  Tente alterar os filtros acima ou registre novas vendas com repasses de comissão
                 </p>
               </div>
             )}
@@ -523,6 +741,15 @@ export const CommissionDashboard: React.FC<CommissionDashboardProps> = ({
         </div>
 
       </div>
+
+      {/* Modal de lançar adiantamento */}
+      <BrokerAdvanceModal
+        isOpen={showAdvanceModal}
+        onClose={() => setShowAdvanceModal(false)}
+        brokerId={selectedBrokerId}
+        brokerName={selectedBrokerName}
+        onSave={handleSaveAdvance}
+      />
 
     </div>
   );

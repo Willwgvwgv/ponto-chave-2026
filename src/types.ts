@@ -292,6 +292,9 @@ export interface BrokerSplit {
   entry_payment_date?: string;       // data real do pagamento da entrada
   entry_payment_method?: 'PIX' | 'TED' | 'CHEQUE' | 'DINHEIRO'; // meio do pagamento da entrada
   entry_notes?: string;              // observações da entrada
+  paid?: boolean;                    // Pagamento total ou parcial realizado
+  partial_payment?: number;          // Valor pago parcialmente
+  remaining?: number;                // Saldo restante após pagamento parcial
 }
 
 export interface ComissoneUser {

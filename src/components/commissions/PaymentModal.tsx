@@ -7,6 +7,7 @@ interface PaymentModalProps {
   isOpen: boolean;
   onClose: () => void;
   split: BrokerSplit;
+  discountBalance?: number;
   onRegisterPayment: (
     splitId: string,
     paidValue: number,
@@ -15,7 +16,8 @@ interface PaymentModalProps {
     newForecastDate: string,
     paymentMethod: "PIX" | "TED" | "CHEQUE",
     notes: string,
-    receiptData: string | null
+    receiptData: string | null,
+    appliedDiscount?: number
   ) => void;
 }
 
@@ -23,10 +25,13 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   isOpen,
   onClose,
   split,
+  discountBalance = 0,
   onRegisterPayment
 }) => {
   const [totalValue, setTotalValue] = useState(split.calculated_value || 0);
   const [paidValue, setPaidValue] = useState(split.calculated_value || 0);
+  const [paymentType, setPaymentType] = useState<"INTEGRAL" | "PARCIAL">("INTEGRAL");
+  const [applyDiscount, setApplyDiscount] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<"PIX" | "TED" | "CHEQUE">("PIX");
   const [notes, setNotes] = useState("");
   const [newForecastDate, setNewForecastDate] = useState("");
@@ -38,6 +43,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
     if (split) {
       setTotalValue(split.calculated_value);
       setPaidValue(split.calculated_value);
+      setPaymentType("INTEGRAL");
+      setApplyDiscount(false);
       // Previsão padrão daqui a 30 dias para o saldo restante, se aplicável
       const defaultRest = new Date();
       defaultRest.setDate(defaultRest.getDate() + 30);
@@ -50,8 +57,11 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
 
   if (!isOpen) return null;
 
-  const isPartial = round2(paidValue) < round2(totalValue);
+  const isPartial = paymentType === "PARCIAL";
   const remainingValue = round2(totalValue - paidValue);
+
+  const discountAmount = applyDiscount ? Math.min(discountBalance, paidValue) : 0;
+  const netValueToPay = Math.max(0, paidValue - discountAmount);
 
   const formatCurrency = (val: number) =>
     new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(val);
@@ -100,7 +110,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
       return;
     }
 
-    if (paidValue > totalValue) {
+    if (round2(paidValue) > round2(totalValue)) {
       alert("O valor pago não pode exceder o valor total do split.");
       return;
     }
@@ -118,7 +128,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
       newForecastDate,
       paymentMethod,
       notes,
-      receiptBase64
+      receiptBase64,
+      discountAmount // Pass applied discount back!
     );
     onClose();
   };
@@ -139,7 +150,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
         </div>
 
         {/* Body Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-5 overflow-y-auto max-h-[75vh] scrollbar-hide">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto max-h-[75vh] scrollbar-hide">
           
           <div className="bg-slate-50 p-4 border border-slate-100 rounded-2xl flex items-center justify-between">
             <div>
@@ -153,25 +164,65 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
             </div>
           </div>
 
+          {/* Toggle "Pagamento integral" / "Pagamento parcial" */}
+          <div>
+            <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">
+              Tipo de Repasse
+            </label>
+            <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setPaymentType("INTEGRAL");
+                  setPaidValue(totalValue);
+                }}
+                className={`flex-1 py-1.5 text-xs font-black uppercase tracking-wider rounded-lg transition-all cursor-pointer ${
+                  paymentType === "INTEGRAL"
+                    ? "bg-white text-slate-800 shadow-sm"
+                    : "text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                Pagamento Integral
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPaymentType("PARCIAL");
+                  setPaidValue(Math.max(0, totalValue - 100));
+                }}
+                className={`flex-1 py-1.5 text-xs font-black uppercase tracking-wider rounded-lg transition-all cursor-pointer ${
+                  paymentType === "PARCIAL"
+                    ? "bg-white text-slate-800 shadow-sm"
+                    : "text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                Pagamento Parcial
+              </button>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Valor Pago input */}
             <div>
               <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">
-                Valor Pago (R$)
+                Valor pago agora (R$)
               </label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">R$</span>
                 <input
                   type="number"
                   step="0.01"
+                  disabled={paymentType === "INTEGRAL"}
                   value={paidValue}
-                  onChange={(e) => setPaidValue(Math.max(0, parseFloat(e.target.value) || 0))}
-                  className="w-full bg-slate-50 border border-slate-100 focus:border-emerald-500 rounded-xl pl-9 pr-3 py-2.5 text-sm text-slate-950 font-black focus:outline-none transition-colors"
+                  onChange={(e) => {
+                    const val = Math.max(0, parseFloat(e.target.value) || 0);
+                    setPaidValue(Math.min(totalValue, val));
+                  }}
+                  className={`w-full bg-slate-50 border border-slate-100 focus:border-emerald-500 rounded-xl pl-9 pr-3 py-2.5 text-sm text-slate-950 font-black focus:outline-none transition-colors ${
+                    paymentType === "INTEGRAL" ? "opacity-60 cursor-not-allowed" : ""
+                  }`}
                 />
               </div>
-              <p className="text-[10px] text-slate-400 mt-1">
-                Altere para menos para registrar um <b>pagamento parcial</b>.
-              </p>
             </div>
 
             {/* Método de pagamento */}
@@ -196,13 +247,13 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
             <div className="p-4 bg-orange-50/50 border border-orange-100 rounded-2xl space-y-3 animate-fadeIn">
               <div className="flex justify-between items-center text-xs text-orange-900 font-extrabold uppercase">
                 <span>⚠️ Pagamento Parcial Detectado</span>
-                <span className="bg-orange-100 text-orange-800 font-black px-2 py-0.5 rounded text-[9px]">
-                  Restante: {formatCurrency(remainingValue)}
+                <span className="bg-orange-100 text-orange-850 font-black px-2 py-0.5 rounded text-[9px]">
+                  Saldo restante: {formatCurrency(remainingValue)}
                 </span>
               </div>
               
-              <p className="text-[11px] text-orange-850 font-semibold">
-                Um novo split de saldo devedor de <strong className="font-bold">{formatCurrency(remainingValue)}</strong> será automaticamente aberto para {split.broker_name} como parcela adiantada / complementar.
+              <p className="text-[11px] text-orange-850 font-semibold leading-relaxed">
+                Um novo split de saldo devedor de <strong className="font-bold">{formatCurrency(remainingValue)}</strong> será automaticamente aberto para {split.broker_name} como parcela complementar.
               </p>
 
               <div>
@@ -213,13 +264,52 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                   type="date"
                   value={newForecastDate}
                   onChange={(e) => setNewForecastDate(e.target.value)}
-                  className="w-full bg-white border border-orange-200 focus:border-orange-500 rounded-xl px-4 py-2.5 text-sm text-slate-800 font-semibold focus:outline-none transition-colors"
+                  className="w-full bg-white border border-orange-200 focus:border-orange-500 rounded-xl px-4 py-2.5 text-sm text-slate-800 font-semibold focus:outline-none transition-colors cursor-pointer"
                 />
               </div>
             </div>
           )}
 
-          {/* Notas */}
+          {/* Seção de Integração com Saldo de Adiantamento */}
+          {discountBalance > 0 && (
+            <div className="p-4 bg-slate-50 border border-slate-150 rounded-2xl space-y-2 text-slate-800 font-medium">
+              <div className="flex items-center justify-between text-xs font-bold">
+                <span>Valor de repasse:</span>
+                <span className="font-mono text-slate-700">{formatCurrency(paidValue)}</span>
+              </div>
+              <div className="flex items-center justify-between text-xs text-rose-600 font-bold">
+                <span>(-) Desconto/Adiantamento:</span>
+                <span className="font-mono">{formatCurrency(discountBalance)}</span>
+              </div>
+              <div className="border-t border-dashed border-slate-205 my-1.5"></div>
+              
+              <div className="flex items-center justify-between">
+                <label className="flex items-center gap-2 text-xs font-black text-slate-800 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={applyDiscount}
+                    onChange={(e) => setApplyDiscount(e.target.checked)}
+                    className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300 cursor-pointer"
+                  />
+                  Aplicar desconto neste pagamento
+                </label>
+                {applyDiscount && (
+                  <span className="bg-rose-50 text-rose-700 text-[9px] font-black px-2 py-0.5 rounded border border-rose-100 uppercase tracking-widest">
+                    Aplicado
+                  </span>
+                )}
+              </div>
+
+              <div className="border-t border-slate-200 pt-2 flex items-center justify-between text-sm font-black text-slate-900">
+                <span>Valor líquido a pagar:</span>
+                <span className="font-mono text-emerald-600">
+                  {formatCurrency(netValueToPay)}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Notes */}
           <div>
             <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">
               Observações / Notas Internas

@@ -1294,5 +1294,90 @@ export function useDeleteDespejoMutation() {
   });
 }
 
+export function useBrokerAdvances(agencyId: string) {
+  const safeAgencyId = agencyId || "default_agency";
+
+  return useQuery({
+    queryKey: ["broker_advances", safeAgencyId],
+    queryFn: async () => {
+      try {
+        const advRef = collection(db, "broker_advances");
+        const q = query(advRef, where("agency_id", "==", safeAgencyId));
+        const snap = await getDocs(q);
+        return snap.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as any[];
+      } catch (err) {
+        console.warn("Erro ao buscar broker_advances:", err);
+        return [];
+      }
+    },
+    staleTime: 5 * 1000,
+  });
+}
+
+export function useCreateBrokerAdvanceMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      agencyId,
+      brokerId,
+      brokerName,
+      value,
+      type,
+      description,
+      date
+    }: {
+      agencyId: string;
+      brokerId: string;
+      brokerName: string;
+      value: number;
+      type: "Adiantamento" | "Desconto" | "Acerto";
+      description: string;
+      date: string;
+    }) => {
+      // 1. Salvar na coleção broker_advances
+      const advRef = collection(db, "broker_advances");
+      const newDoc = {
+        agency_id: agencyId,
+        broker_id: brokerId,
+        broker_name: brokerName,
+        value,
+        type,
+        description,
+        date,
+        created_at: new Date().toISOString()
+      };
+      await addDoc(advRef, newDoc);
+
+      // 2. Atualizar o campo "adiantamento" no perfil do usuário
+      const userRef = doc(db, "users", brokerId);
+      const userSnap = await getDoc(userRef);
+      if (userSnap.exists()) {
+        const userData = userSnap.data();
+        const currentAdiantamento = userData.adiantamento || 0;
+        
+        let diff = value;
+        if (type === "Acerto") {
+          diff = -value;
+        }
+        
+        const newAdiantamento = Math.max(0, currentAdiantamento + diff);
+        await updateDoc(userRef, { adiantamento: newAdiantamento });
+      }
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["broker_advances", variables.agencyId] });
+      queryClient.invalidateQueries({ queryKey: ["team", variables.agencyId] });
+    },
+    onError: (err) => {
+      console.error(err);
+      toast.error("Erro ao registrar operação financeira.");
+    }
+  });
+}
+
 
 
