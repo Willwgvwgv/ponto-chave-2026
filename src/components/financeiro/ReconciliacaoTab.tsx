@@ -23,6 +23,7 @@ export interface AutoParsedOFXTransaction extends ParsedOFXTransaction {
   suggestedCategoryName?: string;
   isAutoCategorized?: boolean;
   originalDescription?: string;
+  autoCategorizedSource?: 'historico' | 'regra';
 }
 
 function getCardStatementMonth(dateStr: string, closingDay: number): string {
@@ -96,6 +97,30 @@ const findAutoCategory = (description: string, type: 'DEBIT' | 'CREDIT', categor
     return category;
   }
   return undefined;
+};
+
+const findCategoryByHistory = (
+  description: string,
+  transactions: FinancialTransaction[],
+  categories: FinancialCategory[]
+) => {
+  const normDesc = normalizeText(description);
+
+  // Considera apenas transações já categorizadas
+  const matches = transactions.filter(
+    t => t.categoryId && normalizeText(t.description || '') === normDesc
+  );
+
+  if (matches.length === 0) return undefined;
+
+  // Pega a categoria mais usada entre os matches (caso haja variação)
+  const counts: Record<string, number> = {};
+  matches.forEach(t => {
+    counts[t.categoryId!] = (counts[t.categoryId!] || 0) + 1;
+  });
+  const mostUsedCategoryId = Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
+
+  return categories.find(c => c.id === mostUsedCategoryId);
 };
 
 interface ReconciliacaoTabProps {
@@ -269,14 +294,16 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
 
         // Aplica regras de autocategorização após parsing
         const enriched: AutoParsedOFXTransaction[] = parsed.map(tx => {
-          const cat = findAutoCategory(tx.description, tx.type, categories);
+          const historyCat = findCategoryByHistory(tx.description, transactions, categories);
+          const cat = historyCat || findAutoCategory(tx.description, tx.type, categories);
           if (cat) {
             return {
               ...tx,
               originalDescription: tx.description,
               suggestedCategoryId: cat.id,
               suggestedCategoryName: cat.name,
-              isAutoCategorized: true
+              isAutoCategorized: true,
+              autoCategorizedSource: historyCat ? 'historico' : 'regra'
             };
           }
           return {
@@ -314,7 +341,8 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
   const handleConfirmInlineEdit = (fitId: string) => {
     setImportedTxs(prev => prev.map(tx => {
       if (tx.fitId === fitId) {
-        const cat = findAutoCategory(tempDesc, tx.type === 'CREDIT' ? 'CREDIT' : 'DEBIT', categories);
+        const historyCat = findCategoryByHistory(tempDesc, transactions, categories);
+        const cat = historyCat || findAutoCategory(tempDesc, tx.type === 'CREDIT' ? 'CREDIT' : 'DEBIT', categories);
         return {
           ...tx,
           description: tempDesc,
@@ -322,7 +350,8 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
           amount: tempAmount,
           suggestedCategoryId: cat?.id || tx.suggestedCategoryId,
           suggestedCategoryName: cat?.name || tx.suggestedCategoryName,
-          isAutoCategorized: cat ? true : tx.isAutoCategorized
+          isAutoCategorized: cat ? true : tx.isAutoCategorized,
+          autoCategorizedSource: cat ? (historyCat ? 'historico' : 'regra') : tx.autoCategorizedSource
         };
       }
       return tx;
@@ -729,9 +758,15 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                               )}
 
                               {item.isAutoCategorized && (
-                                <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-600 border border-blue-100 font-extrabold px-1.5 py-0.5 rounded text-[8px] uppercase tracking-wider">
-                                  <Zap className="w-2.5 h-2.5 text-blue-550 shrink-0" /> AUTO
-                                </span>
+                                item.autoCategorizedSource === 'historico' ? (
+                                  <span className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-600 border border-indigo-100 font-extrabold px-1.5 py-0.5 rounded text-[8px] uppercase tracking-wider">
+                                    Igual a um lançamento anterior
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-600 border border-blue-100 font-extrabold px-1.5 py-0.5 rounded text-[8px] uppercase tracking-wider">
+                                    <Zap className="w-2.5 h-2.5 text-blue-550 shrink-0" /> (Sugerido)
+                                  </span>
+                                )
                               )}
 
                               <span className="text-[10px] text-slate-400 font-mono font-bold ml-auto md:ml-0">
