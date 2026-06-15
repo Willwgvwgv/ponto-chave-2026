@@ -12,10 +12,12 @@ import {
   Tag,
   Plus,
   Pencil,
-  Search
+  Search,
+  RefreshCw
 } from 'lucide-react';
 import { BankAccount, FinancialCategory, FinancialTransaction } from '../../types';
-import { parseBankStatement, ParsedOFXTransaction } from './ofxParser';
+import { parseBankStatement, ParsedOFXTransaction, parseLedgerBalance, LedgerBalance } from './ofxParser';
+import { db, doc, updateDoc, isDemoMode } from '../../firebase';
 import { toast } from 'sonner';
 
 export interface AutoParsedOFXTransaction extends ParsedOFXTransaction {
@@ -56,6 +58,10 @@ const normalizeText = (text: string) => {
     .normalize('NFD') // decompose to combine diacritics
     .replace(/[\u0300-\u036f]/g, '') // remove diacritics
     .toUpperCase();
+};
+
+const formatCurrency = (val: number) => {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 };
 
 const autoCategorizationRules = [
@@ -144,6 +150,7 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
 }) => {
   const [selectedAccountId, setSelectedAccountId] = useState(accounts[0]?.id || '');
   const [importedTxs, setImportedTxs] = useState<AutoParsedOFXTransaction[]>([]);
+  const [ledgerBalance, setLedgerBalance] = useState<LedgerBalance | null>(null);
   const [ignoredIds, setIgnoredIds] = useState<string[]>([]);
   const [conciliatedIds, setConciliatedIds] = useState<string[]>([]);
   
@@ -251,6 +258,43 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
     return importedTxs.filter(tx => !ignoredIds.includes(tx.fitId) && !conciliatedIds.includes(tx.fitId));
   }, [importedTxs, ignoredIds, conciliatedIds]);
 
+  const selectedAccount = useMemo(() => {
+    return accounts.find(a => a.id === selectedAccountId);
+  }, [accounts, selectedAccountId]);
+
+  const saldoProjetado = useMemo(() => {
+    if (!selectedAccount) return 0;
+    const initialBalance = selectedAccount.balance || 0;
+    const newTxsToImport = visibleImported.filter(tx => !isAlreadyImported(tx));
+    const sumNew = newTxsToImport.reduce((acc, tx) => {
+      const val = tx.amount;
+      if (tx.type === 'CREDIT') {
+        return acc + val;
+      } else {
+        return acc - val;
+      }
+    }, 0);
+    return initialBalance + sumNew;
+  }, [selectedAccount, visibleImported, transactions, selectedAccountId]);
+
+  const handleAdjustBalance = async () => {
+    if (!selectedAccount || !ledgerBalance) return;
+    try {
+      if (isDemoMode) {
+        selectedAccount.balance = ledgerBalance.amount;
+        toast.success(`Saldo da conta ajustado (Demo) localmente para ${formatCurrency(ledgerBalance.amount)}!`);
+        return;
+      }
+      const accountRef = doc(db, 'bank_accounts', selectedAccount.id);
+      await updateDoc(accountRef, {
+        balance: ledgerBalance.amount
+      });
+      toast.success(`Saldo da conta ajustado com sucesso para ${formatCurrency(ledgerBalance.amount)}!`);
+    } catch (err: any) {
+      toast.error(`Erro ao ajustar saldo da conta: ${err.message || err}`);
+    }
+  };
+
   // Progresso do lote importado
   const progressRatio = useMemo(() => {
     if (importedTxs.length === 0) return 0;
@@ -290,6 +334,14 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
         if (parsed.length === 0) {
           toast.error("Nenhuma transação válida encontrada no arquivo extrato.");
           return;
+        }
+
+        const isOFX = file.name.toLowerCase().endsWith('.ofx') || text.includes('<OFX>') || text.includes('OFXHEADER');
+        if (isOFX) {
+          const balance = parseLedgerBalance(text);
+          setLedgerBalance(balance);
+        } else {
+          setLedgerBalance(null);
         }
 
         // Aplica regras de autocategorização após parsing
@@ -496,10 +548,6 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
     toast.success("Lançamento criado, registrado e conciliado!");
   };
 
-  const formatCurrency = (val: number) => {
-    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
-  };
-
   return (
     <div className="space-y-6 font-sans">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -515,6 +563,7 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                   setImportedTxs([]);
                   setIgnoredIds([]);
                   setConciliatedIds([]);
+                  setLedgerBalance(null);
                 }}
                 className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-xs font-bold text-slate-700 cursor-pointer"
               >
@@ -579,6 +628,7 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                   setImportedTxs([]);
                   setIgnoredIds([]);
                   setConciliatedIds([]);
+                  setLedgerBalance(null);
                   setSearchQueries({});
                   setShowSearchForFitId({});
                   setActiveSearchFitId(null);
@@ -599,6 +649,57 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
               </div>
             ) : (
               <>
+                {ledgerBalance && selectedAccount && (
+                  <div id="saldo-conferencia-card" className="bg-slate-50 border border-slate-200 rounded-3xl p-5 mb-4 animate-fadeIn space-y-4 font-sans">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200">
+                      <div>
+                        <h4 className="text-xs font-black text-slate-800 uppercase tracking-widest flex items-center gap-1.5">
+                          <RefreshCw className="w-4 h-4 text-sky-600 shrink-0" /> Conferência de Saldo
+                        </h4>
+                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wide mt-1">Sincronização entre o extrato consolidado e o sistema</p>
+                      </div>
+                      
+                      {Math.abs(saldoProjetado - ledgerBalance.amount) <= 0.01 ? (
+                        <span className="text-[9.5px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full px-3 py-1">
+                          ✅ Saldo confere com o extrato
+                        </span>
+                      ) : (
+                        <span className="text-[9.5px] font-black uppercase tracking-wider bg-red-50 text-red-750 border border-red-200 rounded-full px-3 py-1 text-red-800">
+                          ⚠️ Diferença de {formatCurrency(Math.abs(saldoProjetado - ledgerBalance.amount))} — confira se há lançamentos faltando ou duplicados
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs font-semibold text-slate-600">
+                      <div className="bg-white p-3 rounded-2xl border border-slate-150/80">
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1">Saldo no extrato (banco) em {(() => {
+                          const [y, m, d] = ledgerBalance.date.split('-');
+                          return `${d}/${m}/${y}`;
+                        })()}</p>
+                        <p className="text-sm font-black text-slate-800 font-mono">{formatCurrency(ledgerBalance.amount)}</p>
+                      </div>
+                      <div className="bg-white p-3 rounded-2xl border border-slate-150/80">
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1">Saldo atual no Ponto Chave</p>
+                        <p className="text-sm font-black text-slate-800 font-mono">{formatCurrency(selectedAccount.balance || 0)}</p>
+                      </div>
+                      <div className="bg-white p-3 rounded-2xl border border-slate-150/80">
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1">Saldo projetado após importação</p>
+                        <p className="text-sm font-black text-blue-600 font-mono">{formatCurrency(saldoProjetado)}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end pt-1">
+                      <button
+                        id="ajustar-saldo-banco-btn"
+                        onClick={handleAdjustBalance}
+                        className="px-4 py-2 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-350 hover:text-slate-900 rounded-xl text-[10px] font-black uppercase tracking-widest cursor-pointer transition-colors flex items-center gap-1.5 shadow-sm"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" /> Ajustar saldo da conta para {formatCurrency(ledgerBalance.amount)}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {/* 5. Painel de Resumo da Importação no Topo */}
                 <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-sm space-y-4 animate-fadeIn">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">

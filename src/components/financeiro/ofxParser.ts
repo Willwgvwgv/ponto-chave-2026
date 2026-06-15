@@ -186,3 +186,21 @@ export function parseBankStatement(text: string): ParsedOFXTransaction[] {
     return parseCSV(text);
   }
 }
+
+export interface LedgerBalance {
+  amount: number;
+  date: string; // YYYY-MM-DD
+}
+
+export function parseLedgerBalance(text: string): LedgerBalance | null {
+  const match = text.match(/<LEDGERBAL>[\s\S]*?<BALAMT>([^<\r\n]+)[\s\S]*?<DTASOF>([^<\r\n]+)/i);
+  if (!match) return null;
+
+  const amount = parseFloat(match[1].trim());
+  const rawDate = match[2].trim();
+  if (isNaN(amount) || rawDate.length < 8) return null;
+
+  const date = `${rawDate.slice(0, 4)}-${rawDate.slice(4, 6)}-${rawDate.slice(6, 8)}`;
+  return { amount, date };
+}
+
