@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { Search, Percent, Users, DollarSign, Calendar, Eye, FileText, ArrowRight, X, AlertCircle } from "lucide-react";
+import { Search, Percent, Users, DollarSign, Calendar, Eye, FileText, ArrowRight, X, AlertCircle, Download } from "lucide-react";
 import { Sale, ComissoneUser, CompanySettings } from "../../types";
 import { getDocType, maskCPFPublic, maskCNPJ } from "../../lib/utils";
 import { StatusBadge } from "./StatusBadge";
@@ -137,11 +137,44 @@ export const SalesList: React.FC<SalesListProps> = ({
       const matchesStatus =
         selectedStatus === "TODAS" ||
         (sale.splits &&
-          sale.splits.some((s) => s.status === selectedStatus));
+          sale.splits.some((s) => {
+            if (selectedStatus === "overdue" || selectedStatus === "OVERDUE") {
+              return s.status === "overdue" || s.status === "OVERDUE";
+            }
+            return s.status === selectedStatus;
+          }));
 
       return matchesSearch && matchesBroker && matchesStatus;
     });
   }, [sales, searchTerm, selectedBroker, selectedStatus, showCancelled]);
+
+  const handleExportCSV = () => {
+    const headers = ["Data Venda", "Imóvel", "Comprador", "Corretor", "Papel", "Valor Comissão", "Status", "Data Prevista", "Data Pagamento"];
+    
+    const rows = sales.flatMap(sale => 
+      (sale.splits || []).map(split => [
+        sale.sale_date ? new Date(sale.sale_date).toLocaleDateString('pt-BR') : '',
+        sale.property_address || '',
+        sale.client_name || '',
+        split.broker_name || '',
+        split.broker_role || '',
+        new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(split.calculated_value || 0),
+        split.status || '',
+        split.forecast_date ? new Date(split.forecast_date).toLocaleDateString('pt-BR') : '',
+        split.payment_date ? new Date(split.payment_date).toLocaleDateString('pt-BR') : '',
+      ])
+    );
+
+    const csv = "\uFEFF" + headers.join(";") + "\n" + rows.map(r => r.join(";")).join("\n");
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `comissoes_${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const [showToast, setShowToast] = useState(false);
 
@@ -1001,7 +1034,7 @@ export const SalesList: React.FC<SalesListProps> = ({
       setTimeout(() => setShowToast(false), 8000);
     } catch (err) {
       console.error(err);
-      alert("Erro ao gerar o relatório fiscal PDF.");
+      toast.error("Erro ao gerar o relatório fiscal PDF.");
     }
   };
 
@@ -1033,12 +1066,20 @@ export const SalesList: React.FC<SalesListProps> = ({
         
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <h3 className="text-xs font-black uppercase tracking-widest text-slate-700">Explorar Transações</h3>
-          <button
-            onClick={onOpenCreateForm}
-            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black uppercase tracking-widest cursor-pointer transition-colors flex items-center gap-1.5 shadow-md shadow-blue-500/10"
-          >
-            Cadastrar Venda
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={handleExportCSV}
+              className="px-5 py-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-black uppercase tracking-widest cursor-pointer transition-colors flex items-center gap-1.5 shadow-sm"
+            >
+              <Download className="w-4.5 h-4.5" /> Exportar CSV
+            </button>
+            <button
+              onClick={onOpenCreateForm}
+              className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black uppercase tracking-widest cursor-pointer transition-colors flex items-center gap-1.5 shadow-md shadow-blue-500/10"
+            >
+              Cadastrar Venda
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -1082,6 +1123,7 @@ export const SalesList: React.FC<SalesListProps> = ({
               <option value="PENDING">PENDENTE</option>
               <option value="PARTIAL">PARCIAL</option>
               <option value="PAID">PAGO</option>
+              <option value="overdue">ATRASADAS</option>
             </select>
           </div>
 

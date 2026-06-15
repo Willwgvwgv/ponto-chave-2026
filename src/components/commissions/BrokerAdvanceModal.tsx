@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { toast } from "sonner";
 import { X, TrendingDown, TrendingUp, RefreshCw, Calendar, DollarSign, FileText } from "lucide-react";
 
 interface BrokerAdvanceModalProps {
@@ -40,16 +41,16 @@ export const BrokerAdvanceModal: React.FC<BrokerAdvanceModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (value <= 0) {
-      alert("Por favor, insira um valor válido maior que zero.");
-      return;
+       toast.error("Por favor, insira um valor válido maior que zero.");
+       return;
     }
     if (!description.trim()) {
-      alert("Por favor, insira uma descrição do lançamento.");
-      return;
+       toast.error("Por favor, insira uma descrição do lançamento.");
+       return;
     }
     if (!date) {
-      alert("Por favor, selecione uma data.");
-      return;
+       toast.error("Por favor, selecione uma data.");
+       return;
     }
 
     onSave({

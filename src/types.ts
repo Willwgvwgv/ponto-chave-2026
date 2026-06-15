@@ -28,7 +28,7 @@ export interface UserProfile {
   displayName: string | null;
   email: string | null;
   photoURL: string | null;
-  role: "admin" | "user" | "none" | "corretor" | "captador";
+  role: "admin" | "user" | "none" | "corretor" | "captador" | "colaborador";
   permissions?: string[];
   companyId?: string;
   status?: "active" | "blocked" | "pending";
@@ -39,6 +39,50 @@ export interface UserProfile {
   cargoComissao?: 'CORRETOR' | 'CAPTADOR' | 'GESTOR' | 'SOCIO' | null; // cargo específico para comissões
   cpf?: string;             // CPF para PDF fiscal e RPA
   permRateioLocacao?: boolean; // permite inclusão no rateio de comissões de locação
+  permRateioVendas?: boolean;  // permite inclusão no rateio de comissões de vendas
+  permComissoes?: boolean;
+  perm_comissoes?: boolean;
+  permFinanceiro?: boolean;
+  perm_financeiro?: boolean;
+  permVistorias?: boolean;
+  perm_vistorias?: boolean;
+  permProcessos?: boolean;
+  perm_processos?: boolean;
+  permPonto?: boolean;        // true para "colaborador" por padrão
+  perm_ponto?: boolean;
+  jornadaDiariaMinutos?: number; // padrão 480 (8h)
+}
+
+export interface PontoRegistro {
+  id: string;
+  userId: string;
+  userName: string;
+  agencyId: string;
+  date: string;        // "YYYY-MM-DD"
+  entrada?: string;     // "HH:mm"
+  saidaAlmoco?: string;
+  retornoAlmoco?: string;
+  saida?: string;
+  horasTrabalhadas?: number;  // em minutos, calculado
+  horasExtras?: number;       // em minutos, positivo ou negativo (banco de horas)
+  status: "incompleto" | "completo" | "ajuste_pendente";
+  createdAt: string;
+}
+
+export interface SolicitacaoAjustePonto {
+  id: string;
+  registroId: string;
+  userId: string;
+  userName: string;
+  data: string;
+  campo: "entrada" | "saidaAlmoco" | "retornoAlmoco" | "saida";
+  valorAtual?: string;
+  valorSolicitado: string;
+  motivo: string;
+  status: "pendente" | "aprovado" | "rejeitado";
+  createdAt: string;
+  respondidoEm?: string;
+  respondidoPor?: string;
 }
 
 export type Priority = "low" | "medium" | "high";
@@ -273,7 +317,7 @@ export interface BrokerSplit {
   role: 'CAPTADOR' | 'VENDEDOR' | 'GESTOR';
   percentage: number;         // ex: 60 (representa 60% da comissão)
   calculated_value: number;   // valor em R$ que o corretor recebe
-  status: 'PENDING' | 'PARTIAL' | 'PAID';
+  status: 'PENDING' | 'PARTIAL' | 'PAID' | 'OVERDUE' | 'overdue' | 'pending';
   forecast_date: string;      // previsão de pagamento
   payment_date?: string | null;      // data real do pagamento
   payment_method?: 'PIX' | 'TED' | 'CHEQUE' | null;
@@ -312,6 +356,7 @@ export interface ComissoneUser {
   isSocio?: boolean;
   cargoComissao?: 'CORRETOR' | 'CAPTADOR' | 'GESTOR' | 'SOCIO' | null;
   permRateioLocacao?: boolean;
+  permRateioVendas?: boolean;
 }
 
 export interface Agency {

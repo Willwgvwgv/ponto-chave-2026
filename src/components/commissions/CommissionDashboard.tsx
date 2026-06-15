@@ -50,7 +50,7 @@ export const CommissionDashboard: React.FC<CommissionDashboardProps> = ({
   onRegisterPayment
 }) => {
   const [agenSearch, setAgenSearch] = useState("");
-  const [agenStatus, setAgenStatus] = useState<"ALL" | "PENDING" | "PARTIAL" | "PAID">("ALL");
+  const [agenStatus, setAgenStatus] = useState<"ALL" | "PENDING" | "PARTIAL" | "PAID" | "overdue">("ALL");
   const [agenRole, setAgenRole] = useState<"ALL" | "VENDEDOR" | "CAPTADOR" | "GESTOR">("ALL");
 
   const [selectedBrokerId, setSelectedBrokerId] = useState<string>("");
@@ -362,7 +362,7 @@ export const CommissionDashboard: React.FC<CommissionDashboardProps> = ({
     activeSplits.forEach(sp => {
       if (sp.status === "PAID") {
         pagoTotal += (sp.calculated_value || 0);
-      } else if (sp.status === "PENDING" || sp.status === "PARTIAL") {
+      } else if (sp.status === "PENDING" || sp.status === "pending" || sp.status === "PARTIAL" || sp.status === "overdue" || sp.status === "OVERDUE") {
         pendenteTotal += (sp.calculated_value || 0);
       }
     });
@@ -963,8 +963,8 @@ export const CommissionDashboard: React.FC<CommissionDashboardProps> = ({
             <div className="flex flex-col justify-end">
               <label className="text-[8px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Status do Repasse</label>
               <div className="flex bg-slate-200/60 p-0.5 rounded-xl gap-0.5 w-full">
-                {(["ALL", "PENDING", "PARTIAL", "PAID"] as const).map((st) => {
-                  const labelMap = { ALL: "Todos", PENDING: "Pend.", PARTIAL: "Parc.", PAID: "Pago" };
+                {(["ALL", "PENDING", "PARTIAL", "PAID", "overdue"] as const).map((st) => {
+                  const labelMap = { ALL: "Todos", PENDING: "Pend.", PARTIAL: "Parc.", PAID: "Pago", overdue: "Atrasadas" };
                   return (
                     <button
                       key={st}
@@ -1021,7 +1021,10 @@ export const CommissionDashboard: React.FC<CommissionDashboardProps> = ({
                       <div className="text-right">
                         <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider">Valor do Repasse</span>
                         <strong className={`text-xs sm:text-sm font-black block ${
-                          item.status === 'PAID' ? "text-emerald-600" : item.status === 'PARTIAL' ? "text-amber-500" : "text-amber-600"
+                          item.status === 'PAID' ? "text-emerald-600" :
+                          item.status === 'PARTIAL' ? "text-amber-500" :
+                          (item.status === 'overdue' || item.status === 'OVERDUE') ? "text-red-600 font-extrabold animate-pulse" :
+                          "text-amber-600"
                         }`}>
                           {formatCurrency(item.calculated_value)}
                         </strong>

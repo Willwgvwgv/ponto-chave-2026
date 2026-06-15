@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { db, collection, getDocs, query, where, orderBy, doc, addDoc, updateDoc, deleteDoc, getDoc, setDoc, limit } from "../firebase";
-import { Sale, BrokerSplit, ComissoneUser, Comissao, RateioComissao, PagamentoCorretor, Despejo } from "../types";
+import { Sale, BrokerSplit, ComissoneUser, Comissao, RateioComissao, PagamentoCorretor, Despejo, PontoRegistro, SolicitacaoAjustePonto, UserProfile } from "../types";
 import { toast } from "sonner";
 
 // Lógica de arredondamento de duas casas decimais
@@ -312,10 +312,22 @@ export function useSales(agencyId: string) {
           where("agency_id", "==", safeAgencyId)
         );
         const splitsSnap = await getDocs(splitsQuery);
-        const splitsList: BrokerSplit[] = splitsSnap.docs.map(doc => ({
+        let splitsList: BrokerSplit[] = splitsSnap.docs.map(doc => ({
           id: doc.id,
           ...doc.data()
         } as BrokerSplit));
+
+        const today = new Date().toISOString().split('T')[0];
+        splitsList = splitsList.map(split => {
+          const s = { ...split };
+          if ((s.status === 'pending' || s.status === 'PENDING') && s.forecast_date && s.forecast_date < today) {
+            s.status = 'overdue';
+          }
+          if ((s.status === 'overdue' || s.status === 'OVERDUE') && s.forecast_date && s.forecast_date >= today) {
+            s.status = 'pending';
+          }
+          return s;
+        });
 
         // Join em memória para vendas e splits reais do Firestore
         return salesList.map(sale => ({
@@ -327,7 +339,20 @@ export function useSales(agencyId: string) {
         console.warn("Erro ao ler do Firestore, carregando localStorage:", err);
         const fallback = getStoredData();
         const salesFiltered = fallback.sales.filter((s: any) => s.agency_id === safeAgencyId);
-        const splitsFiltered = fallback.splits.filter((s: any) => s.agency_id === safeAgencyId);
+        let splitsFiltered = fallback.splits.filter((s: any) => s.agency_id === safeAgencyId);
+        
+        const today = new Date().toISOString().split('T')[0];
+        splitsFiltered = splitsFiltered.map(split => {
+          const s = { ...split };
+          if ((s.status === 'pending' || s.status === 'PENDING') && s.forecast_date && s.forecast_date < today) {
+            s.status = 'overdue';
+          }
+          if ((s.status === 'overdue' || s.status === 'OVERDUE') && s.forecast_date && s.forecast_date >= today) {
+            s.status = 'pending';
+          }
+          return s;
+        });
+
         return salesFiltered.map((sale: any) => ({
           ...sale,
           splits: splitsFiltered.filter((s: any) => s.sale_id === sale.id)
@@ -404,7 +429,8 @@ export function useTeam(agencyId: string) {
             permissions: u.permissions,
             isSocio: u.isSocio,
             cargoComissao: u.cargoComissao,
-            permRateioLocacao: u.permRateioLocacao
+            permRateioLocacao: u.permRateioLocacao,
+            permRateioVendas: u.permRateioVendas
           };
         });
 
@@ -1375,6 +1401,306 @@ export function useCreateBrokerAdvanceMutation() {
     onError: (err) => {
       console.error(err);
       toast.error("Erro ao registrar operação financeira.");
+    }
+  });
+}
+
+// === PONTO ELETRÔNICO CLT OPERATIONS ===
+
+export function calcularHoras(reg: Partial<PontoRegistro>, jornadaDiariaMinutos: number = 480): { trabalhadas: number; extras: number } {
+  if (!reg.entrada || !reg.saidaAlmoco || !reg.retornoAlmoco || !reg.saida) {
+    return { trabalhadas: 0, extras: 0 };
+  }
+  const toMin = (hhmm: string) => {
+    const [h, m] = hhmm.split(':').map(Number);
+    return (isNaN(h) ? 0 : h) * 60 + (isNaN(m) ? 0 : m);
+  };
+  const mEntrada = toMin(reg.entrada);
+  const mSaidaAlmoco = toMin(reg.saidaAlmoco);
+  const mRetornoAlmoco = toMin(reg.retornoAlmoco);
+  const mSaida = toMin(reg.saida);
+
+  const periodo1 = mSaidaAlmoco - mEntrada;
+  const periodo2 = mSaida - mRetornoAlmoco;
+  const trabalhadas = periodo1 + periodo2;
+  return { trabalhadas, extras: trabalhadas - jornadaDiariaMinutos };
+}
+
+export function usePontoHoje(userId: string | undefined) {
+  const todayStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD
+  return useQuery({
+    queryKey: ["ponto_hoje", userId, todayStr],
+    queryFn: async (): Promise<PontoRegistro | null> => {
+      if (!userId) return null;
+      const docRef = doc(db, "ponto_registros", `${userId}_${todayStr}`);
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        return { id: snap.id, ...snap.data() } as PontoRegistro;
+      }
+      return null;
+    },
+    enabled: !!userId,
+  });
+}
+
+export function usePontoMes(userId: string | undefined, ano: number, mes: number) {
+  const monthStr = `${ano}-${String(mes).padStart(2, '0')}`;
+  return useQuery({
+    queryKey: ["ponto_mes", userId, monthStr],
+    queryFn: async (): Promise<PontoRegistro[]> => {
+      if (!userId) return [];
+      const q = query(
+        collection(db, "ponto_registros"),
+        where("userId", "==", userId),
+        where("date", ">=", monthStr),
+        where("date", "<=", monthStr + "\uf8ff")
+      );
+      const snap = await getDocs(q);
+      const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }) as PontoRegistro);
+      list.sort((a, b) => a.date.localeCompare(b.date));
+      return list;
+    },
+    enabled: !!userId,
+  });
+}
+
+export function usePontoEquipe(agencyId: string | undefined, ano: number, mes: number) {
+  const monthStr = `${ano}-${String(mes).padStart(2, '0')}`;
+  return useQuery({
+    queryKey: ["ponto_equipe", agencyId, monthStr],
+    queryFn: async (): Promise<PontoRegistro[]> => {
+      if (!agencyId) return [];
+      const q = query(
+        collection(db, "ponto_registros"),
+        where("agencyId", "==", agencyId),
+        where("date", ">=", monthStr),
+        where("date", "<=", monthStr + "\uf8ff")
+      );
+      const snap = await getDocs(q);
+      const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }) as PontoRegistro);
+      list.sort((a, b) => a.date.localeCompare(b.date));
+      return list;
+    },
+    enabled: !!agencyId,
+  });
+}
+
+export function useAjustesPendentes(agencyId: string | undefined) {
+  return useQuery({
+    queryKey: ["ponto_ajustes", agencyId],
+    queryFn: async (): Promise<SolicitacaoAjustePonto[]> => {
+      if (!agencyId) return [];
+      const q = query(
+        collection(db, "ponto_ajustes"),
+        where("agencyId", "==", agencyId)
+      );
+      const snap = await getDocs(q);
+      const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }) as SolicitacaoAjustePonto);
+      list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      return list;
+    },
+    enabled: !!agencyId,
+  });
+}
+
+export function useRegistrarPonto() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (params: {
+      userId: string;
+      userName: string;
+      agencyId: string;
+      campo: "entrada" | "saidaAlmoco" | "retornoAlmoco" | "saida";
+      horario: string;
+      date?: string;
+      jornadaDiariaMinutos?: number;
+    }) => {
+      const todayStr = params.date || new Date().toLocaleDateString('en-CA');
+      const docId = `${params.userId}_${todayStr}`;
+      const docRef = doc(db, "ponto_registros", docId);
+
+      const snap = await getDoc(docRef);
+      let reg: Partial<PontoRegistro> = {};
+      if (snap.exists()) {
+        reg = snap.data() as Partial<PontoRegistro>;
+      } else {
+        reg = {
+          id: docId,
+          userId: params.userId,
+          userName: params.userName,
+          agencyId: params.agencyId,
+          date: todayStr,
+          status: "incompleto",
+          createdAt: new Date().toISOString()
+        };
+      }
+
+      reg[params.campo] = params.horario;
+
+      if (reg.entrada && reg.saidaAlmoco && reg.retornoAlmoco && reg.saida) {
+        const jornada = params.jornadaDiariaMinutos || 480;
+        const calc = calcularHoras(reg, jornada);
+        reg.horasTrabalhadas = calc.trabalhadas;
+        reg.horasExtras = calc.extras;
+        reg.status = "completo";
+      } else {
+        reg.status = "incompleto";
+      }
+
+      await setDoc(docRef, reg);
+      return reg;
+    },
+    onSuccess: (data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["ponto_hoje", variables.userId] });
+      queryClient.invalidateQueries({ queryKey: ["ponto_mes", variables.userId] });
+      queryClient.invalidateQueries({ queryKey: ["ponto_equipe", variables.agencyId] });
+      toast.success(`Ponto registrado com sucesso!`);
+    },
+    onError: (err) => {
+      console.error(err);
+      toast.error("Erro ao registrar ponto.");
+    }
+  });
+}
+
+export function useSolicitarAjuste() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (params: {
+      registroId: string;
+      userId: string;
+      userName: string;
+      agencyId: string;
+      data: string;
+      campo: "entrada" | "saidaAlmoco" | "retornoAlmoco" | "saida";
+      valorAtual?: string;
+      valorSolicitado: string;
+      motivo: string;
+    }) => {
+      const colRef = collection(db, "ponto_ajustes");
+      const docData = {
+        registroId: params.registroId,
+        userId: params.userId,
+        userName: params.userName,
+        agencyId: params.agencyId,
+        data: params.data,
+        campo: params.campo,
+        valorAtual: params.valorAtual || "",
+        valorSolicitado: params.valorSolicitado,
+        motivo: params.motivo,
+        status: "pendente",
+        createdAt: new Date().toISOString()
+      };
+      const docRef = await addDoc(colRef, docData);
+
+      const regRef = doc(db, "ponto_registros", params.registroId);
+      const regSnap = await getDoc(regRef);
+      if (regSnap.exists()) {
+        await updateDoc(regRef, { status: "ajuste_pendente" });
+      } else {
+        // Se não existia o registro daquele dia ainda, criamos como esqueleto em ajuste_pendente
+        await setDoc(regRef, {
+          id: params.registroId,
+          userId: params.userId,
+          userName: params.userName,
+          agencyId: params.agencyId,
+          date: params.data,
+          status: "ajuste_pendente",
+          createdAt: new Date().toISOString()
+        });
+      }
+
+      return { id: docRef.id, ...docData };
+    },
+    onSuccess: (data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["ponto_ajustes", variables.agencyId] });
+      queryClient.invalidateQueries({ queryKey: ["ponto_hoje", variables.userId] });
+      queryClient.invalidateQueries({ queryKey: ["ponto_mes", variables.userId] });
+      queryClient.invalidateQueries({ queryKey: ["ponto_equipe", variables.agencyId] });
+      toast.success("Solicitação de ajuste enviada com sucesso.");
+    },
+    onError: (err) => {
+      console.error(err);
+      toast.error("Erro ao solicitar ajuste.");
+    }
+  });
+}
+
+export function useResponderAjuste() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (params: {
+      ajusteId: string;
+      registroId: string;
+      userId: string;
+      agencyId: string;
+      campo: "entrada" | "saidaAlmoco" | "retornoAlmoco" | "saida";
+      valorSolicitado: string;
+      status: "aprovado" | "rejeitado";
+      respondidoPor: string;
+      jornadaDiariaMinutos?: number;
+    }) => {
+      const ajusteRef = doc(db, "ponto_ajustes", params.ajusteId);
+      await updateDoc(ajusteRef, {
+        status: params.status,
+        respondidoEm: new Date().toISOString(),
+        respondidoPor: params.respondidoPor
+      });
+
+      const regRef = doc(db, "ponto_registros", params.registroId);
+      const regSnap = await getDoc(regRef);
+
+      if (params.status === "aprovado") {
+        let regData: any = {};
+        if (regSnap.exists()) {
+          regData = regSnap.data();
+        } else {
+          const userRef = doc(db, "users", params.userId);
+          const userSnap = await getDoc(userRef);
+          const userName = userSnap.exists() ? (userSnap.data().displayName || "Colaborador") : "Colaborador";
+          const datePart = params.registroId.split('_')[1] || new Date().toLocaleDateString('en-CA');
+
+          regData = {
+            id: params.registroId,
+            userId: params.userId,
+            userName,
+            agencyId: params.agencyId,
+            date: datePart,
+            createdAt: new Date().toISOString()
+          };
+        }
+
+        regData[params.campo] = params.valorSolicitado;
+
+        if (regData.entrada && regData.saidaAlmoco && regData.retornoAlmoco && regData.saida) {
+          const jornada = params.jornadaDiariaMinutos || 480;
+          const calc = calcularHoras(regData, jornada);
+          regData.horasTrabalhadas = calc.trabalhadas;
+          regData.horasExtras = calc.extras;
+          regData.status = "completo";
+        } else {
+          regData.status = "incompleto";
+        }
+
+        await setDoc(regRef, regData);
+      } else {
+        if (regSnap.exists()) {
+          const regData = regSnap.data();
+          const hasAll = regData.entrada && regData.saidaAlmoco && regData.retornoAlmoco && regData.saida;
+          await updateDoc(regRef, { status: hasAll ? "completo" : "incompleto" });
+        }
+      }
+    },
+    onSuccess: (data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["ponto_ajustes", variables.agencyId] });
+      queryClient.invalidateQueries({ queryKey: ["ponto_hoje", variables.userId] });
+      queryClient.invalidateQueries({ queryKey: ["ponto_mes", variables.userId] });
+      queryClient.invalidateQueries({ queryKey: ["ponto_equipe", variables.agencyId] });
+      toast.success(`Ajuste ${variables.status === "aprovado" ? "aprovado" : "rejeitado"} com sucesso.`);
+    },
+    onError: (err) => {
+      console.error(err);
+      toast.error("Erro ao responder ao ajuste.");
     }
   });
 }

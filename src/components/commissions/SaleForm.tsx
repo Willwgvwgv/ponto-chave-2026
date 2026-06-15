@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { toast } from "sonner";
 import { Plus, Trash2, Save, RotateCcw, AlertTriangle, ShieldCheck, MapPin, User, Calendar, Percent, AlertCircle, FileText, X, CheckCircle2, XCircle, Loader2, Users, DollarSign, CreditCard, GitBranch } from "lucide-react";
 import { ComissoneUser, Sale, BrokerSplit } from "../../types";
 import { useAutoSave, decodeDraft } from "../../hooks/useAutoSave";
@@ -423,8 +424,8 @@ export const SaleForm: React.FC<SaleFormProps> = ({
       emailLower === "fideliteimobiliaria@gmail.com";
     if (isCompanyProfile) return false;
 
-    // Permitir qualquer usuário ativo no sistema poder receber splits de vendas
-    return true;
+    // Filtrar corretores pelo campo permRateioVendas === true (se não exisitr, assumir true)
+    return b.permRateioVendas !== false;
   }), [team]);
 
   const getBrokerDisplayRole = (b: ComissoneUser): string => {
@@ -546,7 +547,7 @@ export const SaleForm: React.FC<SaleFormProps> = ({
     if (usersButton) {
       usersButton.click();
     } else {
-      alert("Acesse 'Config. Usuários' no menu lateral para cadastrar corretores.");
+      toast.error("Acesse 'Config. Usuários' no menu lateral para cadastrar corretores.");
     }
   };
 
@@ -646,80 +647,80 @@ export const SaleForm: React.FC<SaleFormProps> = ({
     e.preventDefault();
 
     if (!propertyAddress.trim()) {
-      alert("Informe o endereço do imóvel vendido.");
+      toast.error("Informe o endereço do imóvel vendido.");
       return;
     }
     if (!clientName.trim()) {
-      alert("Informe o nome do cliente.");
+      toast.error("Informe o nome do cliente.");
       return;
     }
     if (!sellerName.trim()) {
-      alert("Informe o nome do vendedor / proprietário.");
+      toast.error("Informe o nome do vendedor / proprietário.");
       return;
     }
 
     // Validar documento do comprador
     if (!buyerDoc.trim()) {
-      alert("Documento comprador obrigatório.");
+      toast.error("Documento comprador obrigatório.");
       return;
     }
     const cleanBuyer = stripDoc(buyerDoc);
     const buyerType = getDocType(buyerDoc);
     if (buyerType === "CPF") {
       if (!isValidCPF(buyerDoc)) {
-        alert("CPF do comprador inválido.");
+        toast.error("CPF do comprador inválido.");
         return;
       }
     } else if (buyerType === "CNPJ") {
       if (!isValidCNPJ(buyerDoc)) {
-        alert("CNPJ do comprador inválido.");
+        toast.error("CNPJ do comprador inválido.");
         return;
       }
     } else {
-      alert("Documento do comprador inválido.");
+      toast.error("Documento do comprador inválido.");
       return;
     }
 
     // Validar documento do vendedor
     if (!sellerDoc.trim()) {
-      alert("Documento vendedor obrigatório.");
+      toast.error("Documento vendedor obrigatório.");
       return;
     }
     const cleanSeller = stripDoc(sellerDoc);
     const sellerType = getDocType(sellerDoc);
     if (sellerType === "CPF") {
       if (!isValidCPF(sellerDoc)) {
-        alert("CPF do vendedor inválido.");
+        toast.error("CPF do vendedor inválido.");
         return;
       }
     } else if (sellerType === "CNPJ") {
       if (!isValidCNPJ(sellerDoc)) {
-        alert("CNPJ do vendedor inválido.");
+        toast.error("CNPJ do vendedor inválido.");
         return;
       }
     } else {
-      alert("Documento do vendedor inválido.");
+      toast.error("Documento do vendedor inválido.");
       return;
     }
 
     if (saleValue <= 0) {
-      alert("O valor da venda deve ser maior que zero.");
+      toast.error("O valor da venda deve ser maior que zero.");
       return;
     }
     if (commissionPercentage <= 0) {
-      alert("A porcentagem de comissão deve ser maior que zero.");
+      toast.error("A porcentagem de comissão deve ser maior que zero.");
       return;
     }
     if (tempSplits.length === 0) {
-      alert("Adicione pelo menos um split de corretor.");
+      toast.error("Adicione pelo menos um split de corretor.");
       return;
     }
     if (tempSplits.some(s => !s.brokerId)) {
-      alert("Selecione o corretor em todas as linhas antes de salvar.");
+      toast.error("Selecione o corretor em todas as linhas antes de salvar.");
       return;
     }
     if (tempSplits.some(s => !s.role)) {
-      alert("Selecione o papel / função para todos os recebedores.");
+      toast.error("Selecione o papel / função para todos os recebedores.");
       return;
     }
 
@@ -745,45 +746,45 @@ export const SaleForm: React.FC<SaleFormProps> = ({
 
       if (isSocio) {
         if (count > 3) {
-          alert(`O sócio ${brokerName} não pode participar mais do que 3 vezes na mesma divisão de comissão.`);
+          toast.error(`O sócio ${brokerName} não pode participar mais do que 3 vezes na mesma divisão de comissão.`);
           return;
         }
         const uniqueRoles = new Set(roles);
         if (uniqueRoles.size !== roles.length) {
-          alert(`O sócio ${brokerName} está selecionado com o mesmo papel mais de uma vez. Cada participação deve ter papel/função distinto.`);
+          toast.error(`O sócio ${brokerName} está selecionado com o mesmo papel mais de uma vez. Cada participação deve ter papel/função distinto.`);
           return;
         }
       } else {
         if (count > 1) {
-          alert(`O corretor ${brokerName} não pode participar mais do que uma vez na mesma divisão de comissão.`);
+          toast.error(`O corretor ${brokerName} não pode participar mais do que uma vez na mesma divisão de comissão.`);
           return;
         }
       }
     }
     if (hasZeroPercentage) {
-      alert("Ajuste ou remova os splits com percentual igual a zero antes de salvar.");
+      toast.error("Ajuste ou remova os splits com percentual igual a zero antes de salvar.");
       return;
     }
     if (!isPercentageValid) {
       if (splitDivisionType === "vgv") {
-        alert(`As porcentagens dos splits somam ${sumPercentage}%. Ela deve ser maior que zero e não pode ultrapassar a comissão contratada de ${commissionPercentage}% do VGV.`);
+        toast.error(`As porcentagens dos splits somam ${sumPercentage}%. Ela deve ser maior que zero e não pode ultrapassar a comissão contratada de ${commissionPercentage}% do VGV.`);
       } else {
-        alert(`As porcentagens dos splits somam ${sumPercentage}%. Ela deve somar exatamente 100%.`);
+        toast.error(`As porcentagens dos splits somam ${sumPercentage}%. Ela deve somar exatamente 100%.`);
       }
       return;
     }
 
     if (isInstallment) {
       if (entradaValue < 0 || installmentValue < 0 || installmentCount <= 0) {
-        alert("Os valores de entrada, número de parcelas e valor de parcela devem ser válidos.");
+        toast.error("Os valores de entrada, número de parcelas e valor de parcela devem ser válidos.");
         return;
       }
       if (!firstInstallmentDate) {
-        alert("Preencha a data do primeiro vencimento.");
+        toast.error("Preencha a data do primeiro vencimento.");
         return;
       }
       if (!isSumMatching) {
-        alert("O total planejado do parcelamento não bate com a comissão total da imobiliária. Por favor, ajuste os valores para bater com " + formatCurrency(totalCommission));
+        toast.error("O total planejado do parcelamento não bate com a comissão total da imobiliária. Por favor, ajuste os valores para bater com " + formatCurrency(totalCommission));
         return;
       }
     }
@@ -879,7 +880,7 @@ export const SaleForm: React.FC<SaleFormProps> = ({
 
   const handleSaveAsDraft = () => {
     if (!propertyAddress.trim()) {
-      alert("Informe pelo menos o endereço do imóvel vendido para salvar o rascunho.");
+      toast.error("Informe pelo menos o endereço do imóvel vendido para salvar o rascunho.");
       return;
     }
 

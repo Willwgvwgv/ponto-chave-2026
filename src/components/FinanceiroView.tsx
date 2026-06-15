@@ -42,7 +42,8 @@ import {
   ArrowRightLeft, 
   BarChart3, 
   CalendarDays, 
-  Tag 
+  Tag,
+  Landmark 
 } from 'lucide-react';
 
 interface FinanceiroViewProps {
@@ -728,6 +729,23 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
         date: s.forecast_date || new Date().toISOString().split('T')[0]
       }));
   }, [splits, transactions]);
+
+  const isFinanceAdmin = profile?.role === "admin";
+  const userHasPermFinanceiro = isFinanceAdmin || profile?.permFinanceiro === true || profile?.perm_financeiro === true || profile?.permissions?.includes("financeiro");
+
+  if (!userHasPermFinanceiro) {
+    return (
+      <div className="flex flex-col items-center justify-center p-8 text-center min-h-[400px] font-sans">
+        <div className="bg-red-50 text-red-600 w-12 h-12 rounded-full flex items-center justify-center mb-4">
+          <Landmark className="w-6 h-6" />
+        </div>
+        <h2 className="text-lg font-bold text-slate-800">Acesso Restrito</h2>
+        <p className="text-xs text-slate-500 mt-1 max-w-sm">
+          Você não possui permissão para visualizar o Financeiro. Solicite o acesso a um administrador.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="h-full flex flex-col space-y-6">

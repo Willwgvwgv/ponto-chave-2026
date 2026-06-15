@@ -1047,7 +1047,7 @@ export const SaleDetail: React.FC<SaleDetailProps> = ({
                   )}
 
                   {/* Previsão Simples se for pendente e sem pagamento ainda */}
-                  {split.status === "PENDING" && !split.payment_date && (
+                  {(split.status === "PENDING" || split.status === "pending" || split.status === "overdue" || split.status === "OVERDUE") && !split.payment_date && (
                     <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 font-medium">
                       <span>Previsão de Pagamento Pactuada:</span>
                       <strong className="text-slate-800 font-black flex items-center gap-1">

@@ -84,6 +84,7 @@ const DespejoView = lazy(() => import('./components/DespejoView').then(m => ({ d
 const ComissoesView = lazy(() => import('./components/ComissoesView').then(m => ({ default: m.ComissoesView })));
 const SimuladorView = lazy(() => import('./components/SimuladorView').then(m => ({ default: m.SimuladorView })));
 const FinanceiroView = lazy(() => import('./components/FinanceiroView').then(m => ({ default: m.FinanceiroView })));
+const PontoView = lazy(() => import('./components/ponto/PontoView').then(m => ({ default: m.PontoView })));
 import { ConfirmModal } from './components/ui/ConfirmModal';
 import { Task, Priority, Tool, RecurrenceType, UserProfile, ProcessInstance, CompanySettings, ProcessTemplate, ProcessStep, KanbanColumn } from "./types";
 import { 
@@ -657,6 +658,7 @@ const UserManagement = ({
   onSelectProcess: (id: string) => void
 }) => {
   const { user, isAdmin, companySettings } = useAuth();
+  const { confirm } = useConfirm();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -719,12 +721,29 @@ const UserManagement = ({
 
   const togglePermission = async (userId: string, currentPermissions: string[] = [], permission: string) => {
     const newPermissions = currentPermissions.includes(permission)
-      ? currentPermissions.filter(p => p !== permission)
-      : [...currentPermissions, permission];
-    
+       ? currentPermissions.filter(p => p !== permission)
+       : [...currentPermissions, permission];
+     
+    const hasPerm = newPermissions.includes(permission);
+    const updates: any = { permissions: newPermissions };
+
+    if (permission === "comissoes") {
+      updates.permComissoes = hasPerm;
+      updates.perm_comissoes = hasPerm;
+    } else if (permission === "financeiro") {
+      updates.permFinanceiro = hasPerm;
+      updates.perm_financeiro = hasPerm;
+    } else if (permission === "vistorias") {
+      updates.permVistorias = hasPerm;
+      updates.perm_vistorias = hasPerm;
+    } else if (permission === "processos") {
+      updates.permProcessos = hasPerm;
+      updates.perm_processos = hasPerm;
+    }
+
     try {
-      await updateDoc(doc(db, "users", userId), { permissions: newPermissions });
-      setUsers(prev => prev.map(u => u.uid === userId ? { ...u, permissions: newPermissions } : u));
+      await updateDoc(doc(db, "users", userId), updates);
+      setUsers(prev => prev.map(u => u.uid === userId ? { ...u, ...updates } : u));
       toast.success("Permissão atualizada com sucesso.");
     } catch (error) {
       toast.error("Erro ao atualizar permissão.");
@@ -757,13 +776,26 @@ const UserManagement = ({
       }
       
       const userRef = doc(db, "users", docId);
+      const permissions = editingUserProfile.permissions || [];
       const updates: Partial<UserProfile> = {
         displayName: editingUserProfile.displayName,
         email: editingUserProfile.email ? editingUserProfile.email.trim().toLowerCase() : "",
         role: editingUserProfile.role,
         cargoComissao: editingUserProfile.cargoComissao || null,
-        permissions: editingUserProfile.permissions || [],
-        permRateioLocacao: editingUserProfile.permRateioLocacao ?? false
+        permissions,
+        permRateioLocacao: editingUserProfile.permRateioLocacao ?? true,
+        permRateioVendas: editingUserProfile.permRateioVendas ?? true,
+        permComissoes: permissions.includes("comissoes"),
+        perm_comissoes: permissions.includes("comissoes"),
+        permFinanceiro: permissions.includes("financeiro"),
+        perm_financeiro: permissions.includes("financeiro"),
+        permVistorias: permissions.includes("vistorias"),
+        perm_vistorias: permissions.includes("vistorias"),
+        permProcessos: permissions.includes("processos"),
+        perm_processos: permissions.includes("processos"),
+        permPonto: editingUserProfile.permPonto ?? true,
+        perm_ponto: editingUserProfile.permPonto ?? true,
+        jornadaDiariaMinutos: Number(editingUserProfile.jornadaDiariaMinutos) || 480
       };
       
       await updateDoc(userRef, updates);
@@ -1116,20 +1148,25 @@ const UserManagement = ({
                           {u.status === "pending" && (
                             <button 
                               id={`approve-btn-${u.uid}`}
-                              onClick={async () => {
-                                if (confirm(`Aprovar o cadastro de ${u.displayName || u.email}?`)) {
-                                  try {
-                                    await updateDoc(doc(db, "users", u.uid), {
-                                      status: "active",
-                                      isPending: false
-                                    });
-                                    setUsers(prev => prev.map(item => item.uid === u.uid ? { ...item, status: "active", isPending: false } : item));
-                                    toast.success("Membro aprovado com sucesso! Agora você já pode configurar cargos nas comissões.");
-                                  } catch (err) {
-                                    console.error(err);
-                                    toast.error("Erro ao aprovar membro.");
+                              onClick={() => {
+                                confirm({
+                                  title: "Aprovar Cadastro?",
+                                  message: `Aprovar o cadastro de ${u.displayName || u.email}?`,
+                                  confirmColor: "green",
+                                  onConfirm: async () => {
+                                    try {
+                                      await updateDoc(doc(db, "users", u.uid), {
+                                        status: "active",
+                                        isPending: false
+                                      });
+                                      setUsers(prev => prev.map(item => item.uid === u.uid ? { ...item, status: "active", isPending: false } : item));
+                                      toast.success("Membro aprovado com sucesso! Agora você já pode configurar cargos nas comissões.");
+                                    } catch (err) {
+                                      console.error(err);
+                                      toast.error("Erro ao aprovar membro.");
+                                    }
                                   }
-                                }
+                                });
                               }}
                               className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1 cursor-pointer"
                               title="Aprovar Membro"
@@ -1331,65 +1368,150 @@ const UserManagement = ({
                   </div>
                 )}
 
-                {/* Seção Nova: Lista de Seleção para Rateio de Locações */}
+                {/* CONFIGURAÇÃO DO PONTO ELETRÔNICO CLT */}
+                <div className="space-y-3 border-t border-slate-100 pt-3">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">
+                    Ponto Eletrônico CLT
+                  </span>
+                  
+                  <div className="flex flex-col gap-3">
+                    <label className="flex items-center gap-2 px-3 py-2 border border-slate-100 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer text-xs font-semibold text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={editingUserProfile.permPonto !== false}
+                        onChange={(e) => setEditingUserProfile({ 
+                          ...editingUserProfile, 
+                          permPonto: e.target.checked,
+                          perm_ponto: e.target.checked
+                        })}
+                        className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                      />
+                      <span>Acesso ao Ponto Eletrônico</span>
+                    </label>
+
+                    {(editingUserProfile.permPonto !== false) && (
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">
+                          Jornada Diária (Minutos)
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          max="1440"
+                          value={editingUserProfile.jornadaDiariaMinutos ?? 480}
+                          onChange={(e) => setEditingUserProfile({ 
+                            ...editingUserProfile, 
+                            jornadaDiariaMinutos: Number(e.target.value) || 480 
+                          })}
+                          className="w-full px-3.5 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-bold text-slate-700 font-mono"
+                        />
+                        <span className="text-[8.5px] text-slate-400 font-semibold block">
+                          Padrão: 480 minutos (8 horas). Corresponde a {((editingUserProfile.jornadaDiariaMinutos ?? 480) / 60).toFixed(1)}h por dia.
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Seção Nova: Lista de Seleção para Rateio de Vendas e Locações */}
                 <div className="space-y-2 border-t border-slate-100 pt-3">
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">
-                    Elegibilidade para Rateio de Locações
+                    Elegibilidade para Rateio
                   </span>
                   <p className="text-[10px] text-slate-450 leading-tight block">
-                    Selecione todos os usuários que podem ser incluídos no rateio financeiro de qualquer comissão de locação:
+                    Indique quem pode participar dos rateios financeiros do escritório (assume elegível se não definidos):
                   </p>
                   
-                  <div className="max-h-[140px] overflow-y-auto border border-slate-200 rounded-xl bg-slate-50/50 p-2 divide-y divide-slate-100 space-y-1">
+                  <div className="max-h-[160px] overflow-y-auto border border-slate-200 rounded-xl bg-slate-50/50 p-2 divide-y divide-slate-100 space-y-1.5">
                     {users.map((usr) => {
-                      const isEligible = usr.permRateioLocacao === true || usr.permissions?.includes("rateio_locacao");
+                      const isEligibleLocacao = usr.permRateioLocacao !== false;
+                      const isEligibleVendas = usr.permRateioVendas !== false;
                       return (
-                        <div key={usr.uid} className="flex items-center justify-between py-1.5 px-2 hover:bg-white rounded-lg transition-colors">
-                          <label className="flex items-center gap-2 cursor-pointer flex-1">
-                            <input
-                              type="checkbox"
-                              checked={isEligible}
-                              onChange={async () => {
-                                const newEligible = !isEligible;
-                                const userRef = doc(db, "users", usr.uid);
-                                const currentPerms = usr.permissions || [];
-                                const newPerms = newEligible
-                                  ? [...currentPerms.filter(p => p !== "rateio_locacao"), "rateio_locacao"]
-                                  : currentPerms.filter(p => p !== "rateio_locacao");
-                                try {
-                                  await updateDoc(userRef, {
-                                    permRateioLocacao: newEligible,
-                                    permissions: newPerms
-                                  });
-                                  setUsers(prev => prev.map(u => u.uid === usr.uid ? {
-                                    ...u,
-                                    permRateioLocacao: newEligible,
-                                    permissions: newPerms
-                                  } : u));
-                                  if (usr.uid === editingUserProfile.uid) {
-                                    setEditingUserProfile({
-                                      ...editingUserProfile,
+                        <div key={usr.uid} className="flex flex-col sm:flex-row sm:items-center justify-between py-1.5 px-2 hover:bg-white rounded-lg transition-colors gap-2">
+                          <div className="text-left leading-none py-0.5">
+                            <span className="text-[11px] font-bold text-slate-700 block">{usr.displayName || usr.email}</span>
+                            <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block mt-0.5">{usr.role === "admin" ? "Admin" : usr.role === "corretor" ? "Corretor" : usr.role === "captador" ? "Captador" : "Colaborador"}</span>
+                          </div>
+
+                          <div className="flex items-center gap-4 shrink-0">
+                            {/* Elegível para Vendas */}
+                            <label className="flex items-center gap-1.5 cursor-pointer selection:bg-transparent">
+                              <input
+                                type="checkbox"
+                                checked={isEligibleVendas}
+                                onChange={async () => {
+                                  const newEligible = !isEligibleVendas;
+                                  const userRef = doc(db, "users", usr.uid);
+                                  const currentPerms = usr.permissions || [];
+                                  const newPerms = newEligible
+                                    ? [...currentPerms.filter(p => p !== "rateio_vendas"), "rateio_vendas"]
+                                    : currentPerms.filter(p => p !== "rateio_vendas");
+                                  try {
+                                    await updateDoc(userRef, {
+                                      permRateioVendas: newEligible,
+                                      permissions: newPerms
+                                    });
+                                    setUsers(prev => prev.map(u => u.uid === usr.uid ? {
+                                      ...u,
+                                      permRateioVendas: newEligible,
+                                      permissions: newPerms
+                                    } : u));
+                                    if (usr.uid === editingUserProfile.uid) {
+                                      setEditingUserProfile({
+                                        ...editingUserProfile,
+                                        permRateioVendas: newEligible,
+                                        permissions: newPerms
+                                      });
+                                    }
+                                    toast.success(`Elegibilidade de vendas atualizada para ${usr.displayName || usr.email}`);
+                                  } catch (error) {
+                                    toast.error("Erro ao atualizar elegibilidade de rateio.");
+                                  }
+                                }}
+                                className="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 cursor-pointer"
+                              />
+                              <span className="text-[10px] text-slate-600 font-bold uppercase tracking-wider">Vendas</span>
+                            </label>
+
+                            {/* Elegível para Locações */}
+                            <label className="flex items-center gap-1.5 cursor-pointer selection:bg-transparent">
+                              <input
+                                type="checkbox"
+                                checked={isEligibleLocacao}
+                                onChange={async () => {
+                                  const newEligible = !isEligibleLocacao;
+                                  const userRef = doc(db, "users", usr.uid);
+                                  const currentPerms = usr.permissions || [];
+                                  const newPerms = newEligible
+                                    ? [...currentPerms.filter(p => p !== "rateio_locacao"), "rateio_locacao"]
+                                    : currentPerms.filter(p => p !== "rateio_locacao");
+                                  try {
+                                    await updateDoc(userRef, {
                                       permRateioLocacao: newEligible,
                                       permissions: newPerms
                                     });
+                                    setUsers(prev => prev.map(u => u.uid === usr.uid ? {
+                                      ...u,
+                                      permRateioLocacao: newEligible,
+                                      permissions: newPerms
+                                    } : u));
+                                    if (usr.uid === editingUserProfile.uid) {
+                                      setEditingUserProfile({
+                                        ...editingUserProfile,
+                                        permRateioLocacao: newEligible,
+                                        permissions: newPerms
+                                      });
+                                    }
+                                    toast.success(`Elegibilidade de locações atualizada para ${usr.displayName || usr.email}`);
+                                  } catch (error) {
+                                    toast.error("Erro ao atualizar elegibilidade de rateio.");
                                   }
-                                  toast.success(`Rateio de locação atualizado para ${usr.displayName || usr.email}`);
-                                } catch (error) {
-                                  toast.error("Erro ao atualizar elegibilidade de rateio.");
-                                }
-                              }}
-                              className="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 cursor-pointer"
-                            />
-                            <div className="text-left leading-none py-0.5">
-                              <span className="text-[11px] font-bold text-slate-700 block">{usr.displayName || usr.email}</span>
-                              <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block mt-0.5">{usr.role === "admin" ? "Admin" : usr.role === "corretor" ? "Corretor" : usr.role === "captador" ? "Captador" : "Colaborador"}</span>
-                            </div>
-                          </label>
-                          <span className={`text-[8.5px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest ${
-                            isEligible ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-slate-100 text-slate-400 border border-slate-200"
-                          }`}>
-                            {isEligible ? "Elegível" : "Inativo"}
-                          </span>
+                                }}
+                                className="rounded text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5 cursor-pointer"
+                              />
+                              <span className="text-[10px] text-indigo-650 font-bold uppercase tracking-wider">Locações</span>
+                            </label>
+                          </div>
                         </div>
                       );
                     })}
@@ -1881,7 +2003,7 @@ const getManualDataForTool = (name: string, url: string) => {
 
 function AppContent() {
   const { user, profile, isAdmin, companySettings } = useAuth();
-  const [activeTab, setActiveTab] = useState<"dashboard" | "calendar" | "processes" | "process_config" | "users" | "profile" | "settings" | "contratos" | "vistorias" | "comissoes" | "simulador" | "financeiro">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "calendar" | "processes" | "process_config" | "users" | "profile" | "settings" | "contratos" | "vistorias" | "comissoes" | "simulador" | "financeiro" | "ponto">("dashboard");
   const [contractsSubTab, setContractsSubTab] = useState<"vistorias" | "despejos">("vistorias");
   const [isSidebarOpen, setIsSidebarOpen] = useState(() => window.innerWidth > 1024);
   const [viewingManualTool, setViewingManualTool] = useState<Tool | null>(null);
@@ -2462,26 +2584,53 @@ function AppContent() {
   };
 
   const navItems = useMemo(() => {
-    const hasComissions = isAdmin || (profile?.permissions?.includes("comissoes"));
-    
-    return [
+    const isUserAdmin = profile?.role === "admin";
+    const permComissoes = isUserAdmin || profile?.permComissoes === true || profile?.perm_comissoes === true || profile?.permissions?.includes("comissoes");
+    const permFinanceiro = isUserAdmin || profile?.permFinanceiro === true || profile?.perm_financeiro === true || profile?.permissions?.includes("financeiro");
+    const permVistorias = isUserAdmin || profile?.permVistorias === true || profile?.perm_vistorias === true || profile?.permissions?.includes("vistorias");
+    const permProcessos = isUserAdmin || profile?.permProcessos === true || profile?.perm_processos === true || profile?.permissions?.includes("processos");
+    const permPonto = isUserAdmin || profile?.permPonto === true || profile?.perm_ponto === true || (profile?.role === "colaborador" && profile?.permPonto === undefined && profile?.perm_ponto === undefined) || profile?.permissions?.includes("ponto");
+
+    const items: any[] = [
       { id: "dashboard" as const, label: "Painel", icon: LayoutDashboard },
       { id: "calendar" as const, label: "Calendário", icon: CalendarIcon },
-      { id: "contratos" as const, label: "Contratos", icon: FileText },
-      ...(hasComissions ? [
-        { id: "comissoes" as const, label: "Comissões", icon: DollarSign },
-      ] : []),
-      { id: "processes" as const, label: "Processos", icon: ClipboardList },
-      { id: "simulador" as const, label: "Simulador", icon: Calculator },
-      ...(isAdmin ? [
-        { type: "header", label: "SISTEMA" },
-        { id: "financeiro" as const, label: "Financeiro & Conciliação", icon: Landmark },
-        { id: "users" as const, label: "Config. Usuários", icon: UsersIcon },
-        { id: "process_config" as const, label: "Config. Fluxos", icon: Settings },
-        { id: "settings" as const, label: "Config. Empresa", icon: Sliders },
-      ] : [])
     ];
-  }, [isAdmin, profile?.permissions, companySettings?.name]);
+
+    if (isUserAdmin || permVistorias) {
+      items.push({ id: "contratos" as const, label: "Contratos", icon: FileText });
+    }
+
+    if (permComissoes) {
+      items.push({ id: "comissoes" as const, label: "Comissões", icon: DollarSign });
+    }
+
+    if (isUserAdmin || permProcessos) {
+      items.push({ id: "processes" as const, label: "Processos", icon: ClipboardList });
+    }
+
+    items.push({ id: "simulador" as const, label: "Simulador", icon: Calculator });
+
+    if (permPonto) {
+      items.push({ id: "ponto" as const, label: "Ponto", icon: Clock });
+    }
+
+    const hasSystemSection = isUserAdmin || permFinanceiro;
+    if (hasSystemSection) {
+      items.push({ type: "header", label: "SISTEMA" } as any);
+      
+      if (permFinanceiro) {
+        items.push({ id: "financeiro" as const, label: "Financeiro & Conciliação", icon: Landmark });
+      }
+
+      if (isUserAdmin) {
+        items.push({ id: "users" as const, label: "Config. Usuários", icon: UsersIcon });
+        items.push({ id: "process_config" as const, label: "Config. Fluxos", icon: Settings });
+        items.push({ id: "settings" as const, label: "Config. Empresa", icon: Sliders });
+      }
+    }
+
+    return items;
+  }, [isAdmin, profile, companySettings?.name]);
 
   if (loading) {
     return (
@@ -3217,6 +3366,15 @@ function AppContent() {
             <SimuladorView 
               companySettings={companySettings} 
               currentUser={{ displayName: user?.displayName || undefined, email: user?.email || undefined }} 
+            />
+          </Suspense>
+        ) : activeTab === "ponto" ? (
+          <Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">Carregando ponto eletrônico...</div>}>
+            <PontoView 
+              isAdmin={isAdmin}
+              user={user}
+              profile={profile}
+              companySettings={companySettings}
             />
           </Suspense>
         ) : activeTab === "profile" ? (
@@ -6602,52 +6760,6 @@ const ProfileView = ({ profile, user, onOpenSettings, onNavigate, tasks }: { pro
                 </div>
               </div>
             </div>
-
-            {profile?.role === 'admin' && (
-              <div className="pt-6 border-t border-slate-100">
-                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Ações Administrativas</h4>
-                <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
-                  <div className="flex items-start gap-4">
-                    <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm text-emerald-650 shrink-0">
-                      <Database className="w-5 h-5 text-emerald-600" />
-                    </div>
-                    <div className="flex-1">
-                      <h5 className="text-sm font-bold text-slate-900">Popular Banco de Dados Real</h5>
-                      <p className="text-[10px] text-slate-500 font-medium leading-relaxed mt-0.5">
-                        Caso seu banco de dados Firebase esteja vazio, clique abaixo para carregar os dados sementes originais da imobiliária (vendas, corretores, locações, vistorias e tarefas).
-                      </p>
-                      <button 
-                        onClick={() => {
-                          confirm({
-                            title: "Inicializar Banco de Dados",
-                            message: "Deseja inicializar o banco de dados Firebase com os dados semente da Fidelité Imobiliária? Isso criará os dados de teste no seu Firestore real.",
-                            confirmColor: "green",
-                            onConfirm: async () => {
-                              toast.loading("Inicializando dados semente no Firebase...", { id: "firebase-seed" });
-                              try {
-                                if (profile?.companyId) {
-                                  await seedDatabaseForCompany(profile.companyId);
-                                } else {
-                                  await seedDatabaseForCompany("company");
-                                }
-                              } catch (e) {
-                                console.error(e);
-                              } finally {
-                                toast.dismiss("firebase-seed");
-                              }
-                            }
-                          });
-                        }}
-                        className="mt-3 flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all shadow-sm cursor-pointer"
-                      >
-                        Inicializar Dados Semente
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
             <div className="pt-6 border-t border-slate-100">
               <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Informações da Conta</h4>
               <div className="space-y-4">
@@ -7336,263 +7448,7 @@ const SettingsView = ({ companySettings, isAdmin, onNavigate }: { companySetting
   );
 };
 
-async function seedDatabaseForCompany(companyId: string) {
-  try {
-    console.log("Seeding database for company:", companyId);
-    
-    // 1. Seed Company
-    const companyRef = doc(db, "companies", companyId);
-    await setDoc(companyRef, {
-      name: "Ponto Chave Imóveis",
-      subtitle: "Gestão de Fluxos e Processos Imobiliários",
-      address: "Av. T-63, Setor Bueno - Goiânia - GO",
-      phone: "(62) 3999-9999",
-      creci: "12345-J",
-      logo: "",
-      updatedAt: new Date().toISOString()
-    });
 
-    // 2. Seed Team (Users)
-    const mockBrokers = [
-      { id: "b1", name: "Eduardo Santos", email: "eduardo@fidelite.com", role: "collaborator", cpf: "123.456.789-01", phone: "(11) 98765-4321" },
-      { id: "b2", name: "Marina Silva", email: "marina@fidelite.com", role: "gerente", cpf: "234.567.890-12", phone: "(11) 97654-3210" },
-      { id: "b3", name: "Rafael Costa", email: "rafael@fidelite.com", role: "collaborator", cpf: "345.678.901-23", phone: "(11) 96543-2109" },
-      { id: "b4", name: "Tatiane Rezende", email: "tatiane@fidelite.com", role: "admin", cpf: "456.789.012-34", phone: "(11) 95432-1098" }
-    ];
-
-    for (const broker of mockBrokers) {
-      await setDoc(doc(db, "users", broker.id), {
-        uid: broker.id,
-        displayName: broker.name,
-        email: broker.email,
-        role: broker.role,
-        companyId: companyId,
-        status: "active",
-        cpf: broker.cpf,
-        phone: broker.phone,
-        permComissoes: true,
-        perm_comissoes: true,
-        createdAt: new Date().toISOString()
-      }, { merge: true });
-    }
-
-    // 3. Seed Sales & Splits
-    const sale1Id = "sale-1_seed";
-    const sale2Id = "sale-2_seed";
-
-    await setDoc(doc(db, "sales", sale1Id), {
-      agency_id: companyId,
-      sale_date: "2026-05-10",
-      property_address: "Edifício Horizon Blue, Apto 1402 - Av. Atlântica",
-      sale_value: 1200000,
-      commission_percentage: 6,
-      total_commission: 72000,
-      client_name: "Alberto Roberto",
-      status: "ACTIVE",
-      created_at: new Date().toISOString()
-    });
-
-    await setDoc(doc(db, "sales", sale2Id), {
-      agency_id: companyId,
-      sale_date: "2026-05-24",
-      property_address: "Condomínio Golden Hills, Lote 42 - Gleba B",
-      sale_value: 450000,
-      commission_percentage: 5,
-      total_commission: 22500,
-      client_name: "Cristiana Oliveira",
-      status: "ACTIVE",
-      created_at: new Date().toISOString()
-    });
-
-    // Splits for Sale 1
-    await setDoc(doc(db, "broker_splits", "split-1-1_seed"), {
-      sale_id: sale1Id,
-      agency_id: companyId,
-      broker_id: "b1",
-      broker_name: "Eduardo Santos",
-      role: "VENDEDOR",
-      percentage: 60,
-      calculated_value: 43200,
-      status: "PENDING",
-      forecast_date: "2026-06-15",
-      created_at: new Date().toISOString()
-    });
-
-    await setDoc(doc(db, "broker_splits", "split-1-2_seed"), {
-      sale_id: sale1Id,
-      agency_id: companyId,
-      broker_id: "b2",
-      broker_name: "Marina Silva",
-      role: "CAPTADOR",
-      percentage: 30,
-      calculated_value: 21600,
-      status: "PAID",
-      forecast_date: "2026-05-30",
-      payment_date: "2026-05-30",
-      payment_method: "PIX",
-      notes: "Pago integral dentro do prazo",
-      created_at: new Date().toISOString()
-    });
-
-    await setDoc(doc(db, "broker_splits", "split-1-3_seed"), {
-      sale_id: sale1Id,
-      agency_id: companyId,
-      broker_id: "b4",
-      broker_name: "Tatiane Rezende",
-      role: "GESTOR",
-      percentage: 10,
-      calculated_value: 7200,
-      status: "PARTIAL",
-      forecast_date: "2026-05-20",
-      payment_date: "2026-05-20",
-      payment_method: "TED",
-      notes: "Recebido primeira parcela do faturamento",
-      created_at: new Date().toISOString()
-    });
-
-    // Splits for Sale 2
-    await setDoc(doc(db, "broker_splits", "split-2-1_seed"), {
-      sale_id: sale2Id,
-      agency_id: companyId,
-      broker_id: "b1",
-      broker_name: "Eduardo Santos",
-      role: "CAPTADOR",
-      percentage: 50,
-      calculated_value: 11250,
-      status: "PENDING",
-      forecast_date: "2026-06-10",
-      created_at: new Date().toISOString()
-    });
-
-    await setDoc(doc(db, "broker_splits", "split-2-2_seed"), {
-      sale_id: sale2Id,
-      agency_id: companyId,
-      broker_id: "b3",
-      broker_name: "Rafael Costa",
-      role: "VENDEDOR",
-      percentage: 50,
-      calculated_value: 11250,
-      status: "PENDING",
-      forecast_date: "2026-06-12",
-      created_at: new Date().toISOString()
-    });
-
-    // 4. Seed Rentals (comissoes)
-    await setDoc(doc(db, "comissoes", "rental-1_seed"), {
-      companyId: companyId,
-      imovel: "Edifício Horizon Blue, Apto 1402 - Av. Atlântica",
-      inquilino: "Clarice Lispector",
-      aluguelMensal: 3500,
-      primeiroAluguel: 3500,
-      porcentagemFidelite: 100,
-      valorFidelite: 3500,
-      valorRepasseCorretores: 2450,
-      vencimento: "2026-06-10",
-      mesReferencia: "2026-06",
-      status: "pendente",
-      jaPagoCorretores: false,
-      rateio: [
-        { corretorId: "b1", corretorNome: "Eduardo Santos", papel: "locacao", valor: 1715, porcentagem: 70 },
-        { corretorId: "b2", corretorNome: "Marina Silva", papel: "captador", valor: 735, porcentagem: 30 }
-      ],
-      observacoes: "Contrato de locação firmado por 30 meses.",
-      criadoPor: "admin",
-      criadoPorNome: "Administrador",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      pagamentosCorretores: []
-    });
-
-    await setDoc(doc(db, "comissoes", "rental-2_seed"), {
-      companyId: companyId,
-      imovel: "Condomínio Golden Hills, Casa 15 - Quadra C",
-      inquilino: "Machado de Assis",
-      aluguelMensal: 5000,
-      primeiroAluguel: 5000,
-      porcentagemFidelite: 70,
-      valorFidelite: 3500,
-      valorRepasseCorretores: 2100,
-      vencimento: "2026-05-15",
-      mesReferencia: "2026-05",
-      status: "pago",
-      jaPagoCorretores: true,
-      rateio: [
-        { corretorId: "b3", corretorNome: "Rafael Costa", papel: "locacao", valor: 1260, porcentagem: 60 },
-        { corretorId: "b2", corretorNome: "Marina Silva", papel: "captador", valor: 840, porcentagem: 40 }
-      ],
-      observacoes: "Locação via Processo de Locação nº 4022. Tudo pago.",
-      criadoPor: "admin",
-      criadoPorNome: "Administrador",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      pagamentosCorretores: [
-        {
-          id: "pay-1_seed",
-          corretorId: "b3",
-          corretorNome: "Rafael Costa",
-          tipo: "pagamento",
-          valor: 1260,
-          data: "2026-05-15",
-          observacao: "Pago via PIX",
-          registradoPorUid: "admin",
-          registradoPorNome: "Administrador",
-          registradoEm: Date.now()
-        },
-        {
-          id: "pay-2_seed",
-          corretorId: "b2",
-          corretorNome: "Marina Silva",
-          tipo: "pagamento",
-          valor: 840,
-          data: "2026-05-15",
-          observacao: "Pago via PIX",
-          registradoPorUid: "admin",
-          registradoPorNome: "Administrador",
-          registradoEm: Date.now()
-        }
-      ]
-    });
-
-    // 5. Seed Tasks
-    const mockTasks = [
-      { id: "task-1_seed", description: "Vistoria de entrada no Edifício Horizon Blue", date: new Date().toISOString().split('T')[0], completed: false },
-      { id: "task-2_seed", description: "Enviar contrato assinado para Clarice Lispector", date: new Date().toISOString().split('T')[0], completed: false },
-      { id: "task-3_seed", description: "Agendar vistoria de saída para Condomínio Golden Hills", date: new Date().toISOString().split('T')[0], completed: true }
-    ];
-
-    for (const task of mockTasks) {
-      await setDoc(doc(db, "tasks", task.id), {
-        companyId: companyId,
-        uid: "b1",
-        description: task.description,
-        date: task.date,
-        completed: task.completed,
-        priority: "MÉDIA",
-        category: "LEGAL",
-        createdAt: new Date().toISOString()
-      });
-    }
-
-    // 7. Seed Processes
-    await setDoc(doc(db, "processes", "process-1_seed"), {
-      companyId: companyId,
-      title: "Locação — Horizon Blue Apto 1402",
-      inquilino: "Clarice Lispector",
-      owner: "Alberto Roberto",
-      step: 3,
-      vencimento: "2026-06-10",
-      rentValue: 3500,
-      isCommissionLaunched: true,
-      commissionRefId: "rental-1_seed",
-      createdAt: new Date().toISOString()
-    });
-
-    toast.success("Banco de dados da Fidelité Imobiliária inicializado com sucesso!");
-  } catch (err) {
-    console.error("Erro no seed do banco de dados:", err);
-    toast.error("Erro ao popular o banco de dados semente.");
-  }
-}
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { toast } from "sonner";
 import { X, DollarSign, FileText, Upload } from "lucide-react";
 import { BrokerSplit } from "../../types";
 import { round2 } from "../../hooks/useQueries";
@@ -106,17 +107,17 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
     e.preventDefault();
 
     if (paidValue <= 0) {
-      alert("O valor pago deve ser maior que zero.");
+      toast.error("O valor pago deve ser maior que zero.");
       return;
     }
 
     if (round2(paidValue) > round2(totalValue)) {
-      alert("O valor pago não pode exceder o valor total do split.");
+      toast.error("O valor pago não pode exceder o valor total do split.");
       return;
     }
 
     if (isPartial && !newForecastDate) {
-      alert("Para pagamentos parciais, insira uma data de previsão para o saldo restante.");
+      toast.error("Para pagamentos parciais, insira uma data de previsão para o saldo restante.");
       return;
     }
 

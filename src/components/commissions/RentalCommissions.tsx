@@ -390,14 +390,14 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
 
   const handleAddCaptador = (brokerId: string) => {
     if (!brokerId) {
-      alert("Selecione um corretor para incluir como captador.");
+      toast.error("Selecione um corretor para incluir como captador.");
       return;
     }
     const brokerObj = team.find(t => t.id === brokerId);
     if (!brokerObj) return;
 
     if (rateios.some(rt => rt.corretorId === brokerId)) {
-      alert("Este corretor já está adicionado no rateio.");
+      toast.error("Este corretor já está adicionado no rateio.");
       return;
     }
 
@@ -420,24 +420,24 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
   const handleSaveRental = (e: React.FormEvent) => {
     e.preventDefault();
     if (!imovel || !inquilino) {
-      alert("Por favor, preencha o imóvel e inquilino.");
+      toast.error("Por favor, preencha o imóvel e inquilino.");
       return;
     }
 
     if (porcentagemFidelite + porcentagemLocador > 100) {
-      alert("A soma das porcentagens da Imobiliária e do Locador não pode ultrapassar 100%.");
+      toast.error("A soma das porcentagens da Imobiliária e do Locador não pode ultrapassar 100%.");
       return;
     }
 
     const hasLocadorBroker = rateios.some(r => r.papel === "locador" || r.papel === "locacao");
     if (porcentagemLocador > 0 && !hasLocadorBroker) {
-      alert("Por favor, selecione um Corretor Locador, já que o percentual do locador é maior que 0%.");
+      toast.error("Por favor, selecione um Corretor Locador, já que o percentual do locador é maior que 0%.");
       return;
     }
 
     const hasCaptadorBroker = rateios.some(r => r.papel === "captador");
     if (porcentagemCaptadores > 0 && !hasCaptadorBroker) {
-      alert(`Por favor, adicione pelo menos um Corretor Captador para receber a parte de captação (${porcentagemCaptadores}%).`);
+      toast.error(`Por favor, adicione pelo menos um Corretor Captador para receber a parte de captação (${porcentagemCaptadores}%).`);
       return;
     }
 
@@ -1090,7 +1090,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                       className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none"
                     >
                       <option value="">Buscar locador...</option>
-                      {team.filter(b => b.permRateioLocacao === true || b.permissions?.includes("rateio_locacao") || b.id === (rateios.find(r => r.papel === "locador" || r.papel === "locacao")?.corretorId)).map(b => (
+                      {team.filter(b => b.permRateioLocacao !== false || b.permissions?.includes("rateio_locacao") || b.id === (rateios.find(r => r.papel === "locador" || r.papel === "locacao")?.corretorId)).map(b => (
                         <option key={b.id} value={b.id}>{b.name}</option>
                       ))}
                     </select>
@@ -1105,7 +1105,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                         className="flex-1 px-3 py-2 bg-slate-50 border border-slate-205 rounded-xl text-xs font-bold focus:outline-none"
                       >
                         <option value="">Buscar captador...</option>
-                        {team.filter(b => b.permRateioLocacao === true || b.permissions?.includes("rateio_locacao") || b.id === selectedCaptadorId).map(b => (
+                        {team.filter(b => b.permRateioLocacao !== false || b.permissions?.includes("rateio_locacao") || b.id === selectedCaptadorId).map(b => (
                           <option key={b.id} value={b.id}>{b.name}</option>
                         ))}
                       </select>

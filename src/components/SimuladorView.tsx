@@ -779,10 +779,10 @@ export const SimuladorView: React.FC<SimuladorViewProps> = ({ companySettings, c
       }
 
       await navigator.clipboard.writeText(msg);
-      alert("Proposta copiada com sucesso para o seu clipboard! Basta colar no chat do WhatsApp de seu cliente.");
+      toast.error("Proposta copiada com sucesso para o seu clipboard! Basta colar no chat do WhatsApp de seu cliente.");
     } catch (e) {
       console.error("Erro ao copiar para o clipboard:", e);
-      alert("Não foi possível copiar automaticamente. Verifique as permissões do navegador ou copie manualmente.");
+      toast.error("Não foi possível copiar automaticamente. Verifique as permissões do navegador ou copie manualmente.");
     }
   };
 
@@ -800,7 +800,7 @@ export const SimuladorView: React.FC<SimuladorViewProps> = ({ companySettings, c
 
     const printWindow = window.open("", "_blank", "width=850,height=1100");
     if (!printWindow) {
-      alert("Bloqueador de pop-ups ativo. Permita pop-ups para imprimir a proposta.");
+      toast.error("Bloqueador de pop-ups ativo. Permita pop-ups para imprimir a proposta.");
       return;
     }
 
@@ -1667,7 +1667,7 @@ export const SimuladorView: React.FC<SimuladorViewProps> = ({ companySettings, c
                 <button
                   type="button"
                   onClick={() => {
-                    // TODO: verificar intenção original: recalcula a área com base no total e valor m² atuais
+                    // Recalcula a área com base no total e valor m² atuais de forma automática
                     if (valorM2 > 0) {
                       setMetragem(Math.round((valorTotal / valorM2) * 100) / 100);
                     }
@@ -1680,7 +1680,7 @@ export const SimuladorView: React.FC<SimuladorViewProps> = ({ companySettings, c
                 <button
                   type="button"
                   onClick={() => {
-                    // TODO: verificar intenção original: recalcula o valor do m² com base no total e metragem atuais
+                    // Recalcula o valor do m² com base no total e metragem atuais de forma automática
                     if (metragem > 0) {
                       setValorM2(Math.round((valorTotal / metragem) * 100) / 100);
                     }

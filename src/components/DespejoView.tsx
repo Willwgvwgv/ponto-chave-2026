@@ -32,6 +32,7 @@ import {
 } from "../hooks/useQueries";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
+import { ConfirmModal } from "./ui/ConfirmModal";
 
 interface DespejoViewProps {
   isAdmin: boolean;
@@ -54,6 +55,8 @@ export const DespejoView = ({ isAdmin, user, companySettings }: DespejoViewProps
   const [filterStatus, setFilterStatus] = useState<string>("TODOS");
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [selectedDespejo, setSelectedDespejo] = useState<Despejo | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
 
   // Form (Wizard) State
   const [wizardStep, setWizardStep] = useState(1);
@@ -390,13 +393,9 @@ export const DespejoView = ({ isAdmin, user, companySettings }: DespejoViewProps
     }
   };
 
-  const handleDeleteDespejo = async (id: string) => {
-    if (confirm("Você tem certeza de que deseja remover permanentemente este processo de despejo?")) {
-      await deleteMutation.mutateAsync({ id, companyId });
-      if (selectedDespejo?.id === id) {
-        setSelectedDespejo(null);
-      }
-    }
+  const handleDeleteDespejo = (id: string) => {
+    setDeleteTargetId(id);
+    setShowDeleteConfirm(true);
   };
 
   // Calculations for stats
@@ -1593,6 +1592,28 @@ export const DespejoView = ({ isAdmin, user, companySettings }: DespejoViewProps
           </div>
         )}
       </AnimatePresence>
+
+      <ConfirmModal
+        isOpen={showDeleteConfirm}
+        title="Confirmar Exclusão"
+        message="Você tem certeza de que deseja remover permanentemente este processo de despejo?"
+        confirmText="Excluir"
+        cancelText="Cancelar"
+        onConfirm={async () => {
+          if (deleteTargetId) {
+            await deleteMutation.mutateAsync({ id: deleteTargetId, companyId });
+            if (selectedDespejo?.id === deleteTargetId) {
+              setSelectedDespejo(null);
+            }
+          }
+          setShowDeleteConfirm(false);
+          setDeleteTargetId(null);
+        }}
+        onClose={() => {
+          setShowDeleteConfirm(false);
+          setDeleteTargetId(null);
+        }}
+      />
     </div>
   );
 };

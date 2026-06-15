@@ -115,15 +115,47 @@ export const ComissoesView: React.FC<ComissoesViewProps> = ({
     }
   }, [initialData]);
 
+  const isUserAdmin = profile?.role === "admin";
+  const userHasPermComissoes = isUserAdmin || profile?.permComissoes === true || profile?.perm_comissoes === true || profile?.permissions?.includes("comissoes");
+
+  const userId = profile?.uid || user?.uid;
+
+  // Filtragem comissões de venda
+  const visibleSales = React.useMemo(() => {
+    if (isUserAdmin) {
+      return sales;
+    }
+    return sales.filter(sale => 
+      sale.splits && sale.splits.some(split => split.broker_id === userId)
+    );
+  }, [sales, isUserAdmin, userId]);
+
+  // Filtragem comissões de locação
+  const visibleRentals = React.useMemo(() => {
+    if (isUserAdmin) {
+      return rentals;
+    }
+    return rentals.filter(rental => 
+      rental.rateio && rental.rateio.some(rat => rat.corretorId === userId)
+    );
+  }, [rentals, isUserAdmin, userId]);
+
   // Se uma venda selecionada for atualizada na query, atualiza a referência local mantendo reatividade no detalhe
   const currentSelectedSaleReal = selectedSale 
-    ? sales.find(s => s.id === selectedSale.id) || selectedSale 
+    ? visibleSales.find(s => s.id === selectedSale.id) || selectedSale 
     : null;
 
   // Extrair todos os splits para passar para o Dashboard
   const allSplits = React.useMemo(() => {
-    return sales.flatMap(s => s.splits || []);
-  }, [sales]);
+    return visibleSales.flatMap(s => s.splits || []);
+  }, [visibleSales]);
+
+  const visibleSplits = React.useMemo(() => {
+    if (isUserAdmin) {
+      return allSplits;
+    }
+    return allSplits.filter(split => split.broker_id === userId);
+  }, [allSplits, isUserAdmin, userId]);
 
   // Ações do fluxo de Vendas
   const handleSaveSale = (saleData: Omit<Sale, "id">, splitsData: Omit<BrokerSplit, "id">[]) => {
@@ -151,7 +183,7 @@ export const ComissoesView: React.FC<ComissoesViewProps> = ({
   };
 
   const handlePublishSale = (saleId: string) => {
-    const saleObj = sales.find(s => s.id === saleId);
+    const saleObj = visibleSales.find(s => s.id === saleId);
     if (!saleObj) return;
     
     const splits = saleObj.splits || [];
@@ -333,6 +365,20 @@ export const ComissoesView: React.FC<ComissoesViewProps> = ({
     deleteSaleMutation.mutate({ saleId, companyId: agencyId });
   };
 
+  if (!userHasPermComissoes) {
+    return (
+      <div className="flex flex-col items-center justify-center p-8 text-center min-h-[400px]">
+        <div className="bg-red-50 text-red-600 w-12 h-12 rounded-full flex items-center justify-center mb-4">
+          <Briefcase className="w-6 h-6" />
+        </div>
+        <h2 className="text-lg font-bold text-slate-800">Acesso Restrito</h2>
+        <p className="text-xs text-slate-500 mt-1 max-w-sm">
+          Você não possui permissão para visualizar as comissões. Solicite o acesso a um administrador.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="p-4 md:p-8 space-y-6 max-w-7xl mx-auto font-sans text-slate-800">
       
@@ -433,8 +479,8 @@ export const ComissoesView: React.FC<ComissoesViewProps> = ({
               >
                 {activeSubTab === "dashboard" && (
                   <CommissionDashboard 
-                    sales={sales} 
-                    splits={allSplits} 
+                    sales={visibleSales} 
+                    splits={visibleSplits} 
                     onOpenCreateForm={() => setActiveSubTab("create")}
                     team={team}
                     onRegisterPayment={handleRegisterPayment}
@@ -443,7 +489,7 @@ export const ComissoesView: React.FC<ComissoesViewProps> = ({
 
                 {activeSubTab === "sales" && (
                   <SalesList
-                    sales={sales}
+                    sales={visibleSales}
                     team={team}
                     companySettings={companySettings}
                     onSelectSale={(sale) => {
@@ -507,7 +553,7 @@ export const ComissoesView: React.FC<ComissoesViewProps> = ({
             </div>
           ) : (
             <RentalCommissions
-              rentals={rentals}
+              rentals={visibleRentals}
               team={team}
               userProfile={profile}
               initialData={initialData}
