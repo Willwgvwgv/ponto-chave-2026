@@ -690,11 +690,11 @@ const UserManagement = ({
         const companyId = companySettings.id;
         const q = query(collection(db, "users"), where("companyId", "==", companyId));
         const snapshot = await getDocs(q);
-        const usersData = snapshot.docs.map(doc => {
-          const data = doc.data();
+        const usersData = snapshot.docs.map(docSnap => {
+          const data = docSnap.data();
           const p = {
             ...data,
-            uid: data.uid || doc.id,
+            uid: data.uid || docSnap.id,
           } as UserProfile;
 
           // Requirement 4: Set permRateioVendas and permRateioLocacao to false for "Iara Teles Dias" (Colaborador)
