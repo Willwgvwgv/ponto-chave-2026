@@ -155,7 +155,11 @@ export const auth = isDemoMode ? (() => {
   return mockAuthObj as any;
 })() : getAuth(app);
 
-export const db = isDemoMode ? { _type: 'db_mock' } as any : getFirestore(app, resolvedFirebaseConfig.firestoreDatabaseId);
+export const db = isDemoMode ? { _type: 'db_mock' } as any : (
+  (resolvedFirebaseConfig.firestoreDatabaseId && resolvedFirebaseConfig.firestoreDatabaseId !== "(default)")
+    ? getFirestore(app, resolvedFirebaseConfig.firestoreDatabaseId)
+    : getFirestore(app)
+);
 export const storage = isDemoMode ? null as any : getStorage(app);
 export const googleProvider = new GoogleAuthProvider();
 
