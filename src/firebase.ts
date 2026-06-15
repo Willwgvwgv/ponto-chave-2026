@@ -33,6 +33,7 @@ import {
 } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { sanitizeForFirestore } from './lib/utils';
+import { toast } from 'sonner';
 
 // Import the Firebase configuration
 import firebaseConfig from '../firebase-applet-config.json';
@@ -479,15 +480,41 @@ export function doc(first: any, second?: string, ...segments: string[]) {
 
 export async function setDoc(docRef: any, data: any, options?: { merge?: boolean }) {
   const sanitized = sanitizeForFirestore(data);
+  const isPlainOffline = !isDemoMode && !navigator.onLine;
+  if (isPlainOffline) {
+    toast.error("Sem conexão — a alteração será perdida ao recarregar a página. Verifique sua internet e tente novamente.");
+    throw new Error("offline");
+  }
+
+  try {
+    const parts = docRef.path?.split('/');
+    if (parts && parts.length >= 2) {
+      const id = parts[parts.length - 1];
+      const collectionPath = parts.slice(0, parts.length - 1).join('/');
+      const coll = getLocalCollection(collectionPath);
+      const existing = coll[id] || {};
+      const updated = options?.merge ? { ...existing, ...sanitized } : sanitized;
+      coll[id] = updated;
+      setLocalCollection(collectionPath, coll);
+    }
+  } catch (e) {
+    console.warn("Local storage write update failed:", e);
+  }
+
   if (isDemoMode) {
-    const coll = getLocalCollection(docRef.collectionPath);
-    const existing = coll[docRef.id] || {};
-    const updated = options?.merge ? { ...existing, ...sanitized } : sanitized;
-    coll[docRef.id] = updated;
-    setLocalCollection(docRef.collectionPath, coll);
     return;
   }
-  return realSetDoc(docRef, sanitized, options);
+
+  try {
+    return await realSetDoc(docRef, sanitized, options);
+  } catch (error: any) {
+    const errorMsg = error?.message?.toLowerCase() || '';
+    if (errorMsg.includes("client is offline") || errorMsg.includes("offline") || errorMsg.includes("network")) {
+      toast.error("Sem conexão — a alteração será perdida ao recarregar a página. Verifique sua internet e tente novamente.");
+      throw new Error("offline");
+    }
+    throw error;
+  }
 }
 
 export async function getDoc(docRef: any) {
@@ -500,7 +527,48 @@ export async function getDoc(docRef: any) {
       data: () => data
     };
   }
-  return realGetDoc(docRef);
+  try {
+    const result = await realGetDoc(docRef);
+    try {
+      if (result && result.exists()) {
+        const parts = docRef.path?.split('/');
+        if (parts && parts.length >= 2) {
+          const id = parts[parts.length - 1];
+          const collectionPath = parts.slice(0, parts.length - 1).join('/');
+          const coll = getLocalCollection(collectionPath);
+          coll[id] = result.data();
+          setLocalCollection(collectionPath, coll);
+        }
+      }
+    } catch (cacheErr) {
+      console.warn("Error caching doc in real mode:", cacheErr);
+    }
+    return result;
+  } catch (error: any) {
+    if (error?.message?.includes("client is offline") || error?.message?.includes("offline")) {
+      console.warn("Firestore offline: sliding into fallback local cache for getDoc", docRef.path);
+      const parts = docRef.path?.split('/');
+      if (parts && parts.length >= 2) {
+        const id = parts[parts.length - 1];
+        const collectionPath = parts.slice(0, parts.length - 1).join('/');
+        const coll = getLocalCollection(collectionPath);
+        const data = coll[id];
+        if (data !== undefined) {
+          return {
+            exists: () => true,
+            id,
+            data: () => data
+          };
+        }
+      }
+      return {
+        exists: () => false,
+        id: docRef.id || "",
+        data: () => null
+      };
+    }
+    throw error;
+  }
 }
 
 export async function getDocs(queryRef: any) {
@@ -541,7 +609,70 @@ export async function getDocs(queryRef: any) {
       }
     };
   }
-  return realGetDocs(queryRef);
+  try {
+    const result = await realGetDocs(queryRef);
+    try {
+      const path = queryRef.path || (queryRef.collectionRef ? queryRef.collectionRef.path : '');
+      if (path && result?.docs) {
+        const coll = getLocalCollection(path);
+        result.docs.forEach((docSnap: any) => {
+          if (docSnap && docSnap.exists()) {
+            coll[docSnap.id] = docSnap.data();
+          }
+        });
+        setLocalCollection(path, coll);
+      }
+    } catch (cacheErr) {
+      console.warn("Error caching docs in real mode:", cacheErr);
+    }
+    return result;
+  } catch (error: any) {
+    if (error?.message?.includes("client is offline") || error?.message?.includes("offline")) {
+      console.warn("Firestore offline: sliding into fallback local cache for getDocs", queryRef);
+      const path = queryRef.path || (queryRef.collectionRef ? queryRef.collectionRef.path : (typeof queryRef === 'string' ? queryRef : ''));
+      if (path) {
+        const coll = getLocalCollection(path);
+        let docs = Object.entries(coll).map(([id, val]) => ({
+          id,
+          data: () => val,
+          exists: () => true
+        }));
+
+        if (queryRef && queryRef.filters && queryRef.filters.length > 0) {
+          docs = docs.filter(docSnap => {
+            const docData = docSnap.data();
+            if (!docData) return false;
+            for (const filter of queryRef.filters) {
+              const { field, op, value } = filter;
+              const actual = docData[field];
+              if (op === '==') {
+                if (actual !== value) return false;
+              } else if (op === '!=') {
+                if (actual === value) return false;
+              } else if (op === 'array-contains') {
+                if (!Array.isArray(actual) || !actual.includes(value)) return false;
+              }
+            }
+            return true;
+          });
+        }
+
+        return {
+          empty: docs.length === 0,
+          docs,
+          forEach: (callback: (doc: any) => void) => {
+            docs.forEach(callback);
+          }
+        };
+      }
+      return {
+        empty: true,
+        docs: [],
+        forEach: () => {}
+      };
+    }
+    throw error;
+  }
 }
 
 export function query(collectionRef: any, ...constraints: any[]) {
@@ -649,6 +780,12 @@ export function onSnapshot(ref: any, callback: (snapshot: any) => void, onError?
 
 export async function addDoc(collectionRef: any, data: any) {
   const sanitized = sanitizeForFirestore(data);
+  const isPlainOffline = !isDemoMode && !navigator.onLine;
+  if (isPlainOffline) {
+    toast.error("Sem conexão — a alteração será perdida ao recarregar a página. Verifique sua internet e tente novamente.");
+    throw new Error("offline");
+  }
+
   if (isDemoMode) {
     const id = "doc_" + Math.random().toString(36).substring(2, 9);
     const coll = getLocalCollection(collectionRef.path);
@@ -657,39 +794,105 @@ export async function addDoc(collectionRef: any, data: any) {
     setLocalCollection(collectionRef.path, coll);
     return { id, path: `${collectionRef.path}/${id}` };
   }
-  return realAddDoc(collectionRef, sanitized);
+
+  try {
+    const result = await realAddDoc(collectionRef, sanitized);
+    try {
+      if (result && result.id) {
+        const coll = getLocalCollection(collectionRef.path);
+        coll[result.id] = { ...sanitized, id: result.id };
+        setLocalCollection(collectionRef.path, coll);
+      }
+    } catch (e) {}
+    return result;
+  } catch (error: any) {
+    const errorMsg = error?.message?.toLowerCase() || '';
+    if (errorMsg.includes("client is offline") || errorMsg.includes("offline") || errorMsg.includes("network")) {
+      toast.error("Sem conexão — a alteração será perdida ao recarregar a página. Verifique sua internet e tente novamente.");
+      throw new Error("offline");
+    }
+    throw error;
+  }
 }
 
 export async function updateDoc(docRef: any, data: any) {
   const sanitized = sanitizeForFirestore(data);
-  if (isDemoMode) {
-    const coll = getLocalCollection(docRef.collectionPath);
-    const existing = coll[docRef.id] || {};
-    const updated = { ...existing };
-    for (const key in sanitized) {
-      const val = sanitized[key];
-      if (val && typeof val === 'object' && val._type === 'arrayUnion') {
-        const arr = Array.isArray(updated[key]) ? updated[key] : [];
-        updated[key] = [...arr, ...val.values];
-      } else {
-        updated[key] = val;
+  const isPlainOffline = !isDemoMode && !navigator.onLine;
+  if (isPlainOffline) {
+    toast.error("Sem conexão — a alteração será perdida ao recarregar a página. Verifique sua internet e tente novamente.");
+    throw new Error("offline");
+  }
+
+  try {
+    const parts = docRef.path?.split('/');
+    if (parts && parts.length >= 2) {
+      const id = parts[parts.length - 1];
+      const collectionPath = parts.slice(0, parts.length - 1).join('/');
+      const coll = getLocalCollection(collectionPath);
+      const existing = coll[id] || {};
+      const updated = { ...existing };
+      for (const key in sanitized) {
+        const val = sanitized[key];
+        if (val && typeof val === 'object' && val._type === 'arrayUnion') {
+          const arr = Array.isArray(updated[key]) ? updated[key] : [];
+          updated[key] = [...arr, ...val.values];
+        } else {
+          updated[key] = val;
+        }
       }
+      coll[id] = updated;
+      setLocalCollection(collectionPath, coll);
     }
-    coll[docRef.id] = updated;
-    setLocalCollection(docRef.collectionPath, coll);
+  } catch (e) {}
+
+  if (isDemoMode) {
     return;
   }
-  return realUpdateDoc(docRef, sanitized);
+
+  try {
+    return await realUpdateDoc(docRef, sanitized);
+  } catch (error: any) {
+    const errorMsg = error?.message?.toLowerCase() || '';
+    if (errorMsg.includes("client is offline") || errorMsg.includes("offline") || errorMsg.includes("network")) {
+      toast.error("Sem conexão — a alteração será perdida ao recarregar a página. Verifique sua internet e tente novamente.");
+      throw new Error("offline");
+    }
+    throw error;
+  }
 }
 
 export async function deleteDoc(docRef: any) {
+  const isPlainOffline = !isDemoMode && !navigator.onLine;
+  if (isPlainOffline) {
+    toast.error("Sem conexão — a alteração será perdida ao recarregar a página. Verifique sua internet e tente novamente.");
+    throw new Error("offline");
+  }
+
+  try {
+    const parts = docRef.path?.split('/');
+    if (parts && parts.length >= 2) {
+      const id = parts[parts.length - 1];
+      const collectionPath = parts.slice(0, parts.length - 1).join('/');
+      const coll = getLocalCollection(collectionPath);
+      delete coll[id];
+      setLocalCollection(collectionPath, coll);
+    }
+  } catch (e) {}
+
   if (isDemoMode) {
-    const coll = getLocalCollection(docRef.collectionPath);
-    delete coll[docRef.id];
-    setLocalCollection(docRef.collectionPath, coll);
     return;
   }
-  return realDeleteDoc(docRef);
+
+  try {
+    return await realDeleteDoc(docRef);
+  } catch (error: any) {
+    const errorMsg = error?.message?.toLowerCase() || '';
+    if (errorMsg.includes("client is offline") || errorMsg.includes("offline") || errorMsg.includes("network")) {
+      toast.error("Sem conexão — a alteração será perdida ao recarregar a página. Verifique sua internet e tente novamente.");
+      throw new Error("offline");
+    }
+    throw error;
+  }
 }
 
 export function arrayUnion(...values: any[]) {

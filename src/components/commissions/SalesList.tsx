@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { Search, Percent, Users, DollarSign, Calendar, Eye, FileText, ArrowRight, X, AlertCircle, Download } from "lucide-react";
+import { Search, Percent, Users, DollarSign, Calendar, Eye, FileText, ArrowRight, X, AlertCircle, Download, FileSpreadsheet } from "lucide-react";
 import { Sale, ComissoneUser, CompanySettings } from "../../types";
 import { getDocType, maskCPFPublic, maskCNPJ } from "../../lib/utils";
 import { StatusBadge } from "./StatusBadge";
@@ -171,6 +171,41 @@ export const SalesList: React.FC<SalesListProps> = ({
     const link = document.createElement("a");
     link.href = url;
     link.download = `comissoes_${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleExportFiscalCSV = () => {
+    const headers = [
+      "Data Venda", "Imóvel", "Comprador", "CPF/CNPJ Comprador",
+      "Vendedor/Proprietário", "CPF/CNPJ Vendedor", "Valor do Imóvel",
+      "% Comissão", "Valor Comissão Total", "Status NF",
+      "Data Vencimento NF", "Status da Venda"
+    ];
+
+    const rows = sales.map(sale => [
+      sale.sale_date ? new Date(sale.sale_date).toLocaleDateString('pt-BR') : '',
+      sale.property_address || '',
+      sale.client_name || '',
+      sale.buyer_doc ? `${sale.buyer_doc_type || ''}: ${sale.buyer_doc}` : '',
+      sale.seller_name || '',
+      sale.seller_doc ? `${sale.seller_doc_type || ''}: ${sale.seller_doc}` : '',
+      new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(sale.sale_value || 0),
+      `${sale.commission_percentage || 0}%`,
+      new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(sale.total_commission || 0),
+      sale.data_vencimento_nf ? 'Pendente' : 'Sem previsão',
+      sale.data_vencimento_nf ? new Date(sale.data_vencimento_nf).toLocaleDateString('pt-BR') : '',
+      sale.status === 'ACTIVE' ? 'Ativa' : sale.status === 'CANCELLED' ? 'Cancelada' : 'Rascunho',
+    ]);
+
+    const csv = "\uFEFF" + headers.join(";") + "\n" + rows.map(r => r.join(";")).join("\n");
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const data = new Date().toISOString().split('T')[0];
+    link.href = url;
+    link.download = `relatorio_fiscal_vendas_${data}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -1072,6 +1107,12 @@ export const SalesList: React.FC<SalesListProps> = ({
               className="px-5 py-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-black uppercase tracking-widest cursor-pointer transition-colors flex items-center gap-1.5 shadow-sm"
             >
               <Download className="w-4.5 h-4.5" /> Exportar CSV
+            </button>
+            <button
+              onClick={handleExportFiscalCSV}
+              className="px-5 py-2.5 bg-white border border-emerald-200 text-emerald-700 hover:bg-emerald-50 rounded-xl text-xs font-black uppercase tracking-widest cursor-pointer transition-colors flex items-center gap-1.5 shadow-sm"
+            >
+              <FileSpreadsheet className="w-4.5 h-4.5" /> Exportar Relatório Fiscal
             </button>
             <button
               onClick={onOpenCreateForm}

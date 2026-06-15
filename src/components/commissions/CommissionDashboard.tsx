@@ -52,6 +52,8 @@ export const CommissionDashboard: React.FC<CommissionDashboardProps> = ({
   const [agenSearch, setAgenSearch] = useState("");
   const [agenStatus, setAgenStatus] = useState<"ALL" | "PENDING" | "PARTIAL" | "PAID" | "overdue">("ALL");
   const [agenRole, setAgenRole] = useState<"ALL" | "VENDEDOR" | "CAPTADOR" | "GESTOR">("ALL");
+  const [agenDateFrom, setAgenDateFrom] = useState("");
+  const [agenDateTo, setAgenDateTo] = useState("");
 
   const [selectedBrokerId, setSelectedBrokerId] = useState<string>("");
   const [selectedBrokerName, setSelectedBrokerName] = useState<string>("");
@@ -427,9 +429,16 @@ export const CommissionDashboard: React.FC<CommissionDashboardProps> = ({
       if (agenRole !== "ALL") {
         if (sp.role !== agenRole) return false;
       }
+      // 4. data/intervalo filter
+      if (sp.forecast_date) {
+        if (agenDateFrom && sp.forecast_date < agenDateFrom) return false;
+        if (agenDateTo && sp.forecast_date > agenDateTo) return false;
+      } else {
+        if (agenDateFrom || agenDateTo) return false;
+      }
       return true;
     }).sort((a, b) => new Date(a.forecast_date).getTime() - new Date(b.forecast_date).getTime());
-  }, [activeSplits, agenSearch, agenStatus, agenRole]);
+  }, [activeSplits, agenSearch, agenStatus, agenRole, agenDateFrom, agenDateTo]);
 
   const COLORS = ["#2563eb", "#10b981", "#f59e0b", "#7c3aed", "#ec4899", "#14b8a6"];
 
@@ -855,8 +864,10 @@ export const CommissionDashboard: React.FC<CommissionDashboardProps> = ({
               const saldoLiquido = aReceber - aDescontar;
 
               // Colors for initial letter avatar
-              const names = brokerName.split(" ");
-              const initials = names.length > 1 ? (names[0][0] + names[1][0]).toUpperCase() : names[0][0].toUpperCase();
+              const names = brokerName.trim().split(/\s+/).filter(Boolean);
+              const initials = names.length > 1
+                ? ((names[0]?.[0] || "") + (names[1]?.[0] || "")).toUpperCase() || "?"
+                : (names[0]?.[0] || "?").toUpperCase();
               
               const colors = [
                 "bg-indigo-50 text-indigo-700 border-indigo-100",
@@ -920,60 +931,85 @@ export const CommissionDashboard: React.FC<CommissionDashboardProps> = ({
 
         {/* Listagem lateral de Próximas previsões com Filtros Avançados */}
         <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-5 lg:col-span-2">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex flex-row items-center justify-between gap-4 flex-wrap w-full">
             <div>
               <h3 className="text-xs font-black uppercase tracking-widest text-slate-700">Agenda de Próximos Pagamentos</h3>
               <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">Estimativa de liberação cronológica de comissões</p>
             </div>
-            <span className="text-[9px] bg-slate-50 text-slate-500 font-black tracking-widest uppercase border border-slate-150 px-2.5 py-1 rounded-full w-fit">
+            <span className="text-[9px] bg-slate-50 text-slate-500 font-black tracking-widest uppercase border border-slate-150 px-2.5 py-1 rounded-full w-fit shrink-0">
               Próximos fluxos
             </span>
           </div>
 
           {/* Filtros */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-100">
-            {/* Busca */}
-            <div className="flex flex-col">
-              <label className="text-[8px] font-black uppercase tracking-widest text-slate-400 mb-1">Buscar por Corretor</label>
-              <input
-                type="text"
-                placeholder="Ex: Carlos Silva..."
-                value={agenSearch}
-                onChange={(e) => setAgenSearch(e.target.value)}
-                className="w-full bg-white border border-slate-150 focus:border-indigo-500 rounded-xl px-3 py-1.5 text-xs text-slate-800 font-semibold focus:outline-none transition-colors"
-              />
+          <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex flex-col gap-3">
+            {/* Linha 1 */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {/* Busca */}
+              <div className="flex flex-col">
+                <label className="text-[8px] font-black uppercase tracking-widest text-slate-400 mb-1">Buscar por Corretor</label>
+                <input
+                  type="text"
+                  placeholder="Ex: Carlos Silva..."
+                  value={agenSearch}
+                  onChange={(e) => setAgenSearch(e.target.value)}
+                  className="w-full bg-white border border-slate-150 focus:border-indigo-500 rounded-xl px-3 py-1.5 text-xs text-slate-800 font-semibold focus:outline-none transition-colors"
+                />
+              </div>
+
+              {/* Papel */}
+              <div className="flex flex-col">
+                <label className="text-[8px] font-black uppercase tracking-widest text-slate-400 mb-1">Papel</label>
+                <select
+                  value={agenRole}
+                  onChange={(e: any) => setAgenRole(e.target.value)}
+                  className="w-full bg-white border border-slate-150 focus:border-indigo-500 rounded-xl px-2 py-1.5 text-xs text-slate-700 font-extrabold focus:outline-none transition-colors cursor-pointer"
+                >
+                  <option value="ALL">Todos os Papéis</option>
+                  <option value="VENDEDOR">Vendedor</option>
+                  <option value="CAPTADOR">Captador</option>
+                  <option value="GESTOR">Gestor</option>
+                </select>
+              </div>
+
+              {/* De */}
+              <div className="flex flex-col">
+                <label className="text-[8px] font-black uppercase tracking-widest text-slate-400 mb-1">De</label>
+                <input
+                  type="date"
+                  value={agenDateFrom}
+                  onChange={(e) => setAgenDateFrom(e.target.value)}
+                  className="w-full bg-white border border-slate-150 focus:border-indigo-500 rounded-xl px-3 py-1.5 text-xs text-slate-800 font-semibold focus:outline-none transition-colors"
+                />
+              </div>
+
+              {/* Até */}
+              <div className="flex flex-col">
+                <label className="text-[8px] font-black uppercase tracking-widest text-slate-400 mb-1">Até</label>
+                <input
+                  type="date"
+                  value={agenDateTo}
+                  onChange={(e) => setAgenDateTo(e.target.value)}
+                  className="w-full bg-white border border-slate-150 focus:border-indigo-500 rounded-xl px-3 py-1.5 text-xs text-slate-800 font-semibold focus:outline-none transition-colors"
+                />
+              </div>
             </div>
 
-            {/* Papel */}
-            <div className="flex flex-col">
-              <label className="text-[8px] font-black uppercase tracking-widest text-slate-400 mb-1">Papel</label>
-              <select
-                value={agenRole}
-                onChange={(e: any) => setAgenRole(e.target.value)}
-                className="w-full bg-white border border-slate-150 focus:border-indigo-500 rounded-xl px-2 py-1.5 text-xs text-slate-700 font-extrabold focus:outline-none transition-colors cursor-pointer"
-              >
-                <option value="ALL">Todos os Papéis</option>
-                <option value="VENDEDOR">Vendedor</option>
-                <option value="CAPTADOR">Captador</option>
-                <option value="GESTOR">Gestor</option>
-              </select>
-            </div>
-
-            {/* Status Pills */}
-            <div className="flex flex-col justify-end">
+            {/* Linha 2 */}
+            <div className="flex flex-col w-full">
               <label className="text-[8px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Status do Repasse</label>
-              <div className="flex bg-slate-200/60 p-0.5 rounded-xl gap-0.5 w-full">
+              <div className="grid grid-cols-5 gap-2 w-full">
                 {(["ALL", "PENDING", "PARTIAL", "PAID", "overdue"] as const).map((st) => {
-                  const labelMap = { ALL: "Todos", PENDING: "Pend.", PARTIAL: "Parc.", PAID: "Pago", overdue: "Atrasadas" };
+                  const labelMap = { ALL: "Todos", PENDING: "Pendentes", PARTIAL: "Parciais", PAID: "Pago", overdue: "Atrasadas" };
                   return (
                     <button
                       key={st}
                       type="button"
                       onClick={() => setAgenStatus(st)}
-                      className={`flex-1 text-[9px] font-black uppercase tracking-wider py-1 px-0.5 rounded-lg transition-all cursor-pointer ${
+                      className={`text-[10px] font-black uppercase tracking-wider py-2 px-1 rounded-lg transition-all cursor-pointer text-center truncate ${
                         agenStatus === st
-                          ? "bg-white text-slate-800 shadow-sm"
-                          : "text-slate-500 hover:text-slate-700"
+                          ? "bg-indigo-600 text-white shadow-sm"
+                          : "bg-white text-slate-500 hover:text-slate-700 border border-slate-200"
                       }`}
                     >
                       {labelMap[st]}

@@ -36,10 +36,11 @@ export const GestaoPonto: React.FC<GestaoPontoProps> = ({ profile }) => {
 
   const selectedCollaborator = useMemo(() => {
     if (!selectedUserId && activeCollaborators.length > 0) {
-      setSelectedUserId(activeCollaborators[0].uid);
+      const defaultId = activeCollaborators[0].uid || activeCollaborators[0].id || "";
+      setSelectedUserId(defaultId);
       return activeCollaborators[0];
     }
-    return activeCollaborators.find(u => u.uid === selectedUserId) || null;
+    return activeCollaborators.find(u => (u.uid === selectedUserId || u.id === selectedUserId)) || null;
   }, [activeCollaborators, selectedUserId]);
 
   const { data: registros = [], isLoading } = usePontoMes(selectedUserId, selectedYear, selectedMonth);
@@ -172,11 +173,14 @@ export const GestaoPonto: React.FC<GestaoPontoProps> = ({ profile }) => {
             onChange={(e) => setSelectedUserId(e.target.value)}
             className="w-full text-xs font-semibold px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-sky-500 bg-slate-50"
           >
-            {activeCollaborators.map(u => (
-              <option key={u.uid} value={u.uid}>
-                {u.displayName || u.email} {u.role === "admin" ? "(Admin)" : ""}
-              </option>
-            ))}
+            {activeCollaborators.map((u, idx) => {
+              const val = u.uid || u.id || `colab-${idx}`;
+              return (
+                <option key={val} value={val}>
+                  {u.displayName || u.email || "Colaborador sem nome"} {u.role === "admin" ? "(Admin)" : ""}
+                </option>
+              );
+            })}
           </select>
         </div>
 

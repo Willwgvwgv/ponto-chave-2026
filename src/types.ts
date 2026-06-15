@@ -357,6 +357,9 @@ export interface ComissoneUser {
   cargoComissao?: 'CORRETOR' | 'CAPTADOR' | 'GESTOR' | 'SOCIO' | null;
   permRateioLocacao?: boolean;
   permRateioVendas?: boolean;
+  uid?: string;
+  jornadaDiariaMinutos?: number;
+  status?: string;
 }
 
 export interface Agency {

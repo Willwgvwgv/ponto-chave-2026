@@ -417,6 +417,9 @@ export function useTeam(agencyId: string) {
           }
           return {
             id: u.uid || u.id,
+            uid: u.uid || u.id,
+            status: u.status,
+            jornadaDiariaMinutos: u.jornadaDiariaMinutos,
             agency_id: safeAgencyId,
             name: u.displayName || u.name || "Corretor Sem Nome",
             email: u.email || "",
@@ -445,6 +448,7 @@ export function useTeam(agencyId: string) {
           if (u.email) {
             mergedMap.set(u.email.toLowerCase(), {
               ...u,
+              uid: u.id,
               role: (u.role === "ADMIN" || String(u.role).toLowerCase() === "admin") ? "ADMIN" : (u.role === "MANAGER" || String(u.role).toLowerCase() === "manager" ? "MANAGER" : "BROKER")
             });
           }
