@@ -1476,19 +1476,19 @@ const UserManagement = ({
               initial={{ scale: 0.9, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              className="relative bg-white w-full max-w-md rounded-[32px] shadow-2xl overflow-hidden border border-slate-100 p-6 text-left"
+              className="relative bg-white w-full max-w-md rounded-[32px] shadow-2xl border border-slate-100 text-left max-h-[90vh] flex flex-col overflow-hidden"
             >
-              <div className="flex justify-between items-center mb-5">
-                <div>
-                  <h3 className="text-base font-bold text-slate-900">Configurar Membro</h3>
-                  <p className="text-[10px] text-slate-400 uppercase font-black tracking-wider">Ajuste o acesso corporativo</p>
-                </div>
-                <button onClick={() => setEditingUserProfile(null)} className="p-1.5 hover:bg-slate-100 rounded-full transition-all cursor-pointer">
-                  <X className="w-5 h-5 text-slate-400" />
-                </button>
-              </div>
-
-              <form onSubmit={handleSaveUserEdit} className="space-y-4">
+              <form onSubmit={handleSaveUserEdit} className="flex flex-col flex-1 overflow-hidden">
+                <div className="p-6 overflow-y-auto flex-1 space-y-4">
+                  <div className="flex justify-between items-center mb-5">
+                    <div>
+                      <h3 className="text-base font-bold text-slate-900">Configurar Membro</h3>
+                      <p className="text-[10px] text-slate-400 uppercase font-black tracking-wider">Ajuste o acesso corporativo</p>
+                    </div>
+                    <button type="button" onClick={() => setEditingUserProfile(null)} className="p-1.5 hover:bg-slate-100 rounded-full transition-all cursor-pointer">
+                      <X className="w-5 h-5 text-slate-400" />
+                    </button>
+                  </div>
                 {/* Card 1 — Identificação */}
                 <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 transition-all hover:border-slate-200 space-y-3">
                   <div className="flex items-center gap-2 mb-1">
@@ -1645,7 +1645,9 @@ const UserManagement = ({
                   )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 pt-4 border-t border-slate-100">
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 p-6 pt-4 border-t border-slate-100 shrink-0 bg-white">
                   <button
                     type="button"
                     onClick={() => setEditingUserProfile(null)}
