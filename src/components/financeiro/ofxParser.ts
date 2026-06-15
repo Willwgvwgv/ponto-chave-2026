@@ -48,7 +48,8 @@ export function parseOFX(text: string): ParsedOFXTransaction[] {
 
 export function parseCSV(text: string): ParsedOFXTransaction[] {
   const transactions: ParsedOFXTransaction[] = [];
-  const lines = text.split(/\r?\n/);
+  const cleanText = text.replace(/^\uFEFF/i, '');
+  const lines = cleanText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   if (lines.length <= 1) return [];
 
   // 1. Detect delimiter
@@ -57,12 +58,65 @@ export function parseCSV(text: string): ParsedOFXTransaction[] {
   const semicolonCount = (firstLine.match(/;/g) || []).length;
   const delimiter = semicolonCount >= commaCount ? ';' : ',';
 
-  // 2. Clear empty lines and map arrays
+  // Helper to parse a single CSV line acknowledging quotes and escape sequences
+  const parseCSVLine = (lineStr: string, delim: string): string[] => {
+    const result: string[] = [];
+    let current = '';
+    let inQuotes = false;
+
+    for (let i = 0; i < lineStr.length; i++) {
+      const char = lineStr[i];
+      if (char === '"' || char === "'") {
+        inQuotes = !inQuotes;
+      } else if (char === delim && !inQuotes) {
+        result.push(current.trim());
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    result.push(current.trim());
+    return result;
+  };
+
+  // 2. Clear empty lines and map arrays using smart parser
   const rows = lines
-    .map(line => line.split(delimiter).map(cell => cell.replace(/^["']|["']$/g, '').trim()))
+    .map(line => parseCSVLine(line, delimiter))
     .filter(row => row.length > 1 && row.some(cell => cell !== ''));
 
   if (rows.length === 0) return [];
+
+  // Helper to robustly parse float values in various regional locales (e.g. 1572.75 or 1.572,75)
+  const robustParseFloat = (valStr: string): number => {
+    let s = valStr.replace(/[R$\s]/g, '').trim();
+    if (!s) return NaN;
+
+    const hasComma = s.includes(',');
+    const hasDot = s.includes('.');
+
+    if (hasComma && hasDot) {
+      const commaIdx = s.lastIndexOf(',');
+      const dotIdx = s.lastIndexOf('.');
+      if (commaIdx > dotIdx) {
+        // Comma is decimal separator, dot is thousands
+        s = s.replace(/\./g, '').replace(/,/g, '.');
+      } else {
+        // Dot is decimal separator, comma is thousands
+        s = s.replace(/,/g, '');
+      }
+    } else if (hasComma) {
+      // Only comma: it is the decimal separator
+      s = s.replace(/,/g, '.');
+    } else if (hasDot) {
+      // Only dot: check if multiple dots
+      const dotCount = (s.match(/\./g) || []).length;
+      if (dotCount > 1) {
+        s = s.replace(/\./g, '');
+      }
+    }
+
+    return parseFloat(s);
+  };
 
   // 3. Find column indices
   let dateIdx = -1;
@@ -80,16 +134,72 @@ export function parseCSV(text: string): ParsedOFXTransaction[] {
   const dataStartIdx = hasHeader ? 1 : 0;
 
   if (hasHeader) {
+    let bestDateScore = -1;
+    let bestDescScore = -1;
+    let bestAmountScore = -1;
+    let bestTypeScore = -1;
+
     headerRow.forEach((cell, idx) => {
-      const c = cell.toLowerCase();
+      const c = cell.toLowerCase().trim();
+
+      // Date Prioritization (Avoid picking cancel/delete/expire dates)
       if (c.includes('data') || c.includes('date') || c.includes('moviment') || c.includes('lanç')) {
-        dateIdx = idx;
-      } else if (c.includes('desc') || c.includes('hist') || c.includes('memo') || c.includes('detalhe') || c.includes('transa') || c.includes('title') || c.includes('título') || c.includes('titulo')) {
-        descIdx = idx;
-      } else if (c.includes('valor') || c.includes('amount') || c.includes('quantia')) {
-        amountIdx = idx;
-      } else if (c.includes('tipo') || c.includes('nature') || c.includes('c/d')) {
-        typeIdx = idx;
+        let score = 10;
+        if (c.includes('cancel') || c.includes('delet') || c.includes('excl') || c.includes('fim') || c.includes('alt')) {
+          score = 1;
+        } else if (c === 'data' || c === 'date') {
+          score = 100;
+        } else if (c.includes('movimento') || c.includes('moviment') || c.includes('lançamento') || c.includes('lancamento')) {
+          score = 90;
+        } else if (c.includes('vencimento') || c.includes('venc')) {
+          score = 80;
+        } else if (c.includes('emissao') || c.includes('emissão')) {
+          score = 70;
+        }
+        if (score > bestDateScore) {
+          bestDateScore = score;
+          dateIdx = idx;
+        }
+      }
+
+      // Description Prioritization
+      if (c.includes('desc') || c.includes('hist') || c.includes('memo') || c.includes('detalhe') || c.includes('transa') || c.includes('title') || c.includes('título') || c.includes('titulo') || c.includes('cliente')) {
+        let score = 10;
+        if (c === 'descricao' || c === 'descrição' || c === 'description') {
+          score = 100;
+        } else if (c.includes('hist')) {
+          score = 80;
+        } else if (c.includes('cliente')) {
+          score = 5;
+        }
+        if (score > bestDescScore) {
+          bestDescScore = score;
+          descIdx = idx;
+        }
+      }
+
+      // Amount/Valor Prioritization
+      if (c.includes('valor') || c.includes('amount') || c.includes('quantia')) {
+        let score = 10;
+        if (c === 'valor' || c === 'amount') {
+          score = 100;
+        }
+        if (score > bestAmountScore) {
+          bestAmountScore = score;
+          amountIdx = idx;
+        }
+      }
+
+      // Type/Tipo Prioritization
+      if (c.includes('tipo') || c.includes('nature') || c.includes('c/d')) {
+        let score = 10;
+        if (c === 'tipo' || c === 'type') {
+          score = 100;
+        }
+        if (score > bestTypeScore) {
+          bestTypeScore = score;
+          typeIdx = idx;
+        }
       }
     });
   }
@@ -137,13 +247,8 @@ export function parseCSV(text: string): ParsedOFXTransaction[] {
       parsedDate = new Date().toISOString().split('T')[0];
     }
 
-    // Parse amount
-    let cleanAmt = rawAmt
-      .replace(/[R$\s]/g, '')
-      .replace(/\./g, '')
-      .replace(/,/g, '.');
-    
-    let amount = parseFloat(cleanAmt);
+    // Parse amount robustly
+    let amount = robustParseFloat(rawAmt);
     if (isNaN(amount)) continue;
 
     const isNegative = amount < 0;
@@ -152,7 +257,9 @@ export function parseCSV(text: string): ParsedOFXTransaction[] {
     let typeVal: 'DEBIT' | 'CREDIT' = 'DEBIT';
     if (typeIdx !== -1 && row[typeIdx]) {
       const t = row[typeIdx].toLowerCase();
-      if (t.includes('c') || t.includes('cred') || t.includes('ent') || t.includes('receit') || t.includes('+')) {
+      // Match incoming/credits while avoiding debits with 'c' letter (like "compra")
+      const isCredit = t === 'c' || t === 'cr' || t.includes('cred') || t.includes('ent') || t.includes('receit') || t.includes('receb') || t.includes('+') || t.includes('deposito') || t.includes('depósito') || t.includes('faturamento');
+      if (isCredit) {
         typeVal = 'CREDIT';
       }
     } else {
