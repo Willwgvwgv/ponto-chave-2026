@@ -17,7 +17,11 @@ import {
   Pencil,
   ChevronLeft,
   ChevronRight,
-  ArrowLeftRight
+  ArrowLeftRight,
+  List,
+  TrendingUp,
+  TrendingDown,
+  Scale
 } from 'lucide-react';
 import { BankAccount, FinancialCategory, FinancialTransaction } from '../../types';
 import { db, doc, deleteDoc } from '../../firebase';
@@ -239,6 +243,41 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
     });
   };
 
+  // Estados de Categorização em massa
+  const [isBulkCategorizeOpen, setIsBulkCategorizeOpen] = useState(false);
+  const [bulkCategoryId, setBulkCategoryId] = useState('');
+
+  const handleApplyBulkCategorize = async (catId: string) => {
+    if (!catId) {
+      toast.error("Selecione uma categoria");
+      return;
+    }
+    const cat = categories.find(c => c.id === catId);
+    if (!cat) {
+      toast.error("Categoria não encontrada");
+      return;
+    }
+
+    try {
+      const itemsToUpdate = Array.from(selectedTxIds).map(id => ({
+        id,
+        updates: {
+          categoryId: cat.id,
+          categoryName: cat.name
+        }
+      }));
+
+      await onUpdateTransactions(itemsToUpdate);
+      toast.success(`${selectedTxIds.size} lançamentos categorizados como "${cat.name}"`);
+      setSelectedTxIds(new Set());
+      setIsBulkCategorizeOpen(false);
+      setBulkCategoryId('');
+    } catch (err) {
+      console.error(err);
+      toast.error("Erro ao realizar categorização em massa");
+    }
+  };
+
   // Modal para lançamento normal
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [txType, setTxType] = useState<'RECEITA' | 'DESPESA'>('RECEITA');
@@ -316,6 +355,23 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
       return sortAscending ? aTime - bTime : bTime - aTime;
     });
   }, [transactions, searchTerm, selectedAccount, selectedCategory, selectedType, selectedStatus, sortAscending, startDateStr, endDateStr, filterMode]);
+
+  const { entradasSum, saidasSum, saldoSum } = useMemo(() => {
+    let entradas = 0;
+    let saidas = 0;
+    for (const t of filteredTransactions) {
+      if (t.type === 'RECEITA') {
+        entradas += t.amount;
+      } else if (t.type === 'DESPESA') {
+        saidas += t.amount;
+      }
+    }
+    return {
+      entradasSum: entradas,
+      saidasSum: saidas,
+      saldoSum: entradas - saidas
+    };
+  }, [filteredTransactions]);
 
   const handleCreateTransaction = (e: React.FormEvent) => {
     e.preventDefault();
@@ -719,8 +775,8 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
         </button>
       </div>
 
-      {/* Seletor de Período */}
-      <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-4">
+      {/* Seletor de Período e Filtros */}
+      <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex flex-wrap items-center gap-3">
             {/* Toggles de Modo de Filtro */}
@@ -847,41 +903,68 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
           </div>
         </div>
 
-        {/* Resumo do período abaixo do navegador */}
-        <div className="flex flex-col gap-2">
-          <div className="text-xs font-semibold text-slate-600 flex flex-wrap items-center gap-1.5 select-none bg-slate-50 p-3 rounded-2xl border border-slate-100">
-            <span className="font-extrabold text-slate-700">{filteredTransactions.length} lançamentos</span>
-            <span className="text-slate-300">·</span>{' '}
-            Entradas:{' '}
-            <span className="text-emerald-600 font-extrabold">
-              {formatCurrency(filteredTransactions.filter(t => t.type === 'RECEITA').reduce((acc, t) => acc + t.amount, 0))}
-            </span>{' '}
-            <span className="text-slate-300">·</span>{' '}
-            Saídas:{' '}
-            <span className="text-rose-600 font-extrabold">
-              {formatCurrency(filteredTransactions.filter(t => t.type === 'DESPESA').reduce((acc, t) => acc + t.amount, 0))}
-            </span>{' '}
-            <span className="text-slate-300">·</span>{' '}
-            Saldo:{' '}
-            <span className={`font-black ${
-              filteredTransactions.filter(t => t.type === 'RECEITA').reduce((acc, t) => acc + t.amount, 0) -
-              filteredTransactions.filter(t => t.type === 'DESPESA').reduce((acc, t) => acc + t.amount, 0) >= 0
-                ? 'text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-lg'
-                : 'text-rose-600 bg-rose-50 px-2 py-0.5 rounded-lg'
-            }`}>
-              {formatCurrency(
-                filteredTransactions.filter(t => t.type === 'RECEITA').reduce((acc, t) => acc + t.amount, 0) -
-                filteredTransactions.filter(t => t.type === 'DESPESA').reduce((acc, t) => acc + t.amount, 0)
-              )}
-            </span>
+        {filterMode === 'ALL' && (
+          <div className="text-[11px] font-bold text-blue-600 bg-blue-50 border border-blue-105 px-3 py-2 rounded-xl flex items-center gap-1.5 mt-2">
+            <AlertCircle className="w-4 h-4 text-blue-500" />
+            Mostrando todos os lançamentos — {transactions.length} no total
+          </div>
+        )}
+
+        {/* Linha separadora sutil */}
+        <hr className="border-slate-100" />
+
+        {/* Filtros */}
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-center">
+          <div className="relative">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Buscar lançamentos..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+            />
           </div>
 
-          {filterMode === 'ALL' && (
-            <div className="text-[11px] font-bold text-blue-600 bg-blue-50 border border-blue-100 px-3 py-2 rounded-xl flex items-center gap-1.5">
-              <AlertCircle className="w-4 h-4 text-blue-500" />
-              Mostrando todos os lançamentos — {transactions.length} no total
-            </div>
-          )}
+          <select
+            value={selectedAccount}
+            onChange={(e) => setSelectedAccount(e.target.value)}
+            className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+          >
+            <option value="all">Todas as Contas</option>
+            {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
+
+          <select
+            value={selectedCategory}
+            onChange={(e) => setSelectedCategory(e.target.value)}
+            className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+          >
+            <option value="all">Todas as Categorias</option>
+            {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+
+          <select
+            value={selectedType}
+            onChange={(e) => setSelectedType(e.target.value)}
+            className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+          >
+            <option value="all">Todos os Tipos</option>
+            <option value="RECEITA">Entrada / Receita</option>
+            <option value="DESPESA">Saída / Despesa</option>
+          </select>
+
+          <select
+            value={selectedStatus}
+            onChange={(e) => setSelectedStatus(e.target.value)}
+            className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+          >
+            <option value="all">Todos os Status</option>
+            <option value="PENDENTE">Apenas Pendentes</option>
+            <option value="AGENDADO">Apenas Agendados</option>
+            <option value="CONCILIADO">Apenas Conciliados</option>
+            <option value="IGNORADO">Apenas Ignorados</option>
+          </select>
         </div>
       </div>
 
@@ -903,8 +986,16 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
             </button>
             <button
               type="button"
+              onClick={() => setIsBulkCategorizeOpen(true)}
+              className="flex items-center gap-1.5 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs transition-colors shadow-sm cursor-pointer"
+            >
+              <Tag className="w-3.5 h-3.5" />
+              Categorizar em massa
+            </button>
+            <button
+              type="button"
               onClick={handleBulkDelete}
-              className="flex items-center gap-1.5 px-4 py-1.5 bg-rose-600 text-white hover:bg-rose-700 rounded-xl font-bold text-xs transition-colors shadow-sm"
+              className="flex items-center gap-1.5 px-4 py-1.5 bg-rose-600 text-white hover:bg-rose-700 rounded-xl font-bold text-xs transition-colors shadow-sm cursor-pointer"
             >
               <Trash2 className="w-3.5 h-3.5" />
               Excluir selecionados em massa
@@ -912,60 +1003,6 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
           </div>
         </div>
       )}
-
-      {/* Filtros */}
-      <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-sm grid grid-cols-1 md:grid-cols-5 gap-3 items-center">
-        <div className="relative">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Buscar lançamentos..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-          />
-        </div>
-
-        <select
-          value={selectedAccount}
-          onChange={(e) => setSelectedAccount(e.target.value)}
-          className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-        >
-          <option value="all">Todas as Contas</option>
-          {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-        </select>
-
-        <select
-          value={selectedCategory}
-          onChange={(e) => setSelectedCategory(e.target.value)}
-          className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-        >
-          <option value="all">Todas as Categorias</option>
-          {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
-
-        <select
-          value={selectedType}
-          onChange={(e) => setSelectedType(e.target.value)}
-          className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-        >
-          <option value="all">Todos os Tipos</option>
-          <option value="RECEITA">Entrada / Receita</option>
-          <option value="DESPESA">Saída / Despesa</option>
-        </select>
-
-        <select
-          value={selectedStatus}
-          onChange={(e) => setSelectedStatus(e.target.value)}
-          className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-        >
-          <option value="all">Todos os Status</option>
-          <option value="PENDENTE">Apenas Pendentes</option>
-          <option value="AGENDADO">Apenas Agendados</option>
-          <option value="CONCILIADO">Apenas Conciliados</option>
-          <option value="IGNORADO">Apenas Ignorados</option>
-        </select>
-      </div>
 
       {/* Tabela de Lançamentos */}
       <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
@@ -1149,6 +1186,84 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
           </table>
         </div>
       </div>
+
+      {/* Bloco de Resumo em formato de balões horizontais */}
+      <div className="flex flex-wrap gap-3 justify-center mt-6">
+        {/* Lançamentos */}
+        <div className="flex items-center gap-2 rounded-2xl px-5 py-3 border border-slate-200 bg-slate-50 text-slate-700 font-bold text-xs shadow-sm">
+          <List className="w-4 h-4 text-slate-500 shrink-0" />
+          <span>{filteredTransactions.length} lançamentos</span>
+        </div>
+
+        {/* Entradas */}
+        <div className="flex items-center gap-2 rounded-2xl px-5 py-3 border border-emerald-100 bg-emerald-50 text-emerald-600 font-bold text-xs shadow-sm">
+          <TrendingUp className="w-4 h-4 text-emerald-500 shrink-0" />
+          <span>Entradas: {formatCurrency(entradasSum)}</span>
+        </div>
+
+        {/* Saídas */}
+        <div className="flex items-center gap-2 rounded-2xl px-5 py-3 border border-rose-100 bg-rose-50 text-rose-600 font-bold text-xs shadow-sm">
+          <TrendingDown className="w-4 h-4 text-rose-550 shrink-0" />
+          <span>Saídas: {formatCurrency(saidasSum)}</span>
+        </div>
+
+        {/* Saldo */}
+        <div className={`flex items-center gap-2 rounded-2xl px-5 py-3 border font-extrabold text-xs shadow-sm transition-all ${
+          saldoSum >= 0 
+            ? 'border-emerald-100 bg-emerald-50 text-emerald-600' 
+            : 'border-rose-100 bg-rose-50 text-rose-600'
+        }`}>
+          <Scale className="w-4 h-4 shrink-0" />
+          <span>Saldo: {formatCurrency(saldoSum)}</span>
+        </div>
+      </div>
+
+      {/* Modal Categorização em Massa */}
+      {isBulkCategorizeOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setIsBulkCategorizeOpen(false)} />
+          <div className="relative bg-white w-full max-w-sm rounded-[24px] shadow-2xl border border-slate-100 flex flex-col p-6 animate-fadeIn">
+            <h3 className="text-sm font-black text-slate-800 uppercase tracking-tight mb-3">Categorizar em Massa</h3>
+            
+            <p className="text-xs text-slate-500 mb-4 font-semibold">
+              Selecione a categoria para aplicar aos <strong className="text-blue-600">{selectedTxIds.size} lançamentos</strong> selecionados:
+            </p>
+
+            <select
+              value={bulkCategoryId}
+              onChange={(e) => setBulkCategoryId(e.target.value)}
+              className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20 mb-6 cursor-pointer"
+            >
+              <option value="">Selecione uma Categoria...</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name} ({c.type === 'RECEITA' ? 'Receita' : 'Despesa'})
+                </option>
+              ))}
+            </select>
+
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsBulkCategorizeOpen(false);
+                  setBulkCategoryId('');
+                }}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-xl font-bold text-slate-600 text-xs transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => handleApplyBulkCategorize(bulkCategoryId)}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs transition-colors cursor-pointer"
+              >
+                Aplicar Categoria
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal Receita / Despesa */}
       {isAddOpen && (

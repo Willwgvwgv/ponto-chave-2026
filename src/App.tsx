@@ -64,7 +64,10 @@ import {
   Menu,
   Sliders,
   Calculator,
-  Landmark
+  Landmark,
+  LayoutGrid,
+  ClipboardCheck,
+  Wallet
 } from "lucide-react";
 import { format, addDays, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, isToday, parseISO, isBefore, startOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -676,6 +679,7 @@ const UserManagement = ({
   const [inviteUrlGenerated] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean, userId: string | null }>({ isOpen: false, userId: null });
   const [editingUserProfile, setEditingUserProfile] = useState<UserProfile | null>(null);
+  const [subTab, setSubTab] = useState<'members' | 'rateio'>('members');
 
   useEffect(() => {
     if (!companySettings?.id) return;
@@ -688,10 +692,25 @@ const UserManagement = ({
         const snapshot = await getDocs(q);
         const usersData = snapshot.docs.map(doc => {
           const data = doc.data();
-          return {
+          const p = {
             ...data,
             uid: data.uid || doc.id,
           } as UserProfile;
+
+          // Requirement 4: Set permRateioVendas and permRateioLocacao to false for "Iara Teles Dias" (Colaborador)
+          if (p.displayName === "Iara Teles Dias" && (p.permRateioVendas !== false || p.permRateioLocacao !== false)) {
+            p.permRateioVendas = false;
+            p.permRateioLocacao = false;
+            const currentPerms = p.permissions || [];
+            p.permissions = currentPerms.filter(perm => perm !== "rateio_vendas" && perm !== "rateio_locacao");
+            
+            updateDoc(doc(db, "users", p.uid), {
+              permRateioVendas: false,
+              permRateioLocacao: false,
+              permissions: p.permissions
+            }).catch(err => console.error("Erro ao definir defaults para Iara Teles Dias:", err));
+          }
+          return p;
         }).filter(u => u.displayName || u.email);
         
         // Sort users: Admins first, then by name
@@ -1001,208 +1020,393 @@ const UserManagement = ({
           <p className="text-xs text-slate-500 font-medium">Gerencie permissões e acessos</p>
         </div>
         
-        <div className="flex flex-col sm:flex-row items-center gap-3 w-full xl:w-auto">
-          {/* Botão Cadastrar Manual (azul) */}
-          <button 
-            type="button"
-            id="btn-register-manual"
-            onClick={() => {
-              setAddUserModalType('register');
-              setIsInviteSuccess(false);
-              setIsRegisterSuccess(false);
-              setNewUserEmail('');
-              setNewUserName('');
-              setNewUserRole('user');
-              setIsAddUserOpen(true);
-            }}
-            className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs uppercase tracking-wider transition-all w-full sm:w-auto cursor-pointer shadow-sm"
-          >
-            <UserPlus className="w-3.8 h-3.8" />
-            Cadastrar Manual
-          </button>
+        {/* Only show actions and search filter if in members sub-tab view */}
+        {(subTab === "members" || !isAdmin) && (
+          <div className="flex flex-col sm:flex-row items-center gap-3 w-full xl:w-auto">
+            {/* Botão Cadastrar Manual (azul) */}
+            <button 
+              type="button"
+              id="btn-register-manual"
+              onClick={() => {
+                setAddUserModalType('register');
+                setIsInviteSuccess(false);
+                setIsRegisterSuccess(false);
+                setNewUserEmail('');
+                setNewUserName('');
+                setNewUserRole('user');
+                setIsAddUserOpen(true);
+              }}
+              className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs uppercase tracking-wider transition-all w-full sm:w-auto cursor-pointer shadow-sm"
+            >
+              <UserPlus className="w-3.8 h-3.8" />
+              Cadastrar Manual
+            </button>
 
-          {/* Botão Convidar por Link (outline) */}
-          <button 
-            type="button"
-            id="btn-invite-link"
-            onClick={() => {
-              setAddUserModalType('invite');
-              setIsInviteSuccess(false);
-              setIsRegisterSuccess(false);
-              setGeneratedInviteMessage('');
-              setIsAddUserOpen(true);
-            }}
-            className="flex items-center justify-center gap-1.5 px-4 py-2.5 border border-blue-600 text-blue-600 hover:bg-blue-50/50 rounded-xl font-bold text-xs uppercase tracking-wider transition-all w-full sm:w-auto cursor-pointer"
-          >
-            <Send className="w-3.8 h-3.8" />
-            Convidar por Link
-          </button>
+            {/* Botão Convidar por Link (outline) */}
+            <button 
+              type="button"
+              id="btn-invite-link"
+              onClick={() => {
+                setAddUserModalType('invite');
+                setIsInviteSuccess(false);
+                setIsRegisterSuccess(false);
+                setGeneratedInviteMessage('');
+                setIsAddUserOpen(true);
+              }}
+              className="flex items-center justify-center gap-1.5 px-4 py-2.5 border border-blue-600 text-blue-600 hover:bg-blue-50/50 rounded-xl font-bold text-xs uppercase tracking-wider transition-all w-full sm:w-auto cursor-pointer"
+            >
+              <Send className="w-3.8 h-3.8" />
+              Convidar por Link
+            </button>
 
-          {/* Campo de Busca */}
-          <div className="relative w-full sm:w-60">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <input 
-              type="text" 
-              id="search-users-input"
-              placeholder="Buscar usuários..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-xs"
-            />
+            {/* Campo de Busca */}
+            <div className="relative w-full sm:w-60">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input 
+                type="text" 
+                id="search-users-input"
+                placeholder="Buscar usuários..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-xs"
+              />
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
-      {/* TABELA DE USUÁRIOS */}
-      <div className="bg-white rounded-2xl border border-slate-205/60 shadow-md overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50/60 border-b border-slate-100">
-                <th className="px-5 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">USUÁRIO</th>
-                <th className="px-5 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-left">E-MAIL</th>
-                <th className="px-5 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">CARGO</th>
-                <th className="px-5 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">COMISSÕES</th>
-                <th className="px-5 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">AÇÕES</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100/70">
-              {loading ? (
-                <tr>
-                  <td colSpan={5} className="px-5 py-10 text-center text-xs text-slate-400">
-                    Carregando usuários...
-                  </td>
+      {/* NAVEGAÇÃO DE SUB-ABAS */}
+      {isAdmin && (
+        <div className="flex border-b border-slate-200 -mt-2">
+          <button
+            type="button"
+            onClick={() => setSubTab('members')}
+            className={`py-3 px-5 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+              subTab === 'members'
+                ? "border-blue-600 text-blue-700 font-extrabold"
+                : "border-transparent text-slate-400 hover:text-slate-600"
+            }`}
+          >
+            Lista de Usuários
+          </button>
+          <button
+            type="button"
+            onClick={() => setSubTab('rateio')}
+            className={`py-3 px-5 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+              subTab === 'rateio'
+                ? "border-blue-600 text-blue-700 font-extrabold"
+                : "border-transparent text-slate-400 hover:text-slate-600"
+            }`}
+          >
+            Elegibilidade para Rateio
+          </button>
+        </div>
+      )}
+
+      {/* VIEW: LISTA DE USUÁRIOS */}
+      {(subTab === "members" || !isAdmin) && (
+        <div className="bg-white rounded-2xl border border-slate-205/60 shadow-md overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50/60 border-b border-slate-100">
+                  <th className="px-5 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">USUÁRIO</th>
+                  <th className="px-5 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-left">E-MAIL</th>
+                  <th className="px-5 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">CARGO</th>
+                  <th className="px-5 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">COMISSÕES</th>
+                  <th className="px-5 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">AÇÕES</th>
                 </tr>
-              ) : filteredUsers.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-5 py-10 text-center text-xs text-slate-400">
-                    Nenhum usuário cadastrado.
-                  </td>
-                </tr>
-              ) : (
-                filteredUsers.map((u) => {
-                  const badge = getUserRoleBadge(u);
-                  const hasComissoes = u.permissions?.includes("comissoes");
-                  return (
-                    <tr key={u.uid} className="hover:bg-blue-50/40 transition-colors group/row">
-                      {/* USUÁRIO */}
-                      <td className="px-5 py-3.5">
-                        <div className="flex items-center gap-3">
-                          <div className="shrink-0 cursor-pointer" onClick={() => setSelectedUser(u)}>
-                            <div className="w-9 h-9 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center overflow-hidden border border-blue-100 hover:border-blue-400 transition-colors">
-                              {u.photoURL ? (
-                                <img src={u.photoURL} alt={u.displayName || ""} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                              ) : (
-                                <span className="text-xs font-bold">{getInitials(u.displayName || u.email)}</span>
-                              )}
+              </thead>
+              <tbody className="divide-y divide-slate-100/70">
+                {loading ? (
+                  <tr>
+                    <td colSpan={5} className="px-5 py-10 text-center text-xs text-slate-400">
+                      Carregando usuários...
+                    </td>
+                  </tr>
+                ) : filteredUsers.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-5 py-10 text-center text-xs text-slate-400">
+                      Nenhum usuário cadastrado.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredUsers.map((u) => {
+                    const badge = getUserRoleBadge(u);
+                    const hasComissoes = u.permissions?.includes("comissoes");
+                    return (
+                      <tr key={u.uid} className="hover:bg-blue-50/40 transition-colors group/row">
+                        {/* USUÁRIO */}
+                        <td className="px-5 py-3.5">
+                          <div className="flex items-center gap-3">
+                            <div className="shrink-0 cursor-pointer" onClick={() => setSelectedUser(u)}>
+                              <div className="w-9 h-9 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center overflow-hidden border border-blue-100 hover:border-blue-400 transition-colors">
+                                {u.photoURL ? (
+                                  <img src={u.photoURL} alt={u.displayName || ""} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                ) : (
+                                  <span className="text-xs font-bold">{getInitials(u.displayName || u.email)}</span>
+                                )}
+                              </div>
+                            </div>
+                            <div>
+                              <span 
+                                onClick={() => setSelectedUser(u)}
+                                className="font-bold text-slate-900 text-sm hover:text-blue-600 transition-colors cursor-pointer"
+                              >
+                                {u.displayName || "Usuário sem nome"}
+                              </span>
                             </div>
                           </div>
-                          <div>
-                            <span 
-                              onClick={() => setSelectedUser(u)}
-                              className="font-bold text-slate-900 text-sm hover:text-blue-600 transition-colors cursor-pointer"
-                            >
-                              {u.displayName || "Usuário sem nome"}
-                            </span>
-                          </div>
-                        </div>
-                      </td>
+                        </td>
 
-                      {/* E-MAIL */}
-                      <td className="px-5 py-3.5">
-                        <span className="text-xs text-slate-500 font-medium">
-                          {u.email}
-                        </span>
-                      </td>
+                        {/* E-MAIL */}
+                        <td className="px-5 py-3.5">
+                          <span className="text-xs text-slate-500 font-medium font-mono">
+                            {u.email}
+                          </span>
+                        </td>
 
-                      {/* CARGO */}
-                      <td className="px-5 py-3.5">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider border ${badge.className}`}>
-                          {badge.label}
-                        </span>
-                      </td>
+                        {/* CARGO */}
+                        <td className="px-5 py-3.5">
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider border ${badge.className}`}>
+                            {badge.label}
+                          </span>
+                        </td>
 
-                      {/* COMISSÕES */}
-                      <td className="px-5 py-3.5">
-                        <div className="flex items-center">
-                          <button
-                            type="button"
-                            id={`toggle-comm-${u.uid}`}
-                            onClick={() => togglePermission(u.uid, u.permissions || [], "comissoes")}
-                            className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-                              hasComissoes ? "bg-blue-600" : "bg-slate-200"
-                            }`}
-                          >
-                            <span
-                              className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-all ${
-                                hasComissoes ? "translate-x-4.5" : "translate-x-1"
+                        {/* COMISSÕES */}
+                        <td className="px-5 py-3.5">
+                          <div className="flex items-center">
+                            <button
+                              type="button"
+                              id={`toggle-comm-${u.uid}`}
+                              onClick={() => togglePermission(u.uid, u.permissions || [], "comissoes")}
+                              className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                                hasComissoes ? "bg-blue-600" : "bg-slate-200"
                               }`}
-                            />
-                          </button>
-                        </div>
-                      </td>
-
-                      {/* AÇÕES */}
-                      <td className="px-5 py-3.5 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          {u.status === "pending" && (
-                            <button 
-                              id={`approve-btn-${u.uid}`}
-                              onClick={() => {
-                                confirm({
-                                  title: "Aprovar Cadastro?",
-                                  message: `Aprovar o cadastro de ${u.displayName || u.email}?`,
-                                  confirmColor: "green",
-                                  onConfirm: async () => {
-                                    try {
-                                      await updateDoc(doc(db, "users", u.uid), {
-                                        status: "active",
-                                        isPending: false
-                                      });
-                                      setUsers(prev => prev.map(item => item.uid === u.uid ? { ...item, status: "active", isPending: false } : item));
-                                      toast.success("Membro aprovado com sucesso! Agora você já pode configurar cargos nas comissões.");
-                                    } catch (err) {
-                                      console.error(err);
-                                      toast.error("Erro ao aprovar membro.");
-                                    }
-                                  }
-                                });
-                              }}
-                              className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1 cursor-pointer"
-                              title="Aprovar Membro"
                             >
-                              <Check className="w-3.5 h-3.5" />
-                              Aprovar
+                              <span
+                                className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-all ${
+                                  hasComissoes ? "translate-x-4.5" : "translate-x-1"
+                                }`}
+                              />
                             </button>
-                          )}
-                          
-                          <button 
-                            id={`edit-cargo-btn-${u.uid}`}
-                            onClick={() => setEditingUserProfile({ ...u })}
-                            className="p-1.5 bg-slate-50 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all cursor-pointer"
-                            title="Editar Cargo"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
+                          </div>
+                        </td>
 
-                          <button 
-                            id={`delete-user-btn-${u.uid}`}
-                            onClick={() => deleteUser(u.uid)}
-                            className="p-1.5 bg-slate-50 text-slate-500 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all cursor-pointer"
-                            title="Excluir Usuário"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+                        {/* AÇÕES */}
+                        <td className="px-5 py-3.5 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            {u.status === "pending" && (
+                              <button 
+                                id={`approve-btn-${u.uid}`}
+                                onClick={() => {
+                                  confirm({
+                                    title: "Aprovar Cadastro?",
+                                    message: `Aprovar o cadastro de ${u.displayName || u.email}?`,
+                                    confirmColor: "green",
+                                    onConfirm: async () => {
+                                      try {
+                                        await updateDoc(doc(db, "users", u.uid), {
+                                          status: "active",
+                                          isPending: false
+                                        });
+                                        setUsers(prev => prev.map(item => item.uid === u.uid ? { ...item, status: "active", isPending: false } : item));
+                                        toast.success("Membro aprovado com sucesso! Agora você já pode configurar cargos nas comissões.");
+                                      } catch (err) {
+                                        console.error(err);
+                                        toast.error("Erro ao aprovar membro.");
+                                      }
+                                    }
+                                  });
+                                }}
+                                className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1 cursor-pointer"
+                                title="Aprovar Membro"
+                              >
+                                <Check className="w-3.5 h-3.5" />
+                                Aprovar
+                              </button>
+                            )}
+                            
+                            <button 
+                              id={`edit-cargo-btn-${u.uid}`}
+                              onClick={() => setEditingUserProfile({ ...u })}
+                              className="p-1.5 bg-slate-50 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all cursor-pointer"
+                              title="Editar Cargo"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+
+                            <button 
+                              id={`delete-user-btn-${u.uid}`}
+                              onClick={() => deleteUser(u.uid)}
+                              className="p-1.5 bg-slate-50 text-slate-500 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all cursor-pointer"
+                              title="Excluir Usuário"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* VIEW: ELEGIBILIDADE PARA RATEIO */}
+      {subTab === 'rateio' && isAdmin && (
+        <div className="space-y-6 animate-fadeIn">
+          {/* Header informativo */}
+          <div className="bg-white rounded-3xl p-6 border border-slate-100 flex items-start gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-500 shrink-0">
+              <UsersIcon className="w-6 h-6 animate-pulse" />
+            </div>
+            <div>
+              <h3 className="text-sm font-extrabold text-slate-900 tracking-tight">Elegibilidade para Rateio</h3>
+              <p className="text-[11px] text-slate-500 leading-relaxed mt-1 font-medium">
+                Defina quais membros da equipe podem ser incluídos nos rateios de comissão de Vendas e Locações.
+              </p>
+            </div>
+          </div>
+
+          {/* Tabela de Elegibilidade */}
+          <div className="bg-white rounded-3xl border border-slate-200/60 shadow-md overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50/60 border-b border-slate-100">
+                    <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Equipe</th>
+                    <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Cargo</th>
+                    <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Permissões de Rateio</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100/70">
+                  {users.map((usr) => {
+                    const isEligibleVendas = usr.permRateioVendas !== false;
+                    const isEligibleLocacao = usr.permRateioLocacao !== false;
+
+                    const roleInfo = getUserRoleBadge(usr);
+
+                    // Avatar color logic
+                    let avatarBg = "bg-slate-100 text-slate-600";
+                    const role = usr.role;
+                    const cargo = usr.cargoComissao || "";
+                    if (role === "admin") {
+                      avatarBg = "bg-blue-100 text-blue-700";
+                    } else if (role === "gestor" || cargo === "GESTOR") {
+                      avatarBg = "bg-purple-100 text-purple-700";
+                    } else if (role === "corretor" || role === "captador" || cargo === "CORRETOR" || cargo === "CAPTADOR") {
+                      avatarBg = "bg-emerald-100 text-emerald-700";
+                    }
+
+                    return (
+                      <tr key={usr.uid} className="hover:bg-blue-50/40 transition-colors">
+                        {/* Membro */}
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className={`w-9 h-9 rounded-full ${avatarBg} font-black text-xs flex items-center justify-center shrink-0`}>
+                              {getInitials(usr.displayName || usr.email)}
+                            </div>
+                            <div>
+                              <span className="text-xs font-bold text-slate-800 block">
+                                {usr.displayName || "Usuário sem nome"}
+                              </span>
+                              <span className="text-[10px] text-slate-400 font-medium block font-mono">
+                                {usr.email}
+                              </span>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Cargo badge */}
+                        <td className="px-6 py-4">
+                          <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase ${roleInfo.className}`}>
+                            {roleInfo.label}
+                          </span>
+                        </td>
+
+                        {/* Toggles */}
+                        <td className="px-6 py-4">
+                          <div className="flex items-center justify-center gap-8">
+                            {/* Vendas Toggle */}
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10.5px] font-bold text-slate-500 uppercase tracking-wider">Vendas</span>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  const newEligible = !isEligibleVendas;
+                                  const userRef = doc(db, "users", usr.uid);
+                                  const currentPerms = usr.permissions || [];
+                                  const newPerms = newEligible
+                                    ? [...currentPerms.filter(p => p !== "rateio_vendas"), "rateio_vendas"]
+                                    : currentPerms.filter(p => p !== "rateio_vendas");
+                                  try {
+                                    await updateDoc(userRef, {
+                                      permRateioVendas: newEligible,
+                                      permissions: newPerms
+                                    });
+                                    setUsers(prev => prev.map(u => u.uid === usr.uid ? {
+                                      ...u,
+                                      permRateioVendas: newEligible,
+                                      permissions: newPerms
+                                    } : u));
+                                    toast.success(`Elegibilidade de vendas atualizada para ${usr.displayName || usr.email}`);
+                                  } catch (error) {
+                                    toast.error("Erro ao atualizar elegibilidade.");
+                                  }
+                                }}
+                                className={`relative w-10 h-5 rounded-full transition-colors cursor-pointer shrink-0 ${isEligibleVendas ? 'bg-emerald-500' : 'bg-slate-200'}`}
+                              >
+                                <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${isEligibleVendas ? 'translate-x-5' : ''}`} />
+                              </button>
+                            </div>
+
+                            {/* Locações Toggle */}
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10.5px] font-bold text-slate-500 uppercase tracking-wider">Locações</span>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  const newEligible = !isEligibleLocacao;
+                                  const userRef = doc(db, "users", usr.uid);
+                                  const currentPerms = usr.permissions || [];
+                                  const newPerms = newEligible
+                                    ? [...currentPerms.filter(p => p !== "rateio_locacao"), "rateio_locacao"]
+                                    : currentPerms.filter(p => p !== "rateio_locacao");
+                                  try {
+                                    await updateDoc(userRef, {
+                                      permRateioLocacao: newEligible,
+                                      permissions: newPerms
+                                    });
+                                    setUsers(prev => prev.map(u => u.uid === usr.uid ? {
+                                      ...u,
+                                      permRateioLocacao: newEligible,
+                                      permissions: newPerms
+                                    } : u));
+                                    toast.success(`Elegibilidade de locações atualizada para ${usr.displayName || usr.email}`);
+                                  } catch (error) {
+                                    toast.error("Erro ao atualizar elegibilidade.");
+                                  }
+                                }}
+                                className={`relative w-10 h-5 rounded-full transition-colors cursor-pointer shrink-0 ${isEligibleLocacao ? 'bg-emerald-500' : 'bg-slate-200'}`}
+                              >
+                                <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${isEligibleLocacao ? 'translate-x-5' : ''}`} />
+                              </button>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MODAL DE EXCLUSÃO */}
       {deleteConfirm.isOpen && (
@@ -1271,7 +1475,7 @@ const UserManagement = ({
               initial={{ scale: 0.9, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              className="relative bg-white w-full max-w-sm rounded-[32px] shadow-2xl overflow-hidden border border-slate-100 p-6 text-left"
+              className="relative bg-white w-full max-w-md rounded-[32px] shadow-2xl overflow-hidden border border-slate-100 p-6 text-left"
             >
               <div className="flex justify-between items-center mb-5">
                 <div>
@@ -1284,238 +1488,160 @@ const UserManagement = ({
               </div>
 
               <form onSubmit={handleSaveUserEdit} className="space-y-4">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Nome Completo</label>
-                  <input
-                    type="text"
-                    required
-                    value={editingUserProfile.displayName || ""}
-                    onChange={(e) => setEditingUserProfile({ ...editingUserProfile, displayName: e.target.value })}
-                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-semibold text-slate-700"
-                  />
+                {/* Card 1 — Identificação */}
+                <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 transition-all hover:border-slate-200 space-y-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <UserIcon className="w-4 h-4 text-blue-500" />
+                    <span className="text-[11px] font-bold text-slate-900 uppercase tracking-wider">Identificação</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Nome</label>
+                      <input
+                        type="text"
+                        required
+                        value={editingUserProfile.displayName || ""}
+                        onChange={(e) => setEditingUserProfile({ ...editingUserProfile, displayName: e.target.value })}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-xs font-semibold text-slate-700"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">E-mail</label>
+                      <input
+                        type="email"
+                        required
+                        value={editingUserProfile.email || ""}
+                        onChange={(e) => setEditingUserProfile({ ...editingUserProfile, email: e.target.value })}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-xs font-semibold text-slate-700"
+                      />
+                    </div>
+                  </div>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">E-mail</label>
-                  <input
-                    type="email"
-                    required
-                    value={editingUserProfile.email || ""}
-                    onChange={(e) => setEditingUserProfile({ ...editingUserProfile, email: e.target.value })}
-                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-semibold text-slate-700"
-                  />
+                {/* Card 2 — Nível de Acesso */}
+                <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 transition-all hover:border-slate-200 space-y-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Shield className="w-4 h-4 text-purple-500" />
+                    <span className="text-[11px] font-bold text-slate-900 uppercase tracking-wider">Nível de Acesso</span>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Nível de Acesso Principal</label>
+                    <select
+                      value={editingUserProfile.role}
+                      onChange={(e) => setEditingUserProfile({ ...editingUserProfile, role: e.target.value as any })}
+                      className="w-full px-3.5 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-xs font-bold text-slate-700 cursor-pointer"
+                    >
+                      <option value="admin">Administrador</option>
+                      <option value="corretor">Corretor</option>
+                      <option value="captador">Captador</option>
+                      <option value="user">Colaborador</option>
+                    </select>
+                  </div>
+
+                  {editingUserProfile.permissions?.includes("comissoes") && (
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Cargo nas Comissões</label>
+                      <select
+                        value={editingUserProfile.cargoComissao || ""}
+                        onChange={(e) => setEditingUserProfile({ ...editingUserProfile, cargoComissao: e.target.value as any })}
+                        className="w-full px-3.5 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-xs font-bold text-slate-700 cursor-pointer"
+                      >
+                        <option value="">Nenhum/Corretor</option>
+                        <option value="CORRETOR">Corretor</option>
+                        <option value="CAPTADOR">Captador</option>
+                        <option value="GESTOR">Gestor</option>
+                        <option value="SOCIO">Sócio</option>
+                      </select>
+                    </div>
+                  )}
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Nível de Acesso Principal</label>
-                  <select
-                    value={editingUserProfile.role}
-                    onChange={(e) => setEditingUserProfile({ ...editingUserProfile, role: e.target.value as any })}
-                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-bold text-slate-700 cursor-pointer"
-                  >
-                    <option value="admin">Administrador</option>
-                    <option value="corretor">Corretor</option>
-                    <option value="captador">Captador</option>
-                    <option value="user">Colaborador</option>
-                  </select>
-                </div>
+                {/* Card 3 — Permissões de Módulos */}
+                <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 transition-all hover:border-slate-200 space-y-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <LayoutGrid className="w-4 h-4 text-emerald-500" />
+                    <span className="text-[11px] font-bold text-slate-900 uppercase tracking-wider">Permissões de Módulos</span>
+                  </div>
 
-                <div className="space-y-2 border-t border-slate-100 pt-3">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Permissões de Acesso</label>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-2 gap-3">
                     {[
-                      { id: "comissoes", label: "Comissões" },
-                      { id: "vistorias", label: "Vistorias" },
-                      { id: "financeiro", label: "Financeiro" },
-                      { id: "processos", label: "Processos" }
+                      { id: "comissoes", label: "Comissões", color: "text-emerald-500", icon: DollarSign },
+                      { id: "vistorias", label: "Vistorias", color: "text-blue-500", icon: ClipboardCheck },
+                      { id: "financeiro", label: "Financeiro", color: "text-amber-500", icon: Wallet },
+                      { id: "processos", label: "Processos", color: "text-purple-500", icon: FileText }
                     ].map((perm) => {
-                      const isChecked = editingUserProfile.permissions?.includes(perm.id) || false;
+                      const isAtivo = editingUserProfile.permissions?.includes(perm.id) || false;
+                      const Icon = perm.icon;
+
                       return (
-                        <label key={perm.id} className="flex items-center gap-2 px-3 py-2 border border-slate-100 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer text-xs font-semibold text-slate-700">
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={() => {
+                        <div key={perm.id} className="flex items-center justify-between p-2 pb-2.5 pt-2.5 bg-white rounded-xl border border-slate-200 hover:border-slate-300 transition-all">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <Icon className={`w-3.5 h-3.5 ${perm.color} shrink-0`} />
+                            <span className="text-[11px] font-bold text-slate-700 truncate">{perm.label}</span>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
                               const currentPerms = editingUserProfile.permissions || [];
                               const newPerms = currentPerms.includes(perm.id)
                                 ? currentPerms.filter(p => p !== perm.id)
                                 : [...currentPerms, perm.id];
                               setEditingUserProfile({ ...editingUserProfile, permissions: newPerms });
                             }}
-                            className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
-                          />
-                          <span>{perm.label}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {editingUserProfile.permissions?.includes("comissoes") && (
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Cargo nas Comissões</label>
-                    <select
-                      value={editingUserProfile.cargoComissao || ""}
-                      onChange={(e) => setEditingUserProfile({ ...editingUserProfile, cargoComissao: e.target.value as any })}
-                      className="w-full px-3.5 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-bold text-slate-700 cursor-pointer"
-                    >
-                      <option value="">Nenhum/Corretor</option>
-                      <option value="CORRETOR">Corretor</option>
-                      <option value="CAPTADOR">Captador</option>
-                      <option value="GESTOR">Gestor</option>
-                      <option value="SOCIO">Sócio</option>
-                    </select>
-                  </div>
-                )}
-
-                {/* CONFIGURAÇÃO DO PONTO ELETRÔNICO CLT */}
-                <div className="space-y-3 border-t border-slate-100 pt-3">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">
-                    Ponto Eletrônico CLT
-                  </span>
-                  
-                  <div className="flex flex-col gap-3">
-                    <label className="flex items-center gap-2 px-3 py-2 border border-slate-100 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer text-xs font-semibold text-slate-700">
-                      <input
-                        type="checkbox"
-                        checked={editingUserProfile.permPonto !== false}
-                        onChange={(e) => setEditingUserProfile({ 
-                          ...editingUserProfile, 
-                          permPonto: e.target.checked,
-                          perm_ponto: e.target.checked
-                        })}
-                        className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
-                      />
-                      <span>Acesso ao Ponto Eletrônico</span>
-                    </label>
-
-                    {(editingUserProfile.permPonto !== false) && (
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">
-                          Jornada Diária (Minutos)
-                        </label>
-                        <input
-                          type="number"
-                          min="1"
-                          max="1440"
-                          value={editingUserProfile.jornadaDiariaMinutos ?? 480}
-                          onChange={(e) => setEditingUserProfile({ 
-                            ...editingUserProfile, 
-                            jornadaDiariaMinutos: Number(e.target.value) || 480 
-                          })}
-                          className="w-full px-3.5 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-bold text-slate-700 font-mono"
-                        />
-                        <span className="text-[8.5px] text-slate-400 font-semibold block">
-                          Padrão: 480 minutos (8 horas). Corresponde a {((editingUserProfile.jornadaDiariaMinutos ?? 480) / 60).toFixed(1)}h por dia.
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Seção Nova: Lista de Seleção para Rateio de Vendas e Locações */}
-                <div className="space-y-2 border-t border-slate-100 pt-3">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">
-                    Elegibilidade para Rateio
-                  </span>
-                  <p className="text-[10px] text-slate-450 leading-tight block">
-                    Indique quem pode participar dos rateios financeiros do escritório (assume elegível se não definidos):
-                  </p>
-                  
-                  <div className="max-h-[160px] overflow-y-auto border border-slate-200 rounded-xl bg-slate-50/50 p-2 divide-y divide-slate-100 space-y-1.5">
-                    {users.map((usr) => {
-                      const isEligibleLocacao = usr.permRateioLocacao !== false;
-                      const isEligibleVendas = usr.permRateioVendas !== false;
-                      return (
-                        <div key={usr.uid} className="flex flex-col sm:flex-row sm:items-center justify-between py-1.5 px-2 hover:bg-white rounded-lg transition-colors gap-2">
-                          <div className="text-left leading-none py-0.5">
-                            <span className="text-[11px] font-bold text-slate-700 block">{usr.displayName || usr.email}</span>
-                            <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block mt-0.5">{usr.role === "admin" ? "Admin" : usr.role === "corretor" ? "Corretor" : usr.role === "captador" ? "Captador" : "Colaborador"}</span>
-                          </div>
-
-                          <div className="flex items-center gap-4 shrink-0">
-                            {/* Elegível para Vendas */}
-                            <label className="flex items-center gap-1.5 cursor-pointer selection:bg-transparent">
-                              <input
-                                type="checkbox"
-                                checked={isEligibleVendas}
-                                onChange={async () => {
-                                  const newEligible = !isEligibleVendas;
-                                  const userRef = doc(db, "users", usr.uid);
-                                  const currentPerms = usr.permissions || [];
-                                  const newPerms = newEligible
-                                    ? [...currentPerms.filter(p => p !== "rateio_vendas"), "rateio_vendas"]
-                                    : currentPerms.filter(p => p !== "rateio_vendas");
-                                  try {
-                                    await updateDoc(userRef, {
-                                      permRateioVendas: newEligible,
-                                      permissions: newPerms
-                                    });
-                                    setUsers(prev => prev.map(u => u.uid === usr.uid ? {
-                                      ...u,
-                                      permRateioVendas: newEligible,
-                                      permissions: newPerms
-                                    } : u));
-                                    if (usr.uid === editingUserProfile.uid) {
-                                      setEditingUserProfile({
-                                        ...editingUserProfile,
-                                        permRateioVendas: newEligible,
-                                        permissions: newPerms
-                                      });
-                                    }
-                                    toast.success(`Elegibilidade de vendas atualizada para ${usr.displayName || usr.email}`);
-                                  } catch (error) {
-                                    toast.error("Erro ao atualizar elegibilidade de rateio.");
-                                  }
-                                }}
-                                className="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 cursor-pointer"
-                              />
-                              <span className="text-[10px] text-slate-600 font-bold uppercase tracking-wider">Vendas</span>
-                            </label>
-
-                            {/* Elegível para Locações */}
-                            <label className="flex items-center gap-1.5 cursor-pointer selection:bg-transparent">
-                              <input
-                                type="checkbox"
-                                checked={isEligibleLocacao}
-                                onChange={async () => {
-                                  const newEligible = !isEligibleLocacao;
-                                  const userRef = doc(db, "users", usr.uid);
-                                  const currentPerms = usr.permissions || [];
-                                  const newPerms = newEligible
-                                    ? [...currentPerms.filter(p => p !== "rateio_locacao"), "rateio_locacao"]
-                                    : currentPerms.filter(p => p !== "rateio_locacao");
-                                  try {
-                                    await updateDoc(userRef, {
-                                      permRateioLocacao: newEligible,
-                                      permissions: newPerms
-                                    });
-                                    setUsers(prev => prev.map(u => u.uid === usr.uid ? {
-                                      ...u,
-                                      permRateioLocacao: newEligible,
-                                      permissions: newPerms
-                                    } : u));
-                                    if (usr.uid === editingUserProfile.uid) {
-                                      setEditingUserProfile({
-                                        ...editingUserProfile,
-                                        permRateioLocacao: newEligible,
-                                        permissions: newPerms
-                                      });
-                                    }
-                                    toast.success(`Elegibilidade de locações atualizada para ${usr.displayName || usr.email}`);
-                                  } catch (error) {
-                                    toast.error("Erro ao atualizar elegibilidade de rateio.");
-                                  }
-                                }}
-                                className="rounded text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5 cursor-pointer"
-                              />
-                              <span className="text-[10px] text-indigo-650 font-bold uppercase tracking-wider">Locações</span>
-                            </label>
-                          </div>
+                            className={`relative w-8 h-4.5 rounded-full transition-colors shrink-0 ${isAtivo ? 'bg-emerald-500' : 'bg-slate-200'}`}
+                          >
+                            <span className={`absolute top-0.5 left-0.5 w-3.5 h-3.5 bg-white rounded-full shadow transition-transform ${isAtivo ? 'translate-x-3.5' : ''}`} />
+                          </button>
                         </div>
                       );
                     })}
                   </div>
+                </div>
+
+                {/* Card 4 — Ponto Eletrônico CLT */}
+                <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 transition-all hover:border-slate-200 space-y-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Clock className="w-4 h-4 text-orange-500" />
+                    <span className="text-[11px] font-bold text-slate-900 uppercase tracking-wider">Ponto Eletrônico CLT</span>
+                  </div>
+
+                  <div className="flex items-center justify-between p-2 pb-2.5 pt-2.5 bg-white rounded-xl border border-slate-200 hover:border-slate-300 transition-all">
+                    <span className="text-[11px] font-bold text-slate-700">Acesso ao Ponto Eletrônico</span>
+                    <button
+                      type="button"
+                      onClick={() => setEditingUserProfile({ 
+                        ...editingUserProfile, 
+                        permPonto: editingUserProfile.permPonto === false ? true : false,
+                        perm_ponto: editingUserProfile.permPonto === false ? true : false
+                      })}
+                      className={`relative w-8 h-4.5 rounded-full transition-colors shrink-0 ${editingUserProfile.permPonto !== false ? 'bg-emerald-500' : 'bg-slate-200'}`}
+                    >
+                      <span className={`absolute top-0.5 left-0.5 w-3.5 h-3.5 bg-white rounded-full shadow transition-transform ${editingUserProfile.permPonto !== false ? 'translate-x-3.5' : ''}`} />
+                    </button>
+                  </div>
+
+                  {(editingUserProfile.permPonto !== false) && (
+                    <div className="space-y-1.5 animate-in fade-in slide-in-from-top-2 duration-350">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">
+                        Jornada Diária (Minutos)
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="1440"
+                        value={editingUserProfile.jornadaDiariaMinutos ?? 480}
+                        onChange={(e) => setEditingUserProfile({ 
+                          ...editingUserProfile, 
+                          jornadaDiariaMinutos: Number(e.target.value) || 480 
+                        })}
+                        className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-xs font-bold text-slate-700 font-mono"
+                      />
+                      <span className="text-[8.5px] text-slate-400 font-semibold block leading-normal">
+                        Padrão: 480 minutos (8 horas). Corresponde a {((editingUserProfile.jornadaDiariaMinutos ?? 480) / 60).toFixed(1)}h por dia.
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 pt-4 border-t border-slate-100">
@@ -1528,7 +1654,7 @@ const UserManagement = ({
                   </button>
                   <button
                     type="submit"
-                    className="py-2 bg-blue-605 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold uppercase tracking-wider text-[10px] transition cursor-pointer"
+                    className="py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold uppercase tracking-wider text-[10px] transition cursor-pointer"
                   >
                     Salvar
                   </button>
