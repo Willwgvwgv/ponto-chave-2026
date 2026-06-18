@@ -391,10 +391,14 @@ export function useTeam(agencyId: string) {
           teamSnap = await getDocs(fallbackQuery);
         }
 
-        let usersList = teamSnap.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }) as any);
+        let usersList = teamSnap.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            uid: data.uid || doc.id,  // uid explícito nos dados tem prioridade, senão usa doc.id
+            ...data
+          } as any;
+        });
 
         // Filtrar no cliente quem pode aparecer nos splits e comissões de forma permissiva e robusta
         const filteredUsers = usersList.filter(u => {
@@ -433,7 +437,7 @@ export function useTeam(agencyId: string) {
             isSocio: u.isSocio,
             cargoComissao: u.cargoComissao,
             permRateioLocacao: u.permRateioLocacao,
-            permRateioVendas: u.permRateioVendas
+            permRateioVendas: u.permRateioVendas ?? true
           };
         });
 

@@ -23,6 +23,8 @@ import {
 import { motion } from "motion/react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { db, collection, getDocs } from "../firebase";
+import { Building2 } from "lucide-react";
 
 interface SimuladorViewProps {
   companySettings?: {
@@ -379,6 +381,62 @@ export const SimuladorView: React.FC<SimuladorViewProps> = ({ companySettings, c
   const [valorConstrutora, setValorConstrutora] = useState<number>(0);
   const [parcelasConstrutora, setParcelasConstrutora] = useState<number>(1);
 
+  // Estados adicionais para proposta aprimorada (Fidelité)
+  const [corretorResponsavel, setCorretorResponsavel] = useState<string>("");
+  const [usarLogoEmpresa, setUsarLogoEmpresa] = useState<boolean>(true);
+  const [customLogoUrl, setCustomLogoUrl] = useState<string>("");
+  const [entradaVista, setEntradaVista] = useState<number>(12000); // R$ 12.000,00 padrão
+  const [parcelasConstrutoraProposta, setParcelasConstrutoraProposta] = useState<number>(18); // 18x padrão
+  const [corretoresList, setCorretoresList] = useState<{ id: string; name: string }[]>([]);
+
+  // Carregar corretores cadastrados no banco de dados "users"
+  useEffect(() => {
+    async function loadCorretores() {
+      try {
+        const usersRef = collection(db, "users");
+        const querySnapshot = await getDocs(usersRef);
+        const list: { id: string; name: string }[] = [];
+        querySnapshot.forEach((docSnap: any) => {
+          const data = docSnap.data();
+          if (data && (data.name || data.displayName)) {
+            list.push({ 
+              id: docSnap.id, 
+              name: data.name || data.displayName 
+            });
+          }
+        });
+        
+        // Remove duplicates & sort
+        const uniqueListMap = new Map<string, string>();
+        list.forEach(item => uniqueListMap.set(item.name, item.id));
+        const sortedUniqueList: { id: string; name: string }[] = Array.from(uniqueListMap.entries())
+          .map(([name, id]) => ({ id, name }))
+          .sort((a, b) => a.name.localeCompare(b.name));
+          
+        setCorretoresList(sortedUniqueList);
+        if (sortedUniqueList.length > 0 && !corretorResponsavel) {
+          const matched = sortedUniqueList.find(c => c.name.toLowerCase() === (currentUser?.displayName || "").toLowerCase());
+          setCorretorResponsavel(matched ? matched.name : sortedUniqueList[0].name);
+        }
+      } catch (err) {
+        console.error("Erro ao carregar corretores", err);
+        // Fallback robusto
+        const fallbackList = [
+          { id: "fallback-1", name: "William Guimarães Viana" },
+          { id: "fallback-2", name: "Estefani Tavares" },
+          { id: "fallback-3", name: "Corretor Fidelité" }
+        ];
+        setCorretoresList(fallbackList);
+        if (!corretorResponsavel) {
+          setCorretorResponsavel(currentUser?.displayName || "William Guimarães Viana");
+        }
+      }
+    }
+    loadCorretores();
+  }, [currentUser]);
+
+
+
   // Helper formats
   const fmt = (val: number) => {
     return new Intl.NumberFormat("pt-BR", {
@@ -596,6 +654,17 @@ export const SimuladorView: React.FC<SimuladorViewProps> = ({ companySettings, c
     return Math.max(0, restante);
   }, [valorImovel, totalSubsidios, fgtsCliente, valorFinanciamento]);
 
+  // Manter entrada à vista compatível com a entrada total após subsídios
+  useEffect(() => {
+    if (entradaBolso > 0) {
+      if (entradaVista > entradaBolso) {
+        setEntradaVista(entradaBolso);
+      }
+    } else {
+      setEntradaVista(0);
+    }
+  }, [entradaBolso, entradaVista]);
+
   // Sincronização automática para manter o parcelamento da entrada coerente com o total do bolso
   useEffect(() => {
     if (entradaBolso > 0) {
@@ -682,13 +751,19 @@ export const SimuladorView: React.FC<SimuladorViewProps> = ({ companySettings, c
     setParcelasImobiliaria(1);
     setValorConstrutora(0);
     setParcelasConstrutora(1);
+    
+    // Reset novos campos Fidelité
+    setEntradaVista(12000);
+    setParcelasConstrutoraProposta(18);
+    setUsarLogoEmpresa(true);
+    setCustomLogoUrl("");
   };
 
   // WhatsApp formatted string copy text
   const copiarWhatsApp = async () => {
     try {
       const enterpriseName = empreendimento || "Loteamento Especial";
-      const userSales = currentUser?.displayName || "Consultor de Vendas";
+      const userSales = corretorResponsavel || currentUser?.displayName || "Consultor de Vendas";
       const dateStr = format(new Date(), "dd/MM/yyyy HH:mm");
       
       let msg = "";
@@ -789,14 +864,18 @@ export const SimuladorView: React.FC<SimuladorViewProps> = ({ companySettings, c
   // HTML Print Window Trigger
   const imprimirProposta = () => {
     const enterpriseName = empreendimento || "Empreendimento";
-    const userSales = currentUser?.displayName || "Consultor de Vendas";
+    const userSales = corretorResponsavel || currentUser?.displayName || "Consultor de Vendas";
     const nomeCliente = clienteNome.trim() || "Cliente Interessado";
     const localizacaoTexto = loteInfo ? `${enterpriseName} — ${loteInfo}` : enterpriseName;
     const dataEmissao = format(new Date(), "dd/MM/yyyy", { locale: ptBR });
     
-    const logoHtml = companySettings?.logoUrl 
-      ? `<div style="background-color: #ffffff; padding: 8px 18px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 6px; border: 1px solid #e2e8f0;"><img src="${companySettings.logoUrl}" style="max-height: 38px; width: auto; max-width: 170px; display: block; object-fit: contain;" alt="Logo" /></div>`
-      : `<div style="background-color: rgba(255,255,255,0.15); width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center; border-radius: 10px; color: white; font-weight: 800; font-size: 18px; margin-bottom: 6px; border: 1px solid rgba(255, 255, 255, 0.2);">${(companySettings?.name || "F").charAt(0)}</div>`;
+    const logoSrc = (usarLogoEmpresa && companySettings?.logoUrl) 
+      ? companySettings.logoUrl 
+      : customLogoUrl;
+
+    const logoHtml = logoSrc 
+      ? `<div style="background-color: #ffffff; padding: 8px 18px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 6px; border: 1px solid #e2e8f0;"><img src="${logoSrc}" style="max-height: 42px; width: auto; max-width: 170px; display: block; object-fit: contain;" alt="Logo" /></div>`
+      : `<div style="background-color: #ffffff; padding: 6px 14px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; border: 2px solid #0f3a6b; color: #0f3a6b; font-weight: 900; font-size: 15px; margin-bottom: 6px; font-family: 'Inter', sans-serif; letter-spacing: 0.05em; text-transform: uppercase;">FIDELITÉ</div>`;
 
     const printWindow = window.open("", "_blank", "width=850,height=1100");
     if (!printWindow) {
@@ -1069,6 +1148,63 @@ export const SimuladorView: React.FC<SimuladorViewProps> = ({ companySettings, c
       font-size: 11px;
       color: #991b1b;
     }
+    .fluxo-comercial-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: 15px;
+    }
+    .fluxo-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .fluxo-card-title {
+      font-size: 9px;
+      font-weight: 800;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 8px;
+    }
+    .fluxo-item {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11.5px;
+      color: #475569;
+      margin-bottom: 4px;
+    }
+    .fluxo-item strong {
+      color: #0F172A;
+    }
+    .fluxo-total-line {
+      border-top: 1px solid #f1f5f9;
+      padding-top: 8px;
+      margin-top: 8px;
+      display: flex;
+      justify-content: space-between;
+      font-size: 13px;
+      font-weight: 750;
+      color: #0f3a6b;
+    }
+    .fluxo-destaque-verde {
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+    }
+    .fluxo-destaque-verde .fluxo-card-title {
+      color: #166534;
+    }
+    .fluxo-destaque-laranja {
+      background: #fff7ed;
+      border: 1px solid #fed7aa;
+    }
+    .fluxo-destaque-laranja .fluxo-card-title {
+      color: #9a3412;
+    }
   </style>
 </head>
 <body>
@@ -1125,6 +1261,70 @@ export const SimuladorView: React.FC<SimuladorViewProps> = ({ companySettings, c
       <table class="resumo-tabela">
         ${itensResumoModoBancario.join('')}
       </table>
+
+      <div class="section-label" style="margin-top: 28px;">RESUMO DO FLUXO FINANCEIRO DA AQUISIÇÃO</div>
+      <div class="fluxo-comercial-grid">
+        <!-- Card 1 -->
+        <div class="fluxo-card">
+          <div>
+            <div class="fluxo-card-title">Card 1 - Dados do Imóvel</div>
+            <div class="fluxo-item"><span>Empreendimento</span><strong>${enterpriseName}</strong></div>
+            <div class="fluxo-item"><span>Tipo do imóvel</span><strong>${subHeaderTexto}</strong></div>
+          </div>
+          <div class="fluxo-total-line" style="color: #0f3a6b;">
+            <span>Valor do imóvel</span>
+            <span>${fmt(valorImovel)}</span>
+          </div>
+        </div>
+
+        <!-- Card 2 -->
+        <div class="fluxo-card">
+          <div>
+            <div class="fluxo-card-title">Card 2 - Composição Financeira</div>
+            <div class="fluxo-item"><span>Valor do imóvel</span><span>${fmt(valorImovel)}</span></div>
+            <div class="fluxo-item"><span>Financiamento bancário</span><span>${fmt(valorFinanciamento)}</span></div>
+            ${subsidioFederal > 0 ? `<div class="fluxo-item"><span>Subsídio Federal</span><span>${fmt(subsidioFederal)}</span></div>` : ''}
+            ${subsidioMunicipal > 0 ? `<div class="fluxo-item"><span>Subsídio Municipal</span><span>${fmt(subsidioMunicipal)}</span></div>` : ''}
+            ${totalSubsidios > 0 ? `<div class="fluxo-item" style="color: #2563eb; font-weight: 600;"><span>Total de subsídios</span><span>${fmt(totalSubsidios)}</span></div>` : ''}
+            <div class="fluxo-item" style="border-top: 1px dashed #e2e8f0; padding-top: 4px; margin-top: 4px;"><span>Entrada necessária</span><span>${fmt(Math.max(0, valorImovel - valorFinanciamento))}</span></div>
+          </div>
+          <div class="fluxo-total-line" style="color: #1e3a8a; font-weight: 800; background: #eff6ff; padding: 4px 8px; border-radius: 4px;">
+            <span>Entrada pós subsídios</span>
+            <span>${fmt(entradaBolso)}</span>
+          </div>
+        </div>
+
+        <!-- Card 3 -->
+        <div class="fluxo-card fluxo-destaque-verde">
+          <div>
+            <div class="fluxo-card-title">Card 3 - Condição da Entrada</div>
+            <div class="fluxo-item"><span style="color: #15803d; font-weight: 600;">Entrada à vista (sinal)</span><strong style="color: #166534;">${fmt(entradaVista)}</strong></div>
+          </div>
+          <div class="fluxo-total-line" style="border-color: #bbf7d0; color: #166534; font-weight: 800;">
+            <div style="display:flex; flex-direction:column; width:100%;">
+              <div style="display:flex; justify-content:space-between; width:100%">
+                <span>Saldo da entrada</span>
+                <span>${fmt(Math.max(0, entradaBolso - entradaVista))}</span>
+              </div>
+              <div style="font-size: 8px; font-weight: 700; color: #15803d; text-align: center; margin-top: 8px; background: rgba(255,255,255,0.6); padding: 4px; border-radius: 4px;">
+                "Saldo parcelado conforme condição comercial"
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 4 -->
+        <div class="fluxo-card fluxo-destaque-laranja">
+          <div>
+            <div class="fluxo-card-title">Card 4 - Parcelamento com Construtora</div>
+            <div class="fluxo-item"><span style="color: #c2410c; font-weight: 600;">Parcelamento acordado</span><strong style="color: #9a3412;">${parcelasConstrutoraProposta}x parcelas</strong></div>
+          </div>
+          <div class="fluxo-total-line" style="border-color: #fed7aa; color: #9a3412; font-weight: 950; display:flex; flex-direction:column; align-items:center;">
+            <span style="font-size: 8px; font-weight: 700; text-transform:uppercase; color: #c2410c; margin-bottom: 2px;">Valor aproximado</span>
+            <div style="font-size:16px;">${fmt(parcelasConstrutoraProposta > 0 ? Math.max(0, (entradaBolso - entradaVista) / parcelasConstrutoraProposta) : 0)}<span style="font-size:10px; font-weight:500;">/mês</span></div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="proximos-passos">
@@ -2244,6 +2444,119 @@ export const SimuladorView: React.FC<SimuladorViewProps> = ({ companySettings, c
                 </div>
               )}
             </div>
+
+            {/* Card: Corretor Responsável */}
+            <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4">
+              <div className="flex items-center gap-2.5 text-indigo-600 font-bold uppercase tracking-widest text-[10px]">
+                <User className="w-4 h-4" />
+                <span>Corretor Responsável</span>
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                  Selecione o Corretor
+                </label>
+                <select
+                  value={corretorResponsavel}
+                  onChange={(e) => setCorretorResponsavel(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-100 focus:border-indigo-500 rounded-xl px-3 py-2 text-sm text-slate-800 font-medium focus:outline-none transition-colors"
+                >
+                  {corretoresList.length > 0 ? (
+                    corretoresList.map((c) => (
+                      <option key={c.id} value={c.name}>
+                        {c.name}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="">Nenhum corretor encontrado</option>
+                  )}
+                </select>
+              </div>
+            </div>
+
+            {/* Card: Condições da Proposta Fidelité */}
+            <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4">
+              <div className="flex items-center gap-2.5 text-indigo-600 font-bold uppercase tracking-widest text-[10px]">
+                <Calculator className="w-4 h-4" />
+                <span>Detalhamento da Proposta (Fidelité)</span>
+              </div>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Ajuste as condições comerciais de entrada à vista e parcelamento restante direto com a Construtora.
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                    Entrada à Vista (Sinal)
+                  </label>
+                  <BrlInput
+                    value={entradaVista}
+                    onChange={(val) => setEntradaVista(Math.min(entradaBolso, Math.max(0, val)))}
+                    placeholder="12000"
+                    className="w-full bg-slate-50 border border-slate-100 focus:border-indigo-500 rounded-xl px-3 py-2 text-sm text-slate-800 font-bold focus:outline-none transition-colors"
+                  />
+                  {entradaVista > 0 && (
+                    <div className="text-[10px] text-indigo-600 font-extrabold mt-1.5 animate-fadeIn">
+                      ➔ {fmt(entradaVista)}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                    Qtd. Parcelas (Construtora)
+                  </label>
+                  <input
+                    type="number"
+                    value={parcelasConstrutoraProposta || ""}
+                    onChange={(e) => setParcelasConstrutoraProposta(Math.max(1, parseInt(e.target.value) || 1))}
+                    placeholder="18"
+                    className="w-full bg-slate-50 border border-slate-100 focus:border-indigo-500 rounded-xl px-3 py-2 text-sm text-slate-800 font-medium focus:outline-none transition-colors"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Card: Configuração de Logotipo */}
+            <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4">
+              <div className="flex items-center gap-2.5 text-indigo-600 font-bold uppercase tracking-widest text-[10px]">
+                <Building2 className="w-4 h-4" />
+                <span>Configuração de Logotipo</span>
+              </div>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-slate-600 font-bold">Usar logo da empresa</span>
+                  <button
+                    onClick={() => setUsarLogoEmpresa(!usarLogoEmpresa)}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      usarLogoEmpresa ? "bg-indigo-500" : "bg-slate-200"
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                        usarLogoEmpresa ? "translate-x-5" : "translate-x-0"
+                      }`}
+                    />
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-400">
+                  {usarLogoEmpresa 
+                    ? "Exibindo logotipo padrão ou da empresa cadastrada no sistema." 
+                    : "Utilizando logotipo personalizado definido abaixo."}
+                </p>
+                {!usarLogoEmpresa && (
+                  <div>
+                    <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">
+                      URL da Imagem da Logo personalizada
+                    </label>
+                    <input
+                      type="text"
+                      value={customLogoUrl}
+                      onChange={(e) => setCustomLogoUrl(e.target.value)}
+                      placeholder="https://exemplo.com/logo.png"
+                      className="w-full bg-slate-50 border border-slate-100 focus:border-indigo-500 rounded-xl px-3 py-2 text-xs text-slate-800 font-medium focus:outline-none"
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
           </>
         )}
 
@@ -2808,6 +3121,131 @@ export const SimuladorView: React.FC<SimuladorViewProps> = ({ companySettings, c
                         Seu financiamento com o banco de <b>{fmt(valorFinanciamento)}</b> em <b>{prazoFinanciamentoMeses}x</b> gerará estimativa de parcela de <b>{fmt(parcelaBanco)}/mês</b> (Tabela PRICE, taxa de {taxaAnualBanco}% a.a.).
                       </div>
                     )}
+                  </div>
+
+                  {/* RESUMO DO FLUXO FINANCEIRO DA AQUISIÇÃO (4 Cards) */}
+                  <div className="space-y-4 pt-6 border-t border-slate-100">
+                    <div className="text-[11px] font-black uppercase tracking-widest text-indigo-600 flex items-center gap-1.5">
+                      <CheckCircle className="w-4 h-4 text-emerald-500" />
+                      <span>Resumo do Fluxo Financeiro da Aquisição</span>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Card 1 - Dados do Imóvel */}
+                      <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-between">
+                        <div>
+                          <span className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">
+                            Card 1 - Dados do Imóvel
+                          </span>
+                          <div className="space-y-1">
+                            <div className="flex justify-between text-xs">
+                              <span className="text-slate-500">Empreendimento:</span>
+                              <span className="font-semibold text-slate-800">{empreendimento || "Bella White"}</span>
+                            </div>
+                            <div className="flex justify-between text-xs">
+                              <span className="text-slate-500">Tipo:</span>
+                              <span className="font-semibold text-slate-800 capitalize">{tipoImovel === "casa" ? "Casa" : "Apartamento"}</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="mt-4 pt-3 border-t border-slate-100 flex justify-between items-baseline">
+                          <span className="text-xs font-bold text-slate-500">Valor do Imóvel:</span>
+                          <span className="text-base font-black text-indigo-600 font-sans">{fmt(valorImovel)}</span>
+                        </div>
+                      </div>
+
+                      {/* Card 2 - Composição Financeira */}
+                      <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm space-y-2">
+                        <span className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">
+                          Card 2 - Composição Financeira
+                        </span>
+                        <div className="space-y-1.5 text-xs">
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">Valor do Imóvel:</span>
+                            <span className="font-medium text-slate-700">{fmt(valorImovel)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">Financiamento Bancário:</span>
+                            <span className="font-medium text-slate-700">{fmt(valorFinanciamento)}</span>
+                          </div>
+                          {subsidioFederal > 0 && (
+                            <div className="flex justify-between text-purple-600 font-medium">
+                              <span>Subsídio Federal:</span>
+                              <span>{fmt(subsidioFederal)}</span>
+                            </div>
+                          )}
+                          {subsidioMunicipal > 0 && (
+                            <div className="flex justify-between text-purple-600 font-medium">
+                              <span>Subsídio Municipal:</span>
+                              <span>{fmt(subsidioMunicipal)}</span>
+                            </div>
+                          )}
+                          {totalSubsidios > 0 && (
+                            <div className="flex justify-between text-purple-700 font-bold bg-purple-50 px-1.5 py-0.5 rounded">
+                              <span>Total de Subsídios:</span>
+                              <span>{fmt(totalSubsidios)}</span>
+                            </div>
+                          )}
+                          <div className="flex justify-between pt-1 border-t border-slate-100">
+                            <span className="text-slate-500 font-medium">Entrada Necessária:</span>
+                            <span className="font-bold text-slate-800">{fmt(Math.max(0, valorImovel - valorFinanciamento))}</span>
+                          </div>
+                          <div className="flex justify-between p-1.5 bg-indigo-50 text-indigo-800 rounded font-black text-xs">
+                            <span>Entrada após Subsídios:</span>
+                            <span>{fmt(entradaBolso)}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Card 3 - Condição da Entrada */}
+                      <div className="bg-gradient-to-br from-emerald-50 to-teal-50/50 p-5 rounded-3xl border border-emerald-100 shadow-sm flex flex-col justify-between">
+                        <div>
+                          <span className="block text-[9px] font-black text-emerald-800 uppercase tracking-widest mb-2.5">
+                            Card 3 - Condição da Entrada
+                          </span>
+                          <div className="space-y-1.5">
+                            <div className="flex justify-between text-xs">
+                              <span className="text-emerald-700 font-medium font-bold">Entrada à Vista (Sinal):</span>
+                              <span className="font-black text-emerald-950">{fmt(entradaVista)}</span>
+                            </div>
+                            <div className="flex justify-between text-xs pt-1.5 border-t border-emerald-100/60">
+                              <span className="text-teal-700 font-bold">Saldo da Entrada:</span>
+                              <span className="font-extrabold text-teal-900">{fmt(Math.max(0, entradaBolso - entradaVista))}</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="mt-4 p-2 bg-emerald-100/40 rounded-xl text-center">
+                          <p className="text-[10px] text-emerald-800 font-bold tracking-wide leading-tight">
+                            "Saldo parcelado conforme condição comercial"
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Card 4 - Parcelamento com Construtora */}
+                      <div className="bg-gradient-to-br from-amber-50 to-orange-50/50 p-5 rounded-3xl border border-amber-150 shadow-sm flex flex-col justify-between">
+                        <div>
+                          <span className="block text-[9px] font-black text-amber-800 uppercase tracking-widest mb-2">
+                            Card 4 - Parcelamento com Construtora
+                          </span>
+                          <div className="space-y-1">
+                            <div className="flex justify-between text-xs">
+                              <span className="text-amber-700 font-medium">Parcelamento:</span>
+                              <span className="font-black text-amber-950 bg-amber-100 px-2 py-0.5 rounded text-xs tracking-tight">
+                                {parcelasConstrutoraProposta} meses (x)
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="mt-4 pt-3 border-t border-amber-200/50 flex flex-col items-center justify-center text-center">
+                          <span className="text-[10px] font-bold text-amber-700 uppercase tracking-widest mb-1">
+                            Valor Aproximado da Parcela
+                          </span>
+                          <div className="text-lg font-black text-amber-900 leading-none">
+                            {fmt(parcelasConstrutoraProposta > 0 ? Math.max(0, (entradaBolso - entradaVista) / parcelasConstrutoraProposta) : 0)} <span className="text-xs font-semibold text-amber-800">/mês</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>

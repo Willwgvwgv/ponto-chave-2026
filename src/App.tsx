@@ -88,6 +88,7 @@ const ComissoesView = lazy(() => import('./components/ComissoesView').then(m => 
 const SimuladorView = lazy(() => import('./components/SimuladorView').then(m => ({ default: m.SimuladorView })));
 const FinanceiroView = lazy(() => import('./components/FinanceiroView').then(m => ({ default: m.FinanceiroView })));
 const PontoView = lazy(() => import('./components/ponto/PontoView').then(m => ({ default: m.PontoView })));
+const PropostaBellaWhiteView = lazy(() => import('./components/PropostaBellaWhiteView').then(m => ({ default: m.PropostaBellaWhiteView })));
 import { PontoHeaderCapsule } from "./components/ponto/PontoHeaderCapsule";
 import { ConfirmModal } from './components/ui/ConfirmModal';
 import { Task, Priority, Tool, RecurrenceType, UserProfile, ProcessInstance, CompanySettings, ProcessTemplate, ProcessStep, KanbanColumn } from "./types";
@@ -2134,7 +2135,7 @@ const getManualDataForTool = (name: string, url: string) => {
 function AppContent() {
   const { user, profile, isAdmin, companySettings } = useAuth();
   const [activeTab, setActiveTab] = useState<"dashboard" | "calendar" | "processes" | "process_config" | "users" | "profile" | "settings" | "contratos" | "vistorias" | "comissoes" | "simulador" | "financeiro" | "ponto">("dashboard");
-  const [contractsSubTab, setContractsSubTab] = useState<"vistorias" | "despejos">("vistorias");
+  const [contractsSubTab, setContractsSubTab] = useState<"vistorias" | "despejos" | "proposta_bella">("vistorias");
   const [isSidebarOpen, setIsSidebarOpen] = useState(() => window.innerWidth > 1024);
   const [viewingManualTool, setViewingManualTool] = useState<Tool | null>(null);
   const [activeManualTab, setActiveManualTab] = useState<"overview" | "tutorial" | "dicas" | "faq">("overview");
@@ -2713,19 +2714,21 @@ function AppContent() {
     return icon;
   };
 
+  const isUserAdmin = profile?.role === "admin";
+
+  const permPonto = (() => {
+    if (profile?.permPonto === false || profile?.perm_ponto === false) return false;
+    if (profile?.permPonto === true || profile?.perm_ponto === true || profile?.permissions?.includes("ponto")) return true;
+    if (isUserAdmin) return true;
+    if (profile?.role === "colaborador" || profile?.role === "user") return true;
+    return false;
+  })();
+
   const navItems = useMemo(() => {
-    const isUserAdmin = profile?.role === "admin";
     const permComissoes = isUserAdmin || profile?.permComissoes === true || profile?.perm_comissoes === true || profile?.permissions?.includes("comissoes");
     const permFinanceiro = isUserAdmin || profile?.permFinanceiro === true || profile?.perm_financeiro === true || profile?.permissions?.includes("financeiro");
     const permVistorias = isUserAdmin || profile?.permVistorias === true || profile?.perm_vistorias === true || profile?.permissions?.includes("vistorias");
     const permProcessos = isUserAdmin || profile?.permProcessos === true || profile?.perm_processos === true || profile?.permissions?.includes("processos");
-    const permPonto = (() => {
-      if (profile?.permPonto === false || profile?.perm_ponto === false) return false;
-      if (profile?.permPonto === true || profile?.perm_ponto === true || profile?.permissions?.includes("ponto")) return true;
-      if (isUserAdmin) return true;
-      if (profile?.role === "colaborador" || profile?.role === "user") return true;
-      return false;
-    })();
 
     const items: any[] = [
       { id: "dashboard" as const, label: "Painel", icon: LayoutDashboard },
@@ -2766,16 +2769,7 @@ function AppContent() {
     }
 
     return items;
-  }, [isAdmin, profile, companySettings?.name]);
-
-  const isUserAdmin = profile?.role === "admin";
-  const permPonto = (() => {
-    if (profile?.permPonto === false || profile?.perm_ponto === false) return false;
-    if (profile?.permPonto === true || profile?.perm_ponto === true || profile?.permissions?.includes("ponto")) return true;
-    if (isUserAdmin) return true;
-    if (profile?.role === "colaborador" || profile?.role === "user") return true;
-    return false;
-  })();
+  }, [isAdmin, isUserAdmin, profile, companySettings?.name, permPonto]);
 
   if (loading) {
     return (
@@ -3486,12 +3480,27 @@ function AppContent() {
               >
                 Ações de Despejo (CredPago)
               </button>
+              <button
+                onClick={() => setContractsSubTab("proposta_bella")}
+                className={cn(
+                  "py-3 px-5 text-[11px] font-black uppercase tracking-wider border-b-2 transition-all cursor-pointer",
+                  contractsSubTab === "proposta_bella"
+                    ? "border-indigo-600 text-indigo-700"
+                    : "border-transparent text-slate-450 hover:text-slate-700"
+                )}
+              >
+                Proposta Bella White
+              </button>
             </div>
 
             {/* Sub-tab view renderer */}
             {contractsSubTab === "vistorias" ? (
               <Suspense fallback={<div className="flex items-center justify-center h-64 text-gray-400">Carregando vistorias...</div>}>
                 <VistoriaView isAdmin={isAdmin} user={user} profile={profile} companySettings={companySettings} />
+              </Suspense>
+            ) : contractsSubTab === "proposta_bella" ? (
+              <Suspense fallback={<div className="flex items-center justify-center h-64 text-gray-400">Carregando proposta...</div>}>
+                <PropostaBellaWhiteView currentUser={profile} companySettings={companySettings} />
               </Suspense>
             ) : (
               <Suspense fallback={<div className="flex items-center justify-center h-64 text-gray-400 font-bold uppercase tracking-widest text-[10px]">Carregando ações de despejo...</div>}>
