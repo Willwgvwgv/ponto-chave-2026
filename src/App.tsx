@@ -88,6 +88,7 @@ const ComissoesView = lazy(() => import('./components/ComissoesView').then(m => 
 const SimuladorView = lazy(() => import('./components/SimuladorView').then(m => ({ default: m.SimuladorView })));
 const FinanceiroView = lazy(() => import('./components/FinanceiroView').then(m => ({ default: m.FinanceiroView })));
 const PontoView = lazy(() => import('./components/ponto/PontoView').then(m => ({ default: m.PontoView })));
+import { PontoHeaderCapsule } from "./components/ponto/PontoHeaderCapsule";
 import { ConfirmModal } from './components/ui/ConfirmModal';
 import { Task, Priority, Tool, RecurrenceType, UserProfile, ProcessInstance, CompanySettings, ProcessTemplate, ProcessStep, KanbanColumn } from "./types";
 import { 
@@ -2761,6 +2762,9 @@ function AppContent() {
     return items;
   }, [isAdmin, profile, companySettings?.name]);
 
+  const isUserAdmin = profile?.role === "admin";
+  const permPonto = isUserAdmin || profile?.permPonto === true || profile?.perm_ponto === true || ((profile?.role === "colaborador" || profile?.role === "user") && profile?.permPonto === undefined && profile?.perm_ponto === undefined) || profile?.permissions?.includes("ponto");
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#F8FAFC]">
@@ -2900,6 +2904,14 @@ function AppContent() {
                 </span>
               </div>
             )}
+            
+            {permPonto && (
+              <PontoHeaderCapsule 
+                profile={profile}
+                onClick={() => setActiveTab("ponto")}
+              />
+            )}
+
             <div className="w-px h-8 bg-slate-100 mx-1 hidden sm:block" />
             <div 
               onClick={() => setActiveTab("profile")}
