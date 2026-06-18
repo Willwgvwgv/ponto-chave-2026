@@ -27,9 +27,9 @@ export const PontoView: React.FC<PontoViewProps> = ({ isAdmin, user, profile, co
 
   // Check retroactive default permission for "colaborador" when undefined
   const hasPontoPermission = useMemo(() => {
+    if (profile?.permPonto === false || profile?.perm_ponto === false) return false;
     if (isUserAdmin) return true;
     if (profile?.permPonto === true || profile?.perm_ponto === true) return true;
-    if (profile?.permPonto === false || profile?.perm_ponto === false) return false;
     
     // If undefined and role is colaborador or user, treat as true
     if (profile?.role === "colaborador" || profile?.role === "user") return true;

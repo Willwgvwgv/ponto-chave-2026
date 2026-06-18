@@ -2719,7 +2719,13 @@ function AppContent() {
     const permFinanceiro = isUserAdmin || profile?.permFinanceiro === true || profile?.perm_financeiro === true || profile?.permissions?.includes("financeiro");
     const permVistorias = isUserAdmin || profile?.permVistorias === true || profile?.perm_vistorias === true || profile?.permissions?.includes("vistorias");
     const permProcessos = isUserAdmin || profile?.permProcessos === true || profile?.perm_processos === true || profile?.permissions?.includes("processos");
-    const permPonto = isUserAdmin || profile?.permPonto === true || profile?.perm_ponto === true || ((profile?.role === "colaborador" || profile?.role === "user") && profile?.permPonto === undefined && profile?.perm_ponto === undefined) || profile?.permissions?.includes("ponto");
+    const permPonto = (() => {
+      if (profile?.permPonto === false || profile?.perm_ponto === false) return false;
+      if (profile?.permPonto === true || profile?.perm_ponto === true || profile?.permissions?.includes("ponto")) return true;
+      if (isUserAdmin) return true;
+      if (profile?.role === "colaborador" || profile?.role === "user") return true;
+      return false;
+    })();
 
     const items: any[] = [
       { id: "dashboard" as const, label: "Painel", icon: LayoutDashboard },
@@ -2763,7 +2769,13 @@ function AppContent() {
   }, [isAdmin, profile, companySettings?.name]);
 
   const isUserAdmin = profile?.role === "admin";
-  const permPonto = isUserAdmin || profile?.permPonto === true || profile?.perm_ponto === true || ((profile?.role === "colaborador" || profile?.role === "user") && profile?.permPonto === undefined && profile?.perm_ponto === undefined) || profile?.permissions?.includes("ponto");
+  const permPonto = (() => {
+    if (profile?.permPonto === false || profile?.perm_ponto === false) return false;
+    if (profile?.permPonto === true || profile?.perm_ponto === true || profile?.permissions?.includes("ponto")) return true;
+    if (isUserAdmin) return true;
+    if (profile?.role === "colaborador" || profile?.role === "user") return true;
+    return false;
+  })();
 
   if (loading) {
     return (
