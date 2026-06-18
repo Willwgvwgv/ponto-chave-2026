@@ -198,6 +198,7 @@ export const PropostaBellaWhiteView: React.FC<PropostaBellaWhiteProps> = ({ comp
   const [finBancarioValor, setFinBancarioValor] = useState<number>(220000);
   const [finBancarioValorOnly, setFinBancarioValorOnly] = useState<number>(220000);
   const [subsidioValor, setSubsidioValor] = useState<number>(0);
+  const [subsidioMunicipalValor, setSubsidioMunicipalValor] = useState<number>(0);
   const [fgtsValor, setFgtsValor] = useState<number>(0);
 
   // Intermediacao corretagem
@@ -271,8 +272,8 @@ export const PropostaBellaWhiteView: React.FC<PropostaBellaWhiteProps> = ({ comp
 
   // Auto-calculate finBancarioValor total
   useEffect(() => {
-    setFinBancarioValor(finBancarioValorOnly + subsidioValor + fgtsValor);
-  }, [finBancarioValorOnly, subsidioValor, fgtsValor]);
+    setFinBancarioValor(finBancarioValorOnly + subsidioValor + subsidioMunicipalValor + fgtsValor);
+  }, [finBancarioValorOnly, subsidioValor, subsidioMunicipalValor, fgtsValor]);
 
   // Auto-calculated commission based on property price & percentages
   useEffect(() => {
@@ -350,6 +351,7 @@ export const PropostaBellaWhiteView: React.FC<PropostaBellaWhiteProps> = ({ comp
       finBancarioValor,
       finBancarioValorOnly,
       subsidioValor,
+      subsidioMunicipalValor,
       fgtsValor,
       comissaoValor,
       imobiliariaNome,
@@ -432,6 +434,7 @@ export const PropostaBellaWhiteView: React.FC<PropostaBellaWhiteProps> = ({ comp
     setFinBancarioValor(220000);
     setFinBancarioValorOnly(220000);
     setSubsidioValor(0);
+    setSubsidioMunicipalValor(0);
     setFgtsValor(0);
     setComissaoValor(15000);
     setComissaoPctImobiliaria(1.5);
@@ -486,6 +489,7 @@ export const PropostaBellaWhiteView: React.FC<PropostaBellaWhiteProps> = ({ comp
     setFinBancarioValor(prop.finBancarioValor ?? 0);
     setFinBancarioValorOnly(prop.finBancarioValorOnly ?? prop.finBancarioValor ?? 0);
     setSubsidioValor(prop.subsidioValor ?? 0);
+    setSubsidioMunicipalValor(prop.subsidioMunicipalValor ?? 0);
     setFgtsValor(prop.fgtsValor ?? 0);
 
     setComissaoValor(prop.comissaoValor ?? 0);
@@ -702,18 +706,19 @@ export const PropostaBellaWhiteView: React.FC<PropostaBellaWhiteProps> = ({ comp
     }
 
     .obs-footer {
-      font-size: 9px;
-      color: #334155;
+      font-size: 11px;
+      color: #1e293b;
       text-align: justify;
       margin-top: 15px;
+      line-height: 1.4;
     }
 
     .obs-footer ol {
-      margin-left: 14px;
+      margin-left: 16px;
     }
 
     .obs-footer li {
-      margin-bottom: 4px;
+      margin-bottom: 5px;
     }
 
     /* Assinatura layouts */
@@ -1099,7 +1104,7 @@ export const PropostaBellaWhiteView: React.FC<PropostaBellaWhiteProps> = ({ comp
           <h4>- FINANCIAMENTO BANCÁRIO, SUBSÍDIO E FGTS (se houver):</h4>
           <p style="font-size:11.5px; line-height: 1.5; margin-top:5px;">
             Valor correspondente de R$ <strong style="font-size:13px; color:#1b4d22;">${fmt(finBancarioValor)}</strong> 
-            ${(subsidioValor > 0 || fgtsValor > 0) ? `(sendo R$ <strong>${fmt(finBancarioValorOnly)}</strong> referente a Financiamento Bancário, R$ <strong>${fmt(subsidioValor)}</strong> de Subsídio Federal e R$ <strong>${fmt(fgtsValor)}</strong> de FGTS)` : ""}
+            ${(subsidioValor > 0 || subsidioMunicipalValor > 0 || fgtsValor > 0) ? `(sendo R$ <strong>${fmt(finBancarioValorOnly)}</strong> de Financiamento Bancário${subsidioValor > 0 ? `, R$ <strong>${fmt(subsidioValor)}</strong> de Subsídio Federal` : ""}${subsidioMunicipalValor > 0 ? `, R$ <strong>${fmt(subsidioMunicipalValor)}</strong> de Subsídio Municipal` : ""}${fgtsValor > 0 ? ` e R$ <strong>${fmt(fgtsValor)}</strong> de FGTS` : ""})` : ""}
             pagos mediante a contratação de financiamento bancário junto ao Agente Financeiro (CAIXA ECONÔMICA FEDERAL) no momento em que a Promitente Vendedora informar. Mencionados valores dependem de análise e aprovação cadastral e documental.
           </p>
         </div>
@@ -1942,7 +1947,7 @@ export const PropostaBellaWhiteView: React.FC<PropostaBellaWhiteProps> = ({ comp
                     <span className="bg-indigo-50 text-indigo-700 font-bold px-2.5 py-0.5 rounded-lg text-[10px]">CEF / RETORNO DIGITAL</span>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
                     <div>
                       <label className="block text-[9px] font-semibold text-slate-400 uppercase mb-0.5">Financiamento Bancário (R$)</label>
                       <BrlInput
@@ -1956,6 +1961,14 @@ export const PropostaBellaWhiteView: React.FC<PropostaBellaWhiteProps> = ({ comp
                       <BrlInput
                         value={subsidioValor}
                         onChange={setSubsidioValor}
+                        className="w-full bg-slate-50 border border-slate-100 focus:border-indigo-500 rounded-xl px-3 py-1.5 text-xs text-slate-800 font-bold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-semibold text-slate-400 uppercase mb-0.5">Subsídio Municipal (R$)</label>
+                      <BrlInput
+                        value={subsidioMunicipalValor}
+                        onChange={setSubsidioMunicipalValor}
                         className="w-full bg-slate-50 border border-slate-100 focus:border-indigo-500 rounded-xl px-3 py-1.5 text-xs text-slate-800 font-bold"
                       />
                     </div>
@@ -2463,7 +2476,7 @@ export const PropostaBellaWhiteView: React.FC<PropostaBellaWhiteProps> = ({ comp
               <div className="p-1 px-1.5 font-bold">
                 <span className="block text-[6.5px] font-black text-slate-500">RECURSOS BANCÁRIOS (FGTS / CAIXA / SUBSÍDIO):</span>
                 Estimativa de R$ {fmt(finBancarioValor)} 
-                {(subsidioValor > 0 || fgtsValor > 0) ? ` (Fin.: R$ ${fmt(finBancarioValorOnly)} + Sub.: R$ ${fmt(subsidioValor)} + FGTS: R$ ${fmt(fgtsValor)})` : ""}
+                {(subsidioValor > 0 || subsidioMunicipalValor > 0 || fgtsValor > 0) ? ` (Fin.: R$ ${fmt(finBancarioValorOnly)}${subsidioValor > 0 ? ` + Sub. Fed.: R$ ${fmt(subsidioValor)}` : ""}${subsidioMunicipalValor > 0 ? ` + Sub. Mun.: R$ ${fmt(subsidioMunicipalValor)}` : ""}${fgtsValor > 0 ? ` + FGTS: R$ ${fmt(fgtsValor)}` : ""})` : ""}
               </div>
             </div>
           </div>
