@@ -2718,7 +2718,7 @@ function AppContent() {
     const permFinanceiro = isUserAdmin || profile?.permFinanceiro === true || profile?.perm_financeiro === true || profile?.permissions?.includes("financeiro");
     const permVistorias = isUserAdmin || profile?.permVistorias === true || profile?.perm_vistorias === true || profile?.permissions?.includes("vistorias");
     const permProcessos = isUserAdmin || profile?.permProcessos === true || profile?.perm_processos === true || profile?.permissions?.includes("processos");
-    const permPonto = isUserAdmin || profile?.permPonto === true || profile?.perm_ponto === true || (profile?.role === "colaborador" && profile?.permPonto === undefined && profile?.perm_ponto === undefined) || profile?.permissions?.includes("ponto");
+    const permPonto = isUserAdmin || profile?.permPonto === true || profile?.perm_ponto === true || ((profile?.role === "colaborador" || profile?.role === "user") && profile?.permPonto === undefined && profile?.perm_ponto === undefined) || profile?.permissions?.includes("ponto");
 
     const items: any[] = [
       { id: "dashboard" as const, label: "Painel", icon: LayoutDashboard },

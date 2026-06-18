@@ -303,16 +303,21 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
   }, [importedTxs, visibleImported]);
 
   const groupedCats = useMemo(() => {
-    if (!activeNewTx) return {};
+    if (!activeNewTx) return { items: {}, usingFallback: false };
     const relevantType = activeNewTx.type === 'CREDIT' ? 'RECEITA' : 'DESPESA';
     const filtered = categories.filter(c => c.type === relevantType);
+    
+    // Fallback: se não houver categorias do tipo, usa todas
+    const source = filtered.length > 0 ? filtered : categories;
+    const usingFallback = filtered.length === 0 && categories.length > 0;
+
     const groups: Record<string, FinancialCategory[]> = {};
-    filtered.forEach(c => {
+    source.forEach(c => {
       const g = c.group || 'Diversas';
       if (!groups[g]) groups[g] = [];
       groups[g].push(c);
     });
-    return groups;
+    return { items: groups, usingFallback };
   }, [categories, activeNewTx]);
 
   const isSuggestedSelected = useMemo(() => {
@@ -824,15 +829,197 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                       );
                     }
 
+                    if (!duplicate && !match) {
+                      return (
+                        <div
+                          key={item.fitId}
+                          className="rounded-3xl p-5 border border-slate-200 bg-white shadow-sm hover:border-slate-300 transition-all animate-fadeIn"
+                        >
+                          <div className="flex items-start justify-between gap-4">
+                            {/* Coluna esquerda — badges + título + descrição original */}
+                            <div className="flex-1 min-w-0 space-y-1.5">
+                              {/* Badges */}
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-wider ${
+                                  item.type === 'CREDIT' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'
+                                }`}>
+                                  {item.type === 'CREDIT' ? 'ENTRADA' : 'SAÍDA'}
+                                </span>
+
+                                <span className="inline-flex items-center bg-amber-50 text-amber-700 border border-amber-100 font-black px-2 py-0.5 rounded-md text-[8px] uppercase tracking-wider">
+                                  SEM CORRESPONDÊNCIA
+                                </span>
+
+                                {item.isAutoCategorized && (
+                                  item.autoCategorizedSource === 'historico' ? (
+                                    <span className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-600 border border-indigo-100 font-black px-1.5 py-0.5 rounded-md text-[8px] uppercase tracking-wider">
+                                      Igual ao histórico
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-600 border border-blue-100 font-black px-1.5 py-0.5 rounded-md text-[8px] uppercase tracking-wider">
+                                      <Zap className="w-2.5 h-2.5 shrink-0" /> Sugestão automática
+                                    </span>
+                                  )
+                                )}
+                              </div>
+
+                              {/* Título da transação */}
+                              <h4 className="text-xs font-black text-slate-800 uppercase tracking-tight leading-snug">
+                                {item.description}
+                              </h4>
+
+                              {/* Descrição original se foi editada */}
+                              {item.originalDescription && item.originalDescription !== item.description && (
+                                <p className="text-[10px] text-slate-400 font-medium italic leading-tight">
+                                  Original: {item.originalDescription}
+                                </p>
+                              )}
+                            </div>
+
+                            {/* Coluna direita — valor destacado + data */}
+                            <div className="text-right shrink-0">
+                              <p className={`font-mono font-black text-lg leading-none ${
+                                item.type === 'CREDIT' ? 'text-emerald-600' : 'text-slate-900'
+                              }`}>
+                                {formatCurrency(item.amount)}
+                              </p>
+                              <p className="text-[10px] text-slate-400 font-mono mt-1">
+                                {new Date(item.date + 'T00:00:00').toLocaleDateString('pt-BR')}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Barra de ações */}
+                          <div className="flex items-center gap-1.5 mt-4 pt-3 border-t border-slate-100 flex-wrap">
+
+                            {/* Editar */}
+                            <button
+                              onClick={() => {
+                                setEditingTxId(item.fitId);
+                                setTempDesc(item.description);
+                                setTempDate(item.date);
+                                setTempAmount(item.amount);
+                              }}
+                              className="flex items-center gap-1.5 px-3 py-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 border border-slate-200 hover:border-blue-200 rounded-xl text-[10px] font-bold uppercase tracking-wide transition-all cursor-pointer"
+                            >
+                              <Pencil className="w-3 h-3" /> Editar
+                            </button>
+
+                            {/* Vincular a existente */}
+                            <button
+                              onClick={() => {
+                                setShowSearchForFitId(prev => ({ ...prev, [item.fitId]: !prev[item.fitId] }));
+                                setActiveSearchFitId(item.fitId);
+                              }}
+                              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wide transition-all cursor-pointer border ${
+                                isSearchOpen
+                                  ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                  : 'text-slate-500 border-slate-200 hover:text-blue-600 hover:bg-blue-50 hover:border-blue-200'
+                              }`}
+                            >
+                              <Search className="w-3 h-3" />
+                              {isSearchOpen ? 'Fechar busca' : 'Vincular a existente'}
+                            </button>
+
+                            {/* Criar novo lançamento */}
+                            <button
+                              onClick={() => {
+                                setActiveNewTx(item);
+                                setSelectedCatId(item.suggestedCategoryId || '');
+                              }}
+                              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-[10px] font-bold uppercase tracking-wide transition-all cursor-pointer"
+                            >
+                              <Plus className="w-3 h-3" /> Criar lançamento
+                            </button>
+
+                            {/* Ignorar — empurrado para a direita */}
+                            <button
+                              onClick={() => handleIgnore(item.fitId)}
+                              className="ml-auto flex items-center gap-1 px-2.5 py-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 border border-transparent hover:border-rose-100 rounded-xl text-[10px] font-bold uppercase tracking-wide transition-all cursor-pointer"
+                              title="Ignorar"
+                            >
+                              <X className="w-3 h-3" /> Ignorar
+                            </button>
+                          </div>
+
+                          {/* Busca integrada — expande dentro do card quando isSearchOpen */}
+                          {isSearchOpen && (
+                            <div className="mt-3 bg-slate-50 rounded-2xl p-3 border border-slate-200 space-y-2 animate-fadeIn">
+                              <div className="relative">
+                                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                                <input
+                                  type="text"
+                                  placeholder="Buscar por descrição, valor ou data..."
+                                  value={query}
+                                  onChange={(e) => setSearchQueries(prev => ({ ...prev, [item.fitId]: e.target.value }))}
+                                  onFocus={() => setActiveSearchFitId(item.fitId)}
+                                  className="w-full pl-9 pr-8 py-2.5 bg-white border border-slate-200 focus:border-blue-300 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all placeholder:text-slate-400"
+                                  autoFocus
+                                />
+                                {query && (
+                                  <button
+                                    onClick={() => setSearchQueries(prev => ({ ...prev, [item.fitId]: '' }))}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </div>
+
+                              {activeSearchFitId === item.fitId && query && (
+                                <div className="bg-white border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100 max-h-48 overflow-y-auto w-full text-left">
+                                  {filterResults(query, item.type).length === 0 ? (
+                                    <p className="p-4 text-[10px] font-bold text-slate-400 text-center uppercase tracking-wider">
+                                      Nenhum lançamento pendente correspondente encontrado
+                                    </p>
+                                  ) : (
+                                    filterResults(query, item.type).map(candidate => (
+                                      <button
+                                        key={candidate.id}
+                                        onClick={() => {
+                                          handleConciliationMatch(item, candidate);
+                                          setSearchQueries(prev => ({ ...prev, [item.fitId]: '' }));
+                                          setShowSearchForFitId(prev => ({ ...prev, [item.fitId]: false }));
+                                          setActiveSearchFitId(null);
+                                        }}
+                                        className="w-full text-left px-4 py-3 hover:bg-slate-50 flex items-center justify-between text-xs transition-colors cursor-pointer"
+                                      >
+                                        <div className="space-y-0.5 min-w-0 mr-4">
+                                          <div className="font-extrabold text-slate-800 flex items-center gap-1.5 truncate">
+                                            {candidate.description}
+                                            {candidate.recurrenceGroupId != null && (
+                                              <span className="bg-blue-50 text-blue-600 font-extrabold text-[8px] uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0 border border-blue-100">
+                                                RECORRENTE
+                                              </span>
+                                            )}
+                                          </div>
+                                          <div className="text-[10px] text-slate-400 font-semibold flex items-center gap-1.5">
+                                            <span className="font-mono">{new Date(candidate.date + 'T00:00:00').toLocaleDateString('pt-BR')}</span>
+                                            <span className="text-slate-300">•</span>
+                                            <span>{candidate.categoryName || 'Sem Categoria'}</span>
+                                          </div>
+                                        </div>
+                                        <div className="font-mono font-black text-slate-900 shrink-0 text-right">
+                                          {formatCurrency(candidate.amount)}
+                                        </div>
+                                      </button>
+                                    ))
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }
+
                     return (
                       <div 
                         key={item.fitId} 
                         className={`rounded-3xl p-5 border shadow-sm transition-all animate-fadeIn ${
                           duplicate 
                             ? 'bg-slate-50/70 border-slate-200/80' 
-                            : match 
-                              ? 'bg-white border-emerald-100 hover:border-emerald-250' 
-                              : 'bg-white border-slate-205 border-slate-200 hover:border-slate-300'
+                            : 'bg-white border-emerald-100 hover:border-emerald-250'
                         }`}
                       >
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -848,13 +1035,9 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                                 <span className="inline-flex items-center gap-1 bg-slate-200 text-slate-600 font-extrabold px-2 py-0.5 rounded text-[8px] uppercase tracking-wider">
                                   JÁ IMPORTADO
                                 </span>
-                              ) : match ? (
+                              ) : (
                                 <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-700 font-extrabold px-2 py-0.5 rounded text-[8px] uppercase tracking-wider">
                                   MATCH ENCONTRADO
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-700 font-extrabold px-2 py-0.5 rounded text-[8px] uppercase tracking-wider whitespace-nowrap">
-                                  SEM CORRESPONDÊNCIA
                                 </span>
                               )}
 
@@ -899,9 +1082,9 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                                   Lançamento com mesmo FITID ou hash de dados já existe no sistema para esta mesma conta bancária.
                                 </span>
                               </div>
-                            ) : match ? (
+                            ) : (
                               /* 2. Visual de cada transação com match automático */
-                              <div className="bg-emerald-50/50 border border-emerald-100 rounded-2xl p-4 text-left w-full md:w-[410px] space-y-3">
+                              <div className="bg-emerald-55 bg-emerald-50 text-emerald-600 rounded-2xl p-4 text-left w-full md:w-[410px] space-y-3">
                                 <div>
                                   <div className="text-xs text-slate-700 font-bold leading-normal">
                                     ✓ Corresponde a: <span className="text-emerald-800 font-extrabold">{match.description}</span> —{' '}
@@ -942,129 +1125,9 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                                   </button>
                                 </div>
                               </div>
-                            ) : (
-                              /* 4. Opções ao conciliar cada transação sem match automático */
-                              <div className="flex flex-col gap-2 w-full md:w-80">
-                                <div className="flex items-center justify-end gap-1.5 flex-wrap">
-                                  <button
-                                    onClick={() => {
-                                      setEditingTxId(item.fitId);
-                                      setTempDesc(item.description);
-                                      setTempDate(item.date);
-                                      setTempAmount(item.amount);
-                                    }}
-                                    className="p-2 text-slate-400 hover:text-blue-600 hover:bg-slate-50 rounded-xl transition-all"
-                                    title="Editar transação antes de conciliar"
-                                  >
-                                    <Pencil className="w-3.5 h-3.5" />
-                                  </button>
-
-                                  <button
-                                    onClick={() => {
-                                      setShowSearchForFitId(prev => ({ ...prev, [item.fitId]: !prev[item.fitId] }));
-                                      setActiveSearchFitId(item.fitId);
-                                    }}
-                                    className={`px-3 py-2 border rounded-xl font-bold text-[9px] uppercase tracking-wider transition-all flex items-center gap-1 cursor-pointer ${
-                                      isSearchOpen 
-                                        ? 'bg-blue-600 text-white border-blue-600'
-                                        : 'bg-white text-blue-600 border-blue-200 hover:bg-blue-50/40'
-                                    }`}
-                                  >
-                                    <Search className="w-3.5 h-3.5" /> Conciliar com existente
-                                  </button>
-
-                                  <button
-                                    onClick={() => {
-                                      setActiveNewTx(item);
-                                      setSelectedCatId(item.suggestedCategoryId || '');
-                                    }}
-                                    className="bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-[9px] uppercase px-3.5 py-2 tracking-wider transition-colors cursor-pointer"
-                                  >
-                                    Criar novo lançamento
-                                  </button>
-
-                                  <button
-                                    onClick={() => handleIgnore(item.fitId)}
-                                    className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all cursor-pointer"
-                                    title="Ignorar transação"
-                                  >
-                                    <X className="w-4 h-4" />
-                                  </button>
-                                </div>
-                              </div>
                             )}
                           </div>
                         </div>
-
-                        {/* 3. Campo de busca manual por lançamento */}
-                        {!duplicate && !match && isSearchOpen && (
-                          <div className="mt-4 pt-3 border-t border-slate-100 flex flex-col relative animate-slideDown">
-                            <div className="relative">
-                              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                              <input
-                                type="text"
-                                placeholder="Buscar lançamento existente no sistema por descrição, valor ou data..."
-                                value={query}
-                                onChange={(e) => setSearchQueries(prev => ({ ...prev, [item.fitId]: e.target.value }))}
-                                onFocus={() => setActiveSearchFitId(item.fitId)}
-                                className="w-full pl-9 pr-8 py-2.5 bg-slate-50 border border-slate-200 focus:border-blue-300 focus:bg-white rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-4 focus:ring-blue-100 transition-all placeholder:text-slate-400"
-                              />
-                              {query && (
-                                <button 
-                                  onClick={() => setSearchQueries(prev => ({ ...prev, [item.fitId]: '' }))}
-                                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
-                                >
-                                  <X className="w-3.5 h-3.5" />
-                                </button>
-                              )}
-                            </div>
-
-                            {/* Resultados da busca em dropdown */}
-                            {activeSearchFitId === item.fitId && query && (
-                              <div className="absolute left-0 right-0 top-full mt-2 bg-white border border-slate-200 shadow-xl rounded-2xl overflow-hidden z-50 max-h-52 overflow-y-auto divide-y divide-slate-150 animate-fadeIn text-left">
-                                {filterResults(query, item.type).length === 0 ? (
-                                  <p className="p-4 text-xs font-semibold text-slate-400 text-center uppercase tracking-wider">
-                                    Nenhum lançamento pendente/agendado correspondente nesta mesma conta bancária.
-                                  </p>
-                                ) : (
-                                  filterResults(query, item.type).map(candidate => (
-                                    <button
-                                      key={candidate.id}
-                                      onClick={() => {
-                                        handleConciliationMatch(item, candidate);
-                                        // limpa pesquisa
-                                        setSearchQueries(prev => ({ ...prev, [item.fitId]: '' }));
-                                        setShowSearchForFitId(prev => ({ ...prev, [item.fitId]: false }));
-                                        setActiveSearchFitId(null);
-                                      }}
-                                      className="w-full text-left p-3.5 hover:bg-slate-50/80 flex items-center justify-between text-xs transition-colors cursor-pointer"
-                                    >
-                                      <div className="space-y-0.5">
-                                        <div className="font-extrabold text-slate-800 flex items-center gap-1.5">
-                                          {candidate.description}
-                                          {/* 7. Lançamentos recorrentes na busca com badge azul */}
-                                          {candidate.recurrenceGroupId != null && (
-                                            <span className="bg-blue-50 text-blue-650 hover:bg-blue-100 text-blue-600 font-extrabold text-[8px] uppercase tracking-wider px-1.5 py-0.5 rounded leading-none shrink-0 border border-blue-100">
-                                              RECORRENTE
-                                            </span>
-                                          )}
-                                        </div>
-                                        <div className="text-[10px] text-slate-450 font-semibold flex items-center gap-1.5">
-                                          <span className="font-mono">{new Date(candidate.date + 'T00:00:00').toLocaleDateString('pt-BR')}</span>
-                                          <span className="text-slate-300">•</span>
-                                          <span className="text-slate-500">{candidate.categoryName || 'Sem Categoria'}</span>
-                                        </div>
-                                      </div>
-                                      <div className="font-mono font-black text-slate-900 shrink-0 select-none text-right">
-                                        {formatCurrency(candidate.amount)}
-                                      </div>
-                                    </button>
-                                  ))
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        )}
                       </div>
                     );
                   })
@@ -1078,117 +1141,192 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
       {/* Modal Criar e Conciliar Transação Nova de Forma Direta */}
       {activeNewTx && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-fadeIn" onClick={() => setActiveNewTx(null)} />
-          <div className="relative bg-white w-full max-w-sm rounded-[32px] shadow-2xl overflow-hidden border border-slate-100 p-8 animate-fadeIn">
-            <h3 className="text-md font-black text-slate-900 mb-2 uppercase tracking-tight flex items-center gap-1.5">
-              <Plus className="w-5 h-5 text-blue-500" /> Criar Lançamento Reconciliado
-            </h3>
-            <p className="text-xs text-slate-400 font-bold mb-6 uppercase tracking-wider">Selecione se é um lançamento normal ou transferência interna</p>
-
-            <div className="p-4 bg-slate-50 rounded-2xl mb-6 border border-slate-100 text-xs text-slate-600 space-y-1">
-              <p><strong className="text-slate-700">Descrição Bancária:</strong> {activeNewTx.description}</p>
-              <p><strong className="text-slate-700">Valor Bancário:</strong> <span className="font-mono font-black">{formatCurrency(activeNewTx.amount)}</span></p>
-              <p><strong className="text-slate-700">Data Processamento:</strong> {new Date(activeNewTx.date + 'T00:00:00').toLocaleDateString('pt-BR')}</p>
-            </div>
-
-            <div className="flex bg-slate-100 p-1 rounded-2xl mb-6">
-              <button
-                type="button"
-                onClick={() => setReconcileType('NORMAL')}
-                className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${reconcileType === 'NORMAL' ? 'bg-white text-emerald-600 shadow' : 'text-slate-500 hover:text-slate-705'}`}
-              >
-                Lançamento
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setReconcileType('TRANSFERENCIA');
-                  const firstCounterpart = accounts.find(a => a.id !== selectedAccountId);
-                  if (firstCounterpart) {
-                    setRecTfCounterpartId(firstCounterpart.id);
-                  }
-                }}
-                className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${reconcileType === 'TRANSFERENCIA' ? 'bg-white text-blue-600 shadow' : 'text-slate-500 hover:text-slate-705'}`}
-              >
-                Transferência
-              </button>
-            </div>
-
-            <div className="space-y-4 font-sans">
-              {reconcileType === 'NORMAL' ? (
-                <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Atribuir Categoria Financeira</label>
-                  <select
-                    value={selectedCatId}
-                    onChange={(e) => setSelectedCatId(e.target.value)}
-                    className={`w-full px-4 py-3 border rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-xs font-bold cursor-pointer transition-colors ${
-                      isSuggestedSelected 
-                        ? 'bg-blue-50/60 border-blue-200 text-blue-700 font-extrabold shadow-sm' 
-                        : 'bg-slate-50 border-slate-200 text-slate-700'
-                    }`}
-                    required
-                  >
-                    <option value="">Selecione a Categoria...</option>
-                    {Object.keys(groupedCats).map((groupName) => {
-                      const groupItems = groupedCats[groupName] || [];
-                      return (
-                        <optgroup key={groupName} label={groupName.toUpperCase()} className="text-[9px] uppercase font-bold text-slate-400 tracking-wider">
-                          {groupItems.map(c => (
-                            <option key={c.id} value={c.id} className="text-slate-700 font-medium normal-case">
-                              {c.name} {c.id === activeNewTx.suggestedCategoryId ? " (Sugerido)" : ""}
-                            </option>
-                          ))}
-                        </optgroup>
-                      );
-                    })}
-                  </select>
-
-                  {isSuggestedSelected && (
-                    <div className="mt-2 flex items-center gap-1.5 bg-blue-50 border border-blue-100 rounded-xl px-3 py-1.5 text-[9px] text-blue-600 font-extrabold uppercase tracking-wide animate-fadeIn format-auto-match-label">
-                      <Check className="w-3.5 h-3.5 text-blue-550 shrink-0" />
-                      <span>Sugerido automaticamente</span>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Conta Contrapartida</label>
-                  <select
-                    value={recTfCounterpartId}
-                    onChange={(e) => setRecTfCounterpartId(e.target.value)}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-xs font-bold text-slate-700 cursor-pointer"
-                    required
-                  >
-                    <option value="">Selecione a Conta Contrapartida...</option>
-                    {accounts.filter(a => a.id !== selectedAccountId).map(a => (
-                      <option key={a.id} value={a.id}>
-                        {a.name}
-                      </option>
-                    ))}
-                  </select>
-                  
-                  <p className="mt-2 text-[9px] text-slate-400 leading-relaxed font-bold uppercase tracking-wide">
-                    O sistema criará o lançamento de depósito e de saque correspondente de forma automatizada e com pre-reconciliação nos dois extratos.
-                  </p>
-                </div>
-              )}
-
-              <div className="flex flex-col gap-3 pt-4">
-                <button
-                  onClick={() => handleCreateAndConciliate(activeNewTx)}
-                  disabled={reconcileType === 'NORMAL' ? !selectedCatId : !recTfCounterpartId}
-                  className="w-full py-4 bg-emerald-600 text-white rounded-2xl font-bold uppercase tracking-widest text-xs shadow-lg shadow-emerald-500/25 hover:bg-emerald-700 transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:scale-100 cursor-pointer"
-                >
-                  Confirmar e Registrar
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveNewTx(null)}
-                  className="w-full py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold uppercase tracking-widest text-xs hover:bg-slate-200 transition-all text-center cursor-pointer"
-                >
-                  Voltar
-                </button>
+          <div
+            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-fadeIn"
+            onClick={() => setActiveNewTx(null)}
+          />
+          <div className="relative bg-white w-full max-w-md rounded-[28px] shadow-2xl border border-slate-100 animate-fadeIn flex flex-col max-h-[92vh] overflow-hidden">
+            
+            {/* Header */}
+            <div className="px-6 pt-6 pb-4 border-b border-slate-100 flex items-start justify-between">
+              <div>
+                <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight flex items-center gap-2">
+                  <Plus className="w-4 h-4 text-emerald-500" /> Criar Lançamento Reconciliado
+                </h3>
+                <p className="text-[10px] text-slate-400 uppercase font-black tracking-wider mt-0.5">
+                  Selecione se é um lançamento normal ou transferência interna
+                </p>
               </div>
+              <button
+                type="button"
+                onClick={() => setActiveNewTx(null)}
+                className="p-1.5 hover:bg-slate-100 rounded-full transition-all cursor-pointer ml-4 shrink-0"
+              >
+                <X className="w-4 h-4 text-slate-400" />
+              </button>
+            </div>
+
+            {/* Scrollable body */}
+            <div className="px-6 py-5 overflow-y-auto flex-1 space-y-4">
+
+              {/* Card 1 — Dados da transação */}
+              <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 space-y-2">
+                <div className="flex items-center gap-2 mb-1">
+                  <FileText className="w-4 h-4 text-blue-500" />
+                  <span className="text-[11px] font-black text-slate-800 uppercase tracking-wider">Dados do Extrato</span>
+                </div>
+                <div className="space-y-1 text-xs text-slate-600">
+                  <p><span className="font-black text-slate-500 uppercase text-[10px] tracking-wide">Descrição:</span><br />
+                    <span className="font-semibold text-slate-800 leading-snug block mt-0.5">{activeNewTx.description}</span>
+                  </p>
+                  <div className="flex gap-6 pt-1">
+                    <div>
+                      <span className="font-black text-slate-500 uppercase text-[10px] tracking-wide">Valor</span>
+                      <p className="font-mono font-black text-slate-900 text-sm">{formatCurrency(activeNewTx.amount)}</p>
+                    </div>
+                    <div>
+                      <span className="font-black text-slate-500 uppercase text-[10px] tracking-wide">Data</span>
+                      <p className="font-mono font-semibold text-slate-700 text-sm">
+                        {new Date(activeNewTx.date + 'T00:00:00').toLocaleDateString('pt-BR')}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 2 — Tipo de lançamento (toggle) */}
+              <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 space-y-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <Tag className="w-4 h-4 text-purple-500" />
+                  <span className="text-[11px] font-black text-slate-800 uppercase tracking-wider">Tipo de Lançamento</span>
+                </div>
+                <div className="flex bg-white border border-slate-200 p-1 rounded-xl">
+                  <button
+                    type="button"
+                    onClick={() => setReconcileType('NORMAL')}
+                    className={`flex-1 py-2.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all ${
+                      reconcileType === 'NORMAL'
+                        ? 'bg-emerald-500 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-slate-600'
+                    }`}
+                  >
+                    Lançamento
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setReconcileType('TRANSFERENCIA');
+                      const firstCounterpart = accounts.find(a => a.id !== selectedAccountId);
+                      if (firstCounterpart) setRecTfCounterpartId(firstCounterpart.id);
+                    }}
+                    className={`flex-1 py-2.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all ${
+                      reconcileType === 'TRANSFERENCIA'
+                        ? 'bg-blue-500 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-slate-600'
+                    }`}
+                  >
+                    Transferência
+                  </button>
+                </div>
+              </div>
+
+              {/* Card 3 — Categoria ou Conta Contrapartida */}
+              <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 space-y-3">
+                {reconcileType === 'NORMAL' ? (
+                  <>
+                    <div className="flex items-center gap-2 mb-1">
+                      <Tag className="w-4 h-4 text-amber-500" />
+                      <span className="text-[11px] font-black text-slate-800 uppercase tracking-wider">Categoria Financeira</span>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">
+                        Atribuir Categoria
+                      </label>
+                      <select
+                        value={selectedCatId}
+                        onChange={(e) => setSelectedCatId(e.target.value)}
+                        className={`w-full px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-xs font-bold cursor-pointer transition-colors ${
+                          isSuggestedSelected
+                            ? 'bg-blue-50 border-blue-200 text-blue-700'
+                            : 'bg-white border-slate-200 text-slate-700'
+                        }`}
+                        required
+                      >
+                        <option value="">Selecione a Categoria...</option>
+                        {Object.keys(groupedCats.items).map((groupName) => {
+                          const groupItems = groupedCats.items[groupName] || [];
+                          return (
+                            <optgroup key={groupName} label={groupName.toUpperCase()}>
+                              {groupItems.map(c => (
+                                <option key={c.id} value={c.id}>
+                                  {c.name}{c.id === activeNewTx.suggestedCategoryId ? ' ★ Sugerido' : ''}
+                                </option>
+                              ))}
+                            </optgroup>
+                          );
+                        })}
+                      </select>
+
+                      {groupedCats.usingFallback && (
+                        <p className="mt-1.5 text-[9px] text-amber-600 font-bold uppercase tracking-wide flex items-center gap-1">
+                          <AlertCircle className="w-3 h-3" /> Nenhuma categoria do tipo cadastrada — exibindo todas
+                        </p>
+                      )}
+
+                      {isSuggestedSelected && (
+                        <div className="mt-2 flex items-center gap-1.5 bg-blue-50 border border-blue-100 rounded-xl px-3 py-1.5 text-[9px] text-blue-600 font-extrabold uppercase tracking-wide animate-fadeIn format-auto-match-label">
+                          <Check className="w-3.5 h-3.5 shrink-0" />
+                          <span>Categoria sugerida automaticamente pelo sistema</span>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2 mb-1">
+                      <RefreshCw className="w-4 h-4 text-blue-500" />
+                      <span className="text-[11px] font-black text-slate-800 uppercase tracking-wider">Conta Contrapartida</span>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">
+                        Destino / Origem da Transferência
+                      </label>
+                      <select
+                        value={recTfCounterpartId}
+                        onChange={(e) => setRecTfCounterpartId(e.target.value)}
+                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-xs font-bold text-slate-700 cursor-pointer"
+                        required
+                      >
+                        <option value="">Selecione a Conta Contrapartida...</option>
+                        {accounts.filter(a => a.id !== selectedAccountId).map(a => (
+                          <option key={a.id} value={a.id}>{a.name}</option>
+                        ))}
+                      </select>
+                      <p className="mt-2 text-[9px] text-slate-400 font-bold uppercase tracking-wide leading-relaxed">
+                        O sistema criará o lançamento de entrada e saída correspondente e pré-conciliará nas duas contas automaticamente.
+                      </p>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Footer com botões */}
+            <div className="px-6 pb-6 pt-4 border-t border-slate-100 flex flex-col gap-3">
+              <button
+                onClick={() => handleCreateAndConciliate(activeNewTx)}
+                disabled={reconcileType === 'NORMAL' ? !selectedCatId : !recTfCounterpartId}
+                className="w-full py-3.5 bg-emerald-600 text-white rounded-2xl font-black uppercase tracking-widest text-xs shadow-lg shadow-emerald-500/20 hover:bg-emerald-700 transition-all hover:scale-[1.01] active:scale-95 disabled:opacity-40 disabled:scale-100 cursor-pointer"
+              >
+                Confirmar e Registrar
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveNewTx(null)}
+                className="w-full py-3.5 bg-slate-100 text-slate-600 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-slate-200 transition-all cursor-pointer"
+              >
+                Voltar
+              </button>
             </div>
           </div>
         </div>

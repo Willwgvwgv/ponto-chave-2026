@@ -31,8 +31,8 @@ export const PontoView: React.FC<PontoViewProps> = ({ isAdmin, user, profile, co
     if (profile?.permPonto === true || profile?.perm_ponto === true) return true;
     if (profile?.permPonto === false || profile?.perm_ponto === false) return false;
     
-    // If undefined and role is colaborador, treat as true
-    if (profile?.role === "colaborador") return true;
+    // If undefined and role is colaborador or user, treat as true
+    if (profile?.role === "colaborador" || profile?.role === "user") return true;
     
     // Treat as false otherwise to prevent unrestricted access
     return false;
