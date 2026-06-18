@@ -196,6 +196,9 @@ export const PropostaBellaWhiteView: React.FC<PropostaBellaWhiteProps> = ({ comp
   const [intermediariasData, setIntermediariasData] = useState<string>("");
 
   const [finBancarioValor, setFinBancarioValor] = useState<number>(220000);
+  const [finBancarioValorOnly, setFinBancarioValorOnly] = useState<number>(220000);
+  const [subsidioValor, setSubsidioValor] = useState<number>(0);
+  const [fgtsValor, setFgtsValor] = useState<number>(0);
 
   // Intermediacao corretagem
   const [comissaoValor, setComissaoValor] = useState<number>(15000);
@@ -204,9 +207,16 @@ export const PropostaBellaWhiteView: React.FC<PropostaBellaWhiteProps> = ({ comp
   const [corretorNome, setCorretorNome] = useState<string>("");
   const [corretorCreci, setCorretorCreci] = useState<string>("");
   
+  const [comissaoPctImobiliaria, setComissaoPctImobiliaria] = useState<number>(1.5);
+  const [comissaoPctCorretor, setComissaoPctCorretor] = useState<number>(3.5);
+  const [comissaoPctGerente, setComissaoPctGerente] = useState<number>(1.0);
+  const [gerenteNome, setGerenteNome] = useState<string>("");
+  const [gerenteCreci, setGerenteCreci] = useState<string>("");
+
   const [comissaoDestinoTotal, setComissaoDestinoTotal] = useState<number>(15500);
   const [comissaoDestinoImobiliaria, setComissaoDestinoImobiliaria] = useState<number>(7500);
   const [comissaoDestinoCorretor, setComissaoDestinoCorretor] = useState<number>(8000);
+  const [comissaoDestinoGerente, setComissaoDestinoGerente] = useState<number>(2500);
   
   const [observacoes, setObservacoes] = useState<string>("");
 
@@ -258,6 +268,25 @@ export const PropostaBellaWhiteView: React.FC<PropostaBellaWhiteProps> = ({ comp
       setIntermediariasParcelaValor(0);
     }
   }, [intermediariasValor, intermediariasParcelas]);
+
+  // Auto-calculate finBancarioValor total
+  useEffect(() => {
+    setFinBancarioValor(finBancarioValorOnly + subsidioValor + fgtsValor);
+  }, [finBancarioValorOnly, subsidioValor, fgtsValor]);
+
+  // Auto-calculated commission based on property price & percentages
+  useEffect(() => {
+    const calculatedImobiliaria = Number(((precoImovel * comissaoPctImobiliaria) / 100).toFixed(2));
+    const calculatedCorretor = Number(((precoImovel * comissaoPctCorretor) / 100).toFixed(2));
+    const calculatedGerente = Number(((precoImovel * comissaoPctGerente) / 100).toFixed(2));
+    const calculatedTotal = calculatedImobiliaria + calculatedCorretor + calculatedGerente;
+    
+    setComissaoValor(calculatedTotal);
+    setComissaoDestinoTotal(calculatedTotal);
+    setComissaoDestinoImobiliaria(calculatedImobiliaria);
+    setComissaoDestinoCorretor(calculatedCorretor);
+    setComissaoDestinoGerente(calculatedGerente);
+  }, [precoImovel, comissaoPctImobiliaria, comissaoPctCorretor, comissaoPctGerente]);
 
   // Load corretores & autofill info
   useEffect(() => {
@@ -319,14 +348,23 @@ export const PropostaBellaWhiteView: React.FC<PropostaBellaWhiteProps> = ({ comp
       intermediariasParcelaValor,
       intermediariasData,
       finBancarioValor,
+      finBancarioValorOnly,
+      subsidioValor,
+      fgtsValor,
       comissaoValor,
       imobiliariaNome,
       imobiliariaCreci,
       corretorNome,
       corretorCreci,
+      comissaoPctImobiliaria,
+      comissaoPctCorretor,
+      comissaoPctGerente,
+      gerenteNome,
+      gerenteCreci,
       comissaoDestinoTotal,
       comissaoDestinoImobiliaria,
       comissaoDestinoCorretor,
+      comissaoDestinoGerente,
       observacoes,
       checklistC1,
       checklistC2,
@@ -392,10 +430,19 @@ export const PropostaBellaWhiteView: React.FC<PropostaBellaWhiteProps> = ({ comp
     setIntermediariasParcelas(0);
     setIntermediariasData("");
     setFinBancarioValor(220000);
+    setFinBancarioValorOnly(220000);
+    setSubsidioValor(0);
+    setFgtsValor(0);
     setComissaoValor(15000);
+    setComissaoPctImobiliaria(1.5);
+    setComissaoPctCorretor(3.5);
+    setComissaoPctGerente(1.0);
+    setGerenteNome("");
+    setGerenteCreci("");
     setComissaoDestinoTotal(15000);
     setComissaoDestinoImobiliaria(7500);
     setComissaoDestinoCorretor(7500);
+    setComissaoDestinoGerente(2500);
     setObservacoes("");
     setChecklistC1({
       rgCpf: true,
@@ -434,15 +481,30 @@ export const PropostaBellaWhiteView: React.FC<PropostaBellaWhiteProps> = ({ comp
     setIntermediariasParcelas(prop.intermediariasParcelas ?? 0);
     setIntermediariasTipo(prop.intermediariasTipo || "TRIMESTRAIS");
     setIntermediariasData(prop.intermediariasData || "");
+    
+    // Sub-finances loading
     setFinBancarioValor(prop.finBancarioValor ?? 0);
+    setFinBancarioValorOnly(prop.finBancarioValorOnly ?? prop.finBancarioValor ?? 0);
+    setSubsidioValor(prop.subsidioValor ?? 0);
+    setFgtsValor(prop.fgtsValor ?? 0);
+
     setComissaoValor(prop.comissaoValor ?? 0);
     setImobiliariaNome(prop.imobiliariaNome || "Fidelité Negócios Imobiliários");
     setImobiliariaCreci(prop.imobiliariaCreci || "33.456-J");
     setCorretorNome(prop.corretorNome || "");
     setCorretorCreci(prop.corretorCreci || "");
+    
+    // Manager & percentages loading
+    setComissaoPctImobiliaria(prop.comissaoPctImobiliaria ?? 1.5);
+    setComissaoPctCorretor(prop.comissaoPctCorretor ?? 3.5);
+    setComissaoPctGerente(prop.comissaoPctGerente ?? 1.0);
+    setGerenteNome(prop.gerenteNome || "");
+    setGerenteCreci(prop.gerenteCreci || "");
+
     setComissaoDestinoTotal(prop.comissaoDestinoTotal ?? 0);
     setComissaoDestinoImobiliaria(prop.comissaoDestinoImobiliaria ?? 0);
     setComissaoDestinoCorretor(prop.comissaoDestinoCorretor ?? 0);
+    setComissaoDestinoGerente(prop.comissaoDestinoGerente ?? 0);
     setObservacoes(prop.observacoes || "");
     setChecklistC1(prop.checklistC1 || { rgCpf: true, certidao: false, endereco: true, renda: true, restricao: true, imposto: false });
     setChecklistC2(prop.checklistC2 || { rgCpf: false, certidao: false, endereco: false, renda: false, restricao: false, imposto: false });
@@ -1036,7 +1098,9 @@ export const PropostaBellaWhiteView: React.FC<PropostaBellaWhiteProps> = ({ comp
         <div class="payment-term">
           <h4>- FINANCIAMENTO BANCÁRIO, SUBSÍDIO E FGTS (se houver):</h4>
           <p style="font-size:11.5px; line-height: 1.5; margin-top:5px;">
-            Valor correspondente de R$ <strong style="font-size:13px; color:#1b4d22;">${fmt(finBancarioValor)}</strong> pagos mediante a contratação de financiamento bancário junto ao Agente Financeiro (CAIXA ECONÔMICA FEDERAL) no momento em que a Promitente Vendedora informar. Mencionados valores dependem de análise e aprovação cadastral e documental.
+            Valor correspondente de R$ <strong style="font-size:13px; color:#1b4d22;">${fmt(finBancarioValor)}</strong> 
+            ${(subsidioValor > 0 || fgtsValor > 0) ? `(sendo R$ <strong>${fmt(finBancarioValorOnly)}</strong> referente a Financiamento Bancário, R$ <strong>${fmt(subsidioValor)}</strong> de Subsídio Federal e R$ <strong>${fmt(fgtsValor)}</strong> de FGTS)` : ""}
+            pagos mediante a contratação de financiamento bancário junto ao Agente Financeiro (CAIXA ECONÔMICA FEDERAL) no momento em que a Promitente Vendedora informar. Mencionados valores dependem de análise e aprovação cadastral e documental.
           </p>
         </div>
 
@@ -1093,6 +1157,18 @@ export const PropostaBellaWhiteView: React.FC<PropostaBellaWhiteProps> = ({ comp
             <div class="grid-cell-value">${corretorCreci || "_____"}</div>
           </td>
         </tr>
+        ${gerenteNome ? `
+        <tr>
+          <td>
+            <span class="grid-cell-label">GERENTE RESPONSÁVEL DA VENDA:</span>
+            <div class="grid-cell-value">${gerenteNome}</div>
+          </td>
+          <td>
+            <span class="grid-cell-label">CRECI GERENTE:</span>
+            <div class="grid-cell-value">${gerenteCreci || "_____"}</div>
+          </td>
+        </tr>
+        ` : ""}
       </table>
 
       <!-- FORMA DE PAGAMENTO INTERMEDIACAO -->
@@ -1101,24 +1177,33 @@ export const PropostaBellaWhiteView: React.FC<PropostaBellaWhiteProps> = ({ comp
         <tr>
           <td>
             <span class="grid-cell-label">• DO VALOR:</span>
-            <div class="grid-cell-value">R$ ${fmt(comissaoDestinoTotal)}</div>
+            <div class="grid-cell-value">R$ ${fmt(comissaoDestinoTotal)} <span style="font-size:9.5px; font-weight:normal; color:#475569;">(${(comissaoPctImobiliaria + comissaoPctCorretor + comissaoPctGerente).toFixed(2)}% do preço do imóvel)</span></div>
             <div style="font-size: 8.5px; color:#555; margin-top:2px;">pagamento de responsabilidade integral do CLIENTE diretamente à imobiliária e/ou corretor autorizado</div>
           </td>
         </tr>
         <tr>
           <td>
             <span class="grid-cell-label">• IMOBILIÁRIA:</span>
-            <div class="grid-cell-value">R$ ${fmt(comissaoDestinoImobiliaria)}</div>
+            <div class="grid-cell-value">R$ ${fmt(comissaoDestinoImobiliaria)} <span style="font-size:9.5px; font-weight:normal; color:#475569;">(${comissaoPctImobiliaria.toFixed(2)}%)</span></div>
             <div style="font-size: 8.5px; color:#555; margin-top:2px;">pagamento correspondente de responsabilidade do CLIENTE, destinado diretamente à Imobiliária.</div>
           </td>
         </tr>
         <tr>
           <td>
             <span class="grid-cell-label">• CORRETOR:</span>
-            <div class="grid-cell-value">R$ ${fmt(comissaoDestinoCorretor)}</div>
+            <div class="grid-cell-value">R$ ${fmt(comissaoDestinoCorretor)} <span style="font-size:9.5px; font-weight:normal; color:#475569;">(${comissaoPctCorretor.toFixed(2)}%)</span></div>
             <div style="font-size: 8.5px; color:#555; margin-top:2px;">pagamento correspondente de responsabilidade do CLIENTE, destinado diretamente ao Corretores credenciados.</div>
           </td>
         </tr>
+        ${comissaoDestinoGerente > 0 ? `
+        <tr>
+          <td>
+            <span class="grid-cell-label">• GERENTE:</span>
+            <div class="grid-cell-value">R$ ${fmt(comissaoDestinoGerente)} <span style="font-size:9.5px; font-weight:normal; color:#475569;">(${comissaoPctGerente.toFixed(2)}%)</span></div>
+            <div style="font-size: 8.5px; color:#555; margin-top:2px;">pagamento correspondente de responsabilidade do CLIENTE, destinado diretamente ao Gerente Responsável da Venda.</div>
+          </td>
+        </tr>
+        ` : ""}
       </table>
 
       <!-- SPACER COMPROMISSO -->
@@ -1853,24 +1938,43 @@ export const PropostaBellaWhiteView: React.FC<PropostaBellaWhiteProps> = ({ comp
                 {/* FGTS E FINANCIAMENTO BANCARIO */}
                 <div className="p-5 bg-white rounded-2xl border border-slate-100 space-y-4 shadow-sm">
                   <div className="text-xs font-black uppercase text-indigo-600 flex items-center justify-between">
-                    <span>4. Financiamento Bancário Estimado (Caixa Econômica)</span>
+                    <span>4. Financiamento Bancário, Subsídio e FGTS</span>
                     <span className="bg-indigo-50 text-indigo-700 font-bold px-2.5 py-0.5 rounded-lg text-[10px]">CEF / RETORNO DIGITAL</span>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                     <div>
-                      <label className="block text-[9px] font-semibold text-slate-400 uppercase mb-0.5">Valor Financiamento + Subsídio + FGTS</label>
+                      <label className="block text-[9px] font-semibold text-slate-400 uppercase mb-0.5">Financiamento Bancário (R$)</label>
                       <BrlInput
-                        value={finBancarioValor}
-                        onChange={setFinBancarioValor}
-                        className="w-full bg-slate-50 border border-slate-100 focus:border-indigo-500 rounded-xl px-3 py-2 text-sm text-slate-800 font-extrabold"
+                        value={finBancarioValorOnly}
+                        onChange={setFinBancarioValorOnly}
+                        className="w-full bg-slate-50 border border-slate-100 focus:border-indigo-500 rounded-xl px-3 py-1.5 text-xs text-slate-800 font-bold"
                       />
                     </div>
-                    <div className="bg-slate-50/70 p-3 rounded-xl flex items-center gap-2">
-                      <Info className="w-5 h-5 text-indigo-500 shrink-0" />
-                      <div className="text-[10px] text-slate-500 font-medium leading-relaxed">
-                        Defina o valor simulado no correspondente. Este patamar constará na proposta impressa sob as condições da Caixa Federal.
-                      </div>
+                    <div>
+                      <label className="block text-[9px] font-semibold text-slate-400 uppercase mb-0.5">Subsídio Federal (R$)</label>
+                      <BrlInput
+                        value={subsidioValor}
+                        onChange={setSubsidioValor}
+                        className="w-full bg-slate-50 border border-slate-100 focus:border-indigo-500 rounded-xl px-3 py-1.5 text-xs text-slate-800 font-bold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-semibold text-slate-400 uppercase mb-0.5">Recursos FGTS (R$)</label>
+                      <BrlInput
+                        value={fgtsValor}
+                        onChange={setFgtsValor}
+                        className="w-full bg-slate-50 border border-slate-100 focus:border-indigo-500 rounded-xl px-3 py-1.5 text-xs text-slate-800 font-bold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-semibold text-indigo-600 uppercase mb-0.5">Soma Total Bancário (R$)</label>
+                      <BrlInput
+                        value={finBancarioValor}
+                        disabled
+                        onChange={() => {}}
+                        className="w-full bg-indigo-50 border border-indigo-100 rounded-xl px-3 py-1.5 text-xs text-indigo-950 font-extrabold cursor-not-allowed"
+                      />
                     </div>
                   </div>
                 </div>
@@ -1959,6 +2063,87 @@ export const PropostaBellaWhiteView: React.FC<PropostaBellaWhiteProps> = ({ comp
                         className="w-full bg-slate-50 border border-slate-100 rounded-xl px-3 py-1.5 text-xs text-slate-800 font-semibold"
                       />
                     </div>
+
+                    <div className="md:col-span-8">
+                      <label className="block text-[9px] font-bold text-slate-400 uppercase mb-0.5">Gerente Responsável</label>
+                      <input
+                        type="text"
+                        value={gerenteNome}
+                        onChange={(e) => setGerenteNome(e.target.value)}
+                        placeholder="Nome do Gerente de Vendas..."
+                        className="w-full bg-slate-50 border border-slate-100 rounded-xl px-3 py-1.5 text-xs text-slate-800 font-semibold"
+                      />
+                    </div>
+                    <div className="md:col-span-4">
+                      <label className="block text-[9px] font-bold text-slate-400 uppercase mb-0.5">CRECI Gerente</label>
+                      <input
+                        type="text"
+                        value={gerenteCreci}
+                        onChange={(e) => setGerenteCreci(e.target.value)}
+                        placeholder="CRECI do Gerente..."
+                        className="w-full bg-slate-50 border border-slate-100 rounded-xl px-3 py-1.5 text-xs text-slate-800 font-semibold"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <hr className="border-slate-100" />
+
+                {/* Divisão de Comissão em Porcentagem */}
+                <div className="space-y-4">
+                  <div className="text-xs font-black uppercase text-indigo-600 flex items-center justify-between">
+                    <span>Divisão de Comissão por Porcentagem (%)</span>
+                    <span className="text-[10px] text-emerald-600 font-bold">Base Preço Imóvel: R$ {fmt(precoImovel)}</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="bg-slate-50/50 p-3 rounded-2xl border border-slate-100 space-y-1">
+                      <label className="block text-[9px] font-bold text-slate-400 uppercase">Imobiliária (%)</label>
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="number"
+                          step="0.05"
+                          min="0"
+                          value={comissaoPctImobiliaria || ""}
+                          onChange={(e) => setComissaoPctImobiliaria(Math.max(0, parseFloat(e.target.value) || 0))}
+                          className="w-20 bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-800 focus:outline-none"
+                        />
+                        <span className="text-slate-400 text-xs">➔</span>
+                        <span className="font-extrabold text-xs text-indigo-700">R$ {fmt(comissaoDestinoImobiliaria)}</span>
+                      </div>
+                    </div>
+
+                    <div className="bg-slate-50/50 p-3 rounded-2xl border border-slate-100 space-y-1">
+                      <label className="block text-[9px] font-bold text-slate-400 uppercase">Corretor (%)</label>
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="number"
+                          step="0.05"
+                          min="0"
+                          value={comissaoPctCorretor || ""}
+                          onChange={(e) => setComissaoPctCorretor(Math.max(0, parseFloat(e.target.value) || 0))}
+                          className="w-20 bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-800 focus:outline-none"
+                        />
+                        <span className="text-slate-400 text-xs">➔</span>
+                        <span className="font-extrabold text-xs text-indigo-700">R$ {fmt(comissaoDestinoCorretor)}</span>
+                      </div>
+                    </div>
+
+                    <div className="bg-slate-50/50 p-3 rounded-2xl border border-slate-100 space-y-1">
+                      <label className="block text-[9px] font-bold text-slate-400 uppercase">Gerente (%)</label>
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="number"
+                          step="0.05"
+                          min="0"
+                          value={comissaoPctGerente || ""}
+                          onChange={(e) => setComissaoPctGerente(Math.max(0, parseFloat(e.target.value) || 0))}
+                          className="w-20 bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-800 focus:outline-none"
+                        />
+                        <span className="text-slate-400 text-xs">➔</span>
+                        <span className="font-extrabold text-xs text-indigo-700">R$ {fmt(comissaoDestinoGerente)}</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -1967,21 +2152,22 @@ export const PropostaBellaWhiteView: React.FC<PropostaBellaWhiteProps> = ({ comp
                 {/* Destinação do pagamento */}
                 <div className="space-y-4">
                   <div className="text-xs font-black uppercase text-indigo-600 flex items-center justify-between">
-                    <span>Destinação Própria das Frações da Comissão</span>
-                    <span className="text-[10px] text-slate-400">Filtro de Responsabilidade</span>
+                    <span>Destinação Própria das Frações da Comissão (BRL)</span>
+                    <span className="text-[10px] text-slate-400">Detalhamento dos Valores de Comissão</span>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                     <div>
-                      <label className="block text-[9px] font-bold text-slate-400 uppercase mb-0.5">Total Responsabilidade</label>
+                      <label className="block text-[9px] font-bold text-slate-400 uppercase mb-0.5">Total Comissão</label>
                       <BrlInput
                         value={comissaoDestinoTotal}
-                        onChange={setComissaoDestinoTotal}
-                        className="w-full bg-slate-50 border border-slate-100 rounded-xl px-3 py-1.5 text-xs text-slate-850 font-bold"
+                        disabled
+                        onChange={() => {}}
+                        className="w-full bg-slate-100 border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-slate-850 font-extrabold cursor-not-allowed"
                       />
                     </div>
                     <div>
-                      <label className="block text-[9px] font-bold text-slate-400 uppercase mb-0.5">Fração Destinada à Imobiliária</label>
+                      <label className="block text-[9px] font-bold text-slate-400 uppercase mb-0.5">Fração Imobiliária</label>
                       <BrlInput
                         value={comissaoDestinoImobiliaria}
                         onChange={setComissaoDestinoImobiliaria}
@@ -1989,10 +2175,18 @@ export const PropostaBellaWhiteView: React.FC<PropostaBellaWhiteProps> = ({ comp
                       />
                     </div>
                     <div>
-                      <label className="block text-[9px] font-bold text-slate-400 uppercase mb-0.5">Fração Destinada ao Corretor</label>
+                      <label className="block text-[9px] font-bold text-slate-400 uppercase mb-0.5">Fração Corretor</label>
                       <BrlInput
                         value={comissaoDestinoCorretor}
                         onChange={setComissaoDestinoCorretor}
+                        className="w-full bg-slate-50 border border-slate-100 rounded-xl px-3 py-1.5 text-xs text-slate-800 font-semibold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-bold text-slate-400 uppercase mb-0.5">Fração Gerente</label>
+                      <BrlInput
+                        value={comissaoDestinoGerente}
+                        onChange={setComissaoDestinoGerente}
                         className="w-full bg-slate-50 border border-slate-100 rounded-xl px-3 py-1.5 text-xs text-slate-800 font-semibold"
                       />
                     </div>
@@ -2267,8 +2461,9 @@ export const PropostaBellaWhiteView: React.FC<PropostaBellaWhiteProps> = ({ comp
                 R$ {fmt(finConstrutoraValor)} pago em {finConstrutoraParcelas}x de R$ {fmt(finConstrutoraParcelaValor)}
               </div>
               <div className="p-1 px-1.5 font-bold">
-                <span className="block text-[6.5px] font-black text-slate-500">RECURSOS BANCÁRIOS (FGTS / CAIXA):</span>
-                Estimativa de R$ {fmt(finBancarioValor)}
+                <span className="block text-[6.5px] font-black text-slate-500">RECURSOS BANCÁRIOS (FGTS / CAIXA / SUBSÍDIO):</span>
+                Estimativa de R$ {fmt(finBancarioValor)} 
+                {(subsidioValor > 0 || fgtsValor > 0) ? ` (Fin.: R$ ${fmt(finBancarioValorOnly)} + Sub.: R$ ${fmt(subsidioValor)} + FGTS: R$ ${fmt(fgtsValor)})` : ""}
               </div>
             </div>
           </div>
@@ -2289,7 +2484,7 @@ export const PropostaBellaWhiteView: React.FC<PropostaBellaWhiteProps> = ({ comp
             <div className="border border-black divide-y divide-black">
               <div className="p-1 px-1.5">
                 <span className="block text-[6.5px] font-black text-slate-500">Valor da Comissão:</span>
-                <span className="font-bold text-[10px] text-blue-700">R$ {fmt(comissaoValor)}</span>
+                <span className="font-bold text-[10px] text-blue-700">R$ {fmt(comissaoValor)} {(comissaoPctImobiliaria || comissaoPctCorretor || comissaoPctGerente) ? `(${(comissaoPctImobiliaria + comissaoPctCorretor + comissaoPctGerente).toFixed(2)}%)` : ""}</span>
               </div>
               <div className="grid grid-cols-2 divide-x divide-black">
                 <div className="p-1 px-1.5">
@@ -2301,6 +2496,18 @@ export const PropostaBellaWhiteView: React.FC<PropostaBellaWhiteProps> = ({ comp
                   <span className="font-bold">{corretorCreci || "_____"}</span>
                 </div>
               </div>
+              {gerenteNome && (
+                <div className="grid grid-cols-2 divide-x divide-black">
+                  <div className="p-1 px-1.5">
+                    <span className="block text-[6.5px] text-slate-500 font-black">Gerente Responsável</span>
+                    <span className="font-extrabold">{gerenteNome}</span>
+                  </div>
+                  <div className="p-1 px-1.5">
+                    <span className="block text-[6.5px] text-slate-500 font-black">Creci Gerente</span>
+                    <span className="font-bold">{gerenteCreci || "_____"}</span>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="border border-black p-2 text-justify">
