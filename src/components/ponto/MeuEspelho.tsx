@@ -7,14 +7,17 @@ import {
   ChevronLeft, 
   ChevronRight,
   TrendingUp,
-  TrendingDown
+  TrendingDown,
+  Printer
 } from "lucide-react";
 import { usePontoMes, useSolicitarAjuste } from "../../hooks/useQueries";
-import { UserProfile, PontoRegistro } from "../../types";
+import { UserProfile, PontoRegistro, CompanySettings } from "../../types";
 import { toast } from "sonner";
+import { FolhaPontoPrint } from "./FolhaPontoPrint";
 
 interface MeuEspelhoProps {
   profile: UserProfile | null;
+  companySettings: CompanySettings | null;
 }
 
 export const formatMinutesToHHMM = (totalMinutes: number): string => {
@@ -33,7 +36,7 @@ export const formatMinutesToHoursFriendly = (totalMinutes: number): string => {
   return `${isNegative ? "-" : ""}${h}h ${m}m`;
 };
 
-export const MeuEspelho: React.FC<MeuEspelhoProps> = ({ profile }) => {
+export const MeuEspelho: React.FC<MeuEspelhoProps> = ({ profile, companySettings }) => {
   const userId = profile?.uid || "";
   const userName = profile?.displayName || "Colaborador";
   const agencyId = profile?.companyId || "default_agency";
@@ -42,6 +45,7 @@ export const MeuEspelho: React.FC<MeuEspelhoProps> = ({ profile }) => {
   const today = new Date();
   const [selectedYear, setSelectedYear] = useState(today.getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(today.getMonth() + 1); // 1-indexed
+  const [showPrintModal, setShowPrintModal] = useState(false);
 
   const { data: registros = [], isLoading } = usePontoMes(userId, selectedYear, selectedMonth);
   const solicitarAjusteMutation = useSolicitarAjuste();
@@ -160,29 +164,40 @@ export const MeuEspelho: React.FC<MeuEspelhoProps> = ({ profile }) => {
     <div className="space-y-6 font-sans">
       
       {/* Seletor do Mês */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white rounded-xl border border-slate-100 p-4 shadow-sm">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white rounded-xl border border-slate-100 p-4 shadow-sm">
         <div className="flex items-center gap-2">
           <Calendar className="w-5 h-5 text-slate-500" />
           <h3 className="text-sm font-bold text-slate-800">Período de Apuração</h3>
         </div>
         
-        <div className="flex items-center gap-3 self-center sm:self-auto">
-          <button 
-            onClick={handlePrevMonth}
-            className="p-1.5 hover:bg-slate-50 border border-slate-250 rounded-lg text-slate-600 transition"
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-          
-          <span className="text-sm font-bold text-slate-700 min-w-[120px] text-center">
-            {monthNames[selectedMonth - 1]} de {selectedYear}
-          </span>
+        <div className="flex flex-col sm:flex-row items-center gap-4 self-center md:self-auto w-full md:w-auto justify-end">
+          <div className="flex items-center gap-3 justify-center">
+            <button 
+              onClick={handlePrevMonth}
+              className="p-1.5 hover:bg-slate-50 border border-slate-250 rounded-lg text-slate-600 transition"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            
+            <span className="text-sm font-bold text-slate-700 min-w-[120px] text-center">
+              {monthNames[selectedMonth - 1]} de {selectedYear}
+            </span>
 
-          <button 
-            onClick={handleNextMonth}
-            className="p-1.5 hover:bg-slate-50 border border-slate-250 rounded-lg text-slate-600 transition"
+            <button 
+              onClick={handleNextMonth}
+              className="p-1.5 hover:bg-slate-50 border border-slate-250 rounded-lg text-slate-600 transition"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+
+          <button
+            onClick={() => setShowPrintModal(true)}
+            disabled={registros.length === 0}
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition disabled:opacity-50 shadow-sm"
           >
-            <ChevronRight className="w-4 h-4" />
+            <Printer className="w-4 h-4" />
+            Imprimir Folha Ponto
           </button>
         </div>
       </div>
@@ -483,6 +498,17 @@ export const MeuEspelho: React.FC<MeuEspelhoProps> = ({ profile }) => {
             </form>
           </div>
         </div>
+      )}
+
+      {showPrintModal && (
+        <FolhaPontoPrint
+          collaborator={profile}
+          companySettings={companySettings}
+          year={selectedYear}
+          month={selectedMonth}
+          registros={registros}
+          onClose={() => setShowPrintModal(false)}
+        />
       )}
     </div>
   );

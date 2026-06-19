@@ -18,7 +18,8 @@ import {
   Sparkles,
   ArrowRight,
   Trash2,
-  Save
+  Save,
+  Download
 } from "lucide-react";
 import { motion } from "motion/react";
 import { format } from "date-fns";
@@ -862,7 +863,7 @@ export const SimuladorView: React.FC<SimuladorViewProps> = ({ companySettings, c
   };
 
   // HTML Print Window Trigger
-  const imprimirProposta = () => {
+  const imprimirProposta = (exportToWord: boolean = false) => {
     const enterpriseName = empreendimento || "Empreendimento";
     const userSales = corretorResponsavel || currentUser?.displayName || "Consultor de Vendas";
     const nomeCliente = clienteNome.trim() || "Cliente Interessado";
@@ -877,10 +878,33 @@ export const SimuladorView: React.FC<SimuladorViewProps> = ({ companySettings, c
       ? `<div style="background-color: #ffffff; padding: 8px 18px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 6px; border: 1px solid #e2e8f0;"><img src="${logoSrc}" style="max-height: 42px; width: auto; max-width: 170px; display: block; object-fit: contain;" alt="Logo" /></div>`
       : `<div style="background-color: #ffffff; padding: 6px 14px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; border: 2px solid #0f3a6b; color: #0f3a6b; font-weight: 900; font-size: 15px; margin-bottom: 6px; font-family: 'Inter', sans-serif; letter-spacing: 0.05em; text-transform: uppercase;">FIDELITÉ</div>`;
 
-    const printWindow = window.open("", "_blank", "width=850,height=1100");
-    if (!printWindow) {
-      toast.error("Bloqueador de pop-ups ativo. Permita pop-ups para imprimir a proposta.");
-      return;
+    let printWindow: any = null;
+    let wordBuffer = "";
+    if (exportToWord) {
+      printWindow = {
+        document: {
+          write: (html: string) => {
+            wordBuffer += html;
+          },
+          close: () => {
+            const blob = new Blob(["\uFEFF" + wordBuffer], { type: "application/msword;charset=utf-8" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `Proposta_${modoSimulacao === 'bancario' ? 'Financiamento' : 'Livre'}_${nomeCliente.replace(/\s+/g, '_')}.doc`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+          }
+        }
+      };
+    } else {
+      printWindow = window.open("", "_blank", "width=850,height=1100");
+      if (!printWindow) {
+        toast.error("Bloqueador de pop-ups ativo. Permita pop-ups para imprimir a proposta.");
+        return;
+      }
     }
 
     if (modoSimulacao === "bancario") {
@@ -2906,7 +2930,15 @@ export const SimuladorView: React.FC<SimuladorViewProps> = ({ companySettings, c
               Copiar p/ WhatsApp
             </button>
             <button
-              onClick={imprimirProposta}
+              onClick={() => imprimirProposta(true)}
+              className="px-6 py-3 rounded-2xl text-xs font-bold uppercase tracking-widest bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-200 cursor-pointer flex items-center gap-2 transition-all active:scale-95"
+              title="Salvar como documento do Word para abrir e editar"
+            >
+              <Download className="w-4 h-4" />
+              Salvar p/ Editar (Word)
+            </button>
+            <button
+              onClick={() => imprimirProposta(false)}
               className="px-6 py-3 rounded-2xl text-xs font-bold uppercase tracking-widest bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-200 cursor-pointer flex items-center gap-2 transition-all active:scale-95"
             >
               <Printer className="w-4 h-4" />
@@ -3271,7 +3303,15 @@ export const SimuladorView: React.FC<SimuladorViewProps> = ({ companySettings, c
                 Copiar p/ WhatsApp
               </button>
               <button
-                onClick={imprimirProposta}
+                onClick={() => imprimirProposta(true)}
+                className="px-6 py-3 rounded-2xl text-xs font-bold uppercase tracking-widest bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-200 cursor-pointer flex items-center gap-2 transition-all active:scale-95"
+                title="Salvar como documento do Word para abrir e editar"
+              >
+                <Download className="w-4 h-4" />
+                Salvar p/ Editar (Word)
+              </button>
+              <button
+                onClick={() => imprimirProposta(false)}
                 className="px-6 py-3 rounded-2xl text-xs font-bold uppercase tracking-widest bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-200 cursor-pointer flex items-center gap-2 transition-all active:scale-95"
               >
                 <Printer className="w-4 h-4" />

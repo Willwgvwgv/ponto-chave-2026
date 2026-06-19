@@ -13,7 +13,8 @@ import {
   Info,
   Layers,
   ChevronRight,
-  Sparkles
+  Sparkles,
+  Download
 } from "lucide-react";
 import { db, collection, getDocs, addDoc, updateDoc, deleteDoc, doc, handleFirestoreError, OperationType } from "../firebase";
 import { format } from "date-fns";
@@ -558,15 +559,18 @@ export const PropostaBellaWhiteView: React.FC<PropostaBellaWhiteProps> = ({ comp
   };
 
   // Identical 4-page HTML Print Trigger
-  const handlePrint = () => {
+  const handlePrint = (exportToWord: boolean = false) => {
     const p1DateFormatted = comprador1.dataNascimento ? formatDateLabel(comprador1.dataNascimento) : "___/___/_____";
     const p2DateFormatted = comprador2.dataNascimento ? formatDateLabel(comprador2.dataNascimento) : "___/___/_____";
     const dataEmissaoCustom = dataProposta ? format(new Date(dataProposta + "T12:00:00"), "dd 'de' MMMM 'de' yyyy", { locale: ptBR }) : "___ de ___________ de 202_";
 
-    const printWindow = window.open("", "_blank", "width=850,height=1100");
-    if (!printWindow) {
-      alert("Por favor libere os pop-ups do navegador para visualizar a impressão.");
-      return;
+    let printWindow: Window | null = null;
+    if (!exportToWord) {
+      printWindow = window.open("", "_blank", "width=850,height=1100");
+      if (!printWindow) {
+        alert("Por favor libere os pop-ups do navegador para visualizar a impressão.");
+        return;
+      }
     }
 
     const checkboxHtml = (checked: boolean) => {
@@ -1322,8 +1326,20 @@ export const PropostaBellaWhiteView: React.FC<PropostaBellaWhiteProps> = ({ comp
 </html>
     `;
 
-    printWindow.document.write(printContent);
-    printWindow.document.close();
+    if (exportToWord) {
+      const blob = new Blob(["\uFEFF" + printContent], { type: "application/msword;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Proposta_Bella_White_${comprador1.nome || "Cliente"}.doc`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } else if (printWindow) {
+      printWindow.document.write(printContent);
+      printWindow.document.close();
+    }
   };
 
   return (
@@ -2326,19 +2342,32 @@ export const PropostaBellaWhiteView: React.FC<PropostaBellaWhiteProps> = ({ comp
 
             <span className="text-[10px] font-bold text-slate-450 uppercase">Formulário Digital — Página {tabIndex + 1} de 4</span>
 
-            <button
-              onClick={() => {
-                if (tabIndex < 3) {
-                  setTabIndex(tabIndex + 1);
-                } else {
-                  handlePrint();
-                }
-              }}
-              className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black shadow-sm flex items-center gap-1.5 cursor-pointer"
-            >
-              {tabIndex < 3 ? "Avançar" : "Gerar e Imprimir Proposta (PDF)"}
-              <ChevronRight className="w-3.5 h-3.5" />
-            </button>
+            {tabIndex < 3 ? (
+              <button
+                onClick={() => setTabIndex(tabIndex + 1)}
+                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black shadow-sm flex items-center gap-1.5 cursor-pointer"
+              >
+                Avançar
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handlePrint(true)}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow-sm flex items-center gap-1.5 cursor-pointer"
+                  title="Salvar como documento do Word para abrir e editar"
+                >
+                  <Download className="w-3.5 h-3.5" /> Salvar p/ Editar (Word)
+                </button>
+                <button
+                  onClick={() => handlePrint(false)}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black shadow-sm flex items-center gap-1.5 cursor-pointer"
+                >
+                  Imprimir (PDF)
+                  <Printer className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
           </div>
 
         </div>
@@ -2367,12 +2396,21 @@ export const PropostaBellaWhiteView: React.FC<PropostaBellaWhiteProps> = ({ comp
               <Layers className="w-4 h-4" />
               <span>Espelho de Páginas Impressas</span>
             </span>
-            <button
-              onClick={handlePrint}
-              className="flex items-center gap-1.5 bg-white hover:bg-indigo-50 text-indigo-600 border border-slate-200 shadow-sm rounded-xl px-3 py-1.5 text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer"
-            >
-              <Printer className="w-3.5 h-3.5" /> Imprimir Proposta
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => handlePrint(true)}
+                className="flex items-center gap-1.5 bg-white hover:bg-emerald-50 text-emerald-600 border border-emerald-200 shadow-md rounded-xl px-3 py-1.5 text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer"
+                title="Salvar como documento do Word para abrir e editar"
+              >
+                <Download className="w-3.5 h-3.5" /> Salvar p/ Editar (Word)
+              </button>
+              <button
+                onClick={() => handlePrint(false)}
+                className="flex items-center gap-1.5 bg-white hover:bg-indigo-50 text-indigo-600 border border-slate-200 shadow-sm rounded-xl px-3 py-1.5 text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer"
+              >
+                <Printer className="w-3.5 h-3.5" /> Imprimir Proposta
+              </button>
+            </div>
           </div>
 
           {/* PAGE 1 SIMULATION */}

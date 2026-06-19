@@ -6,26 +6,30 @@ import {
   TrendingUp, 
   TrendingDown, 
   Download,
+  Printer,
   AlertCircle,
   ChevronLeft,
   ChevronRight,
   CheckCircle2
 } from "lucide-react";
 import { useTeam, usePontoMes } from "../../hooks/useQueries";
-import { UserProfile, PontoRegistro } from "../../types";
+import { UserProfile, PontoRegistro, CompanySettings } from "../../types";
 import { formatMinutesToHHMM, formatMinutesToHoursFriendly } from "./MeuEspelho";
+import { FolhaPontoPrint } from "./FolhaPontoPrint";
 
 interface GestaoPontoProps {
   profile: UserProfile | null;
+  companySettings: CompanySettings | null;
 }
 
-export const GestaoPonto: React.FC<GestaoPontoProps> = ({ profile }) => {
+export const GestaoPonto: React.FC<GestaoPontoProps> = ({ profile, companySettings }) => {
   const agencyId = profile?.companyId || "default_agency";
 
   const today = new Date();
   const [selectedYear, setSelectedYear] = useState(today.getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(today.getMonth() + 1); // 1-indexed
   const [selectedUserId, setSelectedUserId] = useState<string>("");
+  const [showPrintModal, setShowPrintModal] = useState(false);
 
   const { data: team = [] } = useTeam(agencyId);
 
@@ -208,15 +212,24 @@ export const GestaoPonto: React.FC<GestaoPontoProps> = ({ profile }) => {
           </div>
         </div>
 
-        {/* Botão de Exportar */}
-        <div className="md:self-end">
+        {/* Botões de Ação */}
+        <div className="md:self-end flex flex-col sm:flex-row gap-2 w-full md:w-auto">
           <button
             onClick={handleExportCSV}
             disabled={registros.length === 0}
-            className="w-full md:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold transition disabled:opacity-50"
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-lg text-xs font-bold transition disabled:opacity-50"
           >
             <Download className="w-4 h-4" />
             Exportar CSV
+          </button>
+          
+          <button
+            onClick={() => setShowPrintModal(true)}
+            disabled={registros.length === 0 || !selectedCollaborator}
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition disabled:opacity-50 shadow-sm"
+          >
+            <Printer className="w-4 h-4" />
+            Imprimir Folha (Assinatura)
           </button>
         </div>
       </div>
@@ -382,6 +395,17 @@ export const GestaoPonto: React.FC<GestaoPontoProps> = ({ profile }) => {
             </div>
           </div>
         </>
+      )}
+
+      {showPrintModal && selectedCollaborator && (
+        <FolhaPontoPrint
+          collaborator={selectedCollaborator}
+          companySettings={companySettings}
+          year={selectedYear}
+          month={selectedMonth}
+          registros={registros}
+          onClose={() => setShowPrintModal(false)}
+        />
       )}
 
     </div>

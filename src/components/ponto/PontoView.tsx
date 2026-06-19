@@ -157,10 +157,10 @@ export const PontoView: React.FC<PontoViewProps> = ({ isAdmin, user, profile, co
           <BaterPonto profile={profile} />
         )}
         {activeSubTab === "espelho" && hasPontoPermission && (
-          <MeuEspelho profile={profile} />
+          <MeuEspelho profile={profile} companySettings={companySettings} />
         )}
         {activeSubTab === "gestao" && isUserAdmin && (
-          <GestaoPonto profile={profile} />
+          <GestaoPonto profile={profile} companySettings={companySettings} />
         )}
         {activeSubTab === "ajustes" && isUserAdmin && (
           <AjustesPonto profile={profile} />
