@@ -118,7 +118,9 @@ import {
   OperationType,
   User,
   arrayUnion,
-  isDemoMode
+  isDemoMode,
+  writeBatch,
+  runTransaction
 } from "./firebase";
 
 import { getApp } from "firebase/app";
@@ -787,8 +789,9 @@ const UserManagement = ({
     try {
       let docId = editingUserProfile.uid;
       
-      // Se uid parece ser um pending_id, buscar pelo e-mail
-      if (docId.startsWith("pending_") || !docId) {
+      // Se o uid é um convite pré-autorizado ou temporário, buscar pelo e-mail
+      const isPendingId = !docId || docId.startsWith("pending_") || editingUserProfile.isPreAuthorized === true;
+      if (isPendingId) {
         const q = query(collection(db, "users"), where("email", "==", editingUserProfile.email));
          const snap = await getDocs(q);
         if (!snap.empty) {
@@ -893,6 +896,7 @@ const UserManagement = ({
       const tempId = `pending_${Date.now()}`;
       await setDoc(doc(db, "users", tempId), {
         uid: tempId,
+        isPreAuthorized: true,
         displayName: newUserName.trim(),
         email: emailNormalizado,
         role: newUserRole,
@@ -7612,6 +7616,313 @@ const SettingsView = ({ companySettings, isAdmin, onNavigate }: { companySetting
 
 
 
+interface MigrationOp {
+  ref: any;
+  type: 'update' | 'set' | 'delete';
+  data?: any;
+  options?: any;
+}
+
+const migrationLogger = {
+  info: (msg: string, ...args: any[]) => console.log(`[Migration] ${msg}`, ...args),
+  warn: (msg: string, ...args: any[]) => console.warn(`[Migration] ${msg}`, ...args),
+  error: (msg: string, ...args: any[]) => console.error(`[Migration] ${msg}`, ...args)
+};
+
+async function migratePendingUserData(oldUid: string, newUid: string) {
+  const startTime = performance.now();
+  migrationLogger.info(`User: ${oldUid}`);
+  
+  const pendingUserRef = doc(db, "users", oldUid);
+  let hasLocked = false;
+  let isOrphanRecovered = false;
+
+  try {
+    // Adquirir lock para evitar migrações concorrentes utilizando runTransaction
+    await runTransaction(db, async (transaction) => {
+      const pendingSnap = await transaction.get(pendingUserRef);
+      if (pendingSnap.exists()) {
+        const data = pendingSnap.data();
+        if (data.migrationLocked === true) {
+          // Mecanismo de recuperação para locks órfãos (se ativo há mais de 10 minutos)
+          const nowMs = Date.now();
+          let startedAtMs = 0;
+          if (data.migrationStartedAt) {
+            if (data.migrationStartedAt.toMillis) {
+              startedAtMs = data.migrationStartedAt.toMillis();
+            } else if (data.migrationStartedAt.toDate) {
+              startedAtMs = data.migrationStartedAt.toDate().getTime();
+            } else if (typeof data.migrationStartedAt === 'string') {
+              startedAtMs = new Date(data.migrationStartedAt).getTime();
+            } else if (typeof data.migrationStartedAt === 'number') {
+              startedAtMs = data.migrationStartedAt;
+            }
+          }
+          
+          if (startedAtMs > 0 && (nowMs - startedAtMs) > 600000) { // 10 minutos
+            migrationLogger.warn(`Lock órfão detectado (ativo há ${((nowMs - startedAtMs) / 60000).toFixed(1)} minutos). Recuperando lock expirado...`);
+            isOrphanRecovered = true;
+          } else {
+            migrationLogger.warn("Lock de migração já ativo para este usuário. Abortando execução concorrente.");
+            throw new Error("MIGRATION_ALREADY_RUNNING");
+          }
+        }
+        
+        // Marcar como bloqueado para migração, registrando data de início e proprietário do lock
+        transaction.update(pendingUserRef, {
+          migrationLocked: true,
+          migrationLockOwner: newUid,
+          migrationStartedAt: Timestamp.now()
+        });
+      }
+    });
+    hasLocked = true;
+    migrationLogger.info(`Lock adquirido${isOrphanRecovered ? " (recuperado de lock órfão)" : ""}`);
+
+    const tasksRef = collection(db, "tasks");
+    const tasksQueryUid = query(tasksRef, where("uid", "==", oldUid));
+    const tasksQueryAuthor = query(tasksRef, where("authorId", "==", oldUid));
+    
+    const processesRef = collection(db, "processes");
+    const processesQueryUid = query(processesRef, where("uid", "==", oldUid));
+    const processesQueryAssigned = query(processesRef, where("assignedTo", "==", oldUid));
+    
+    const vistoriasRef = collection(db, "vistorias");
+    const vistoriasQuery = query(vistoriasRef, where("corretorId", "==", oldUid));
+
+    const comissoesRef = collection(db, "comissoes");
+    const comissoesQuery = query(comissoesRef, where("criadoPor", "==", oldUid));
+
+    const brokerSplitsRef = collection(db, "broker_splits");
+    const brokerSplitsQuery = query(brokerSplitsRef, where("broker_id", "==", oldUid));
+
+    const brokerAdvancesRef = collection(db, "broker_advances");
+    const brokerAdvancesQuery = query(brokerAdvancesRef, where("broker_id", "==", oldUid));
+
+    const pontoRegistrosRef = collection(db, "ponto_registros");
+    const pontoRegistrosQuery = query(pontoRegistrosRef, where("userId", "==", oldUid));
+
+    const pontoAjustesRef = collection(db, "ponto_ajustes");
+    const pontoAjustesQuery = query(pontoAjustesRef, where("userId", "==", oldUid));
+
+    const [
+      tasksUidSnap,
+      tasksAuthorSnap,
+      processesUidSnap,
+      processesAssignedSnap,
+      vistoriasSnap,
+      comissoesSnap,
+      brokerSplitsSnap,
+      brokerAdvancesSnap,
+      pontoRegistrosSnap,
+      pontoAjustesSnap
+    ] = await Promise.all([
+      getDocs(tasksQueryUid),
+      getDocs(tasksQueryAuthor),
+      getDocs(processesQueryUid),
+      getDocs(processesQueryAssigned),
+      getDocs(vistoriasQuery),
+      getDocs(comissoesQuery),
+      getDocs(brokerSplitsQuery),
+      getDocs(brokerAdvancesQuery),
+      getDocs(pontoRegistrosQuery),
+      getDocs(pontoAjustesQuery)
+    ]);
+
+    const getSnapSize = (snap: any) => {
+      if (snap && snap.docs && Array.isArray(snap.docs)) {
+        return snap.docs.length;
+      }
+      return (snap && snap.size) || 0;
+    };
+
+    const totalDocs = 
+      getSnapSize(tasksUidSnap) + 
+      getSnapSize(tasksAuthorSnap) + 
+      getSnapSize(processesUidSnap) + 
+      getSnapSize(processesAssignedSnap) + 
+      getSnapSize(vistoriasSnap) + 
+      getSnapSize(comissoesSnap) + 
+      getSnapSize(brokerSplitsSnap) + 
+      getSnapSize(brokerAdvancesSnap) + 
+      getSnapSize(pontoRegistrosSnap) + 
+      getSnapSize(pontoAjustesSnap);
+    migrationLogger.info(`${totalDocs} documentos encontrados`);
+
+    const operations: MigrationOp[] = [];
+
+    // Process Tasks Uid
+    tasksUidSnap.forEach((docSnap) => {
+      operations.push({
+        ref: doc(db, "tasks", docSnap.id),
+        type: 'update',
+        data: { uid: newUid, updatedAt: serverTimestamp() }
+      });
+    });
+
+    // Process Tasks Author
+    tasksAuthorSnap.forEach((docSnap) => {
+      operations.push({
+        ref: doc(db, "tasks", docSnap.id),
+        type: 'update',
+        data: { authorId: newUid, updatedAt: serverTimestamp() }
+      });
+    });
+
+    // Process Processes Uid
+    processesUidSnap.forEach((docSnap) => {
+      operations.push({
+        ref: doc(db, "processes", docSnap.id),
+        type: 'update',
+        data: { uid: newUid, updatedAt: serverTimestamp() }
+      });
+    });
+
+    // Process Processes AssignedTo
+    processesAssignedSnap.forEach((docSnap) => {
+      operations.push({
+        ref: doc(db, "processes", docSnap.id),
+        type: 'update',
+        data: { assignedTo: newUid, updatedAt: serverTimestamp() }
+      });
+    });
+
+    // Process Vistorias corretorId
+    vistoriasSnap.forEach((docSnap) => {
+      operations.push({
+        ref: doc(db, "vistorias", docSnap.id),
+        type: 'update',
+        data: { corretorId: newUid }
+      });
+    });
+
+    // Process Comissoes criadoPor
+    comissoesSnap.forEach((docSnap) => {
+      operations.push({
+        ref: doc(db, "comissoes", docSnap.id),
+        type: 'update',
+        data: { criadoPor: newUid }
+      });
+    });
+
+    // Process BrokerSplits broker_id
+    brokerSplitsSnap.forEach((docSnap) => {
+      operations.push({
+        ref: doc(db, "broker_splits", docSnap.id),
+        type: 'update',
+        data: { broker_id: newUid }
+      });
+    });
+
+    // Process Broker Advances broker_id
+    brokerAdvancesSnap.forEach((docSnap) => {
+      operations.push({
+        ref: doc(db, "broker_advances", docSnap.id),
+        type: 'update',
+        data: { broker_id: newUid }
+      });
+    });
+
+    // Process Ponto Registros - Re-key documents and update userId
+    pontoRegistrosSnap.forEach((docSnap) => {
+      const data = docSnap.data();
+      const date = data.date || docSnap.id.split('_')[1] || new Date().toISOString().split('T')[0];
+      const newDocId = `${newUid}_${date}`;
+      const newData = {
+        ...data,
+        userId: newUid,
+        id: newDocId
+      };
+      // Criar o documento na nova chave
+      operations.push({
+        ref: doc(db, "ponto_registros", newDocId),
+        type: 'set',
+        data: newData
+      });
+      // Deletar o documento na chave antiga
+      operations.push({
+        ref: doc(db, "ponto_registros", docSnap.id),
+        type: 'delete'
+      });
+    });
+
+    // Process Ponto Ajustes - Update userId and registroId
+    pontoAjustesSnap.forEach((docSnap) => {
+      const data = docSnap.data();
+      const oldRegistroId = data.registroId || "";
+      const newRegistroId = oldRegistroId.startsWith(oldUid + "_")
+        ? oldRegistroId.replace(oldUid + "_", newUid + "_")
+        : oldRegistroId;
+
+      operations.push({
+        ref: doc(db, "ponto_ajustes", docSnap.id),
+        type: 'update',
+        data: {
+          userId: newUid,
+          registroId: newRegistroId
+        }
+      });
+    });
+
+    let batchesCount = 0;
+    if (operations.length > 0) {
+      // Executar as operações em blocos/lotes (chunks) de no máximo 400 operações cada
+      const CHUNK_SIZE = 400;
+      for (let i = 0; i < operations.length; i += CHUNK_SIZE) {
+        const chunk = operations.slice(i, i + CHUNK_SIZE);
+        const chunkBatch = writeBatch(db);
+        
+        for (const op of chunk) {
+          if (op.type === 'update') {
+            chunkBatch.update(op.ref, op.data);
+          } else if (op.type === 'set') {
+            chunkBatch.set(op.ref, op.data, op.options);
+          } else if (op.type === 'delete') {
+            chunkBatch.delete(op.ref);
+          }
+        }
+        
+        await chunkBatch.commit();
+        batchesCount++;
+      }
+    }
+    migrationLogger.info(`${batchesCount} batches executados`);
+
+    // Registrar data de conclusão com sucesso no documento do convite pendente
+    try {
+      await updateDoc(pendingUserRef, {
+        migrationFinishedAt: Timestamp.now()
+      });
+    } catch (finishErr) {
+      // Ignorar se o documento já sumiu
+    }
+
+    const durationSec = ((performance.now() - startTime) / 1000).toFixed(1);
+    migrationLogger.info(`Migração concluída em ${durationSec} s`);
+
+  } catch (error: any) {
+    migrationLogger.error("Erro fatal durante a migração dos dados do usuário pendente:", error);
+    throw error;
+  } finally {
+    // Desbloquear/liberar o lock em caso de falha ou conclusão
+    if (hasLocked) {
+      try {
+        const pendingSnap = await getDoc(pendingUserRef);
+        if (pendingSnap.exists()) {
+          await updateDoc(pendingUserRef, { migrationLocked: false });
+          migrationLogger.info("Lock de migração liberado com sucesso.");
+        } else {
+          // Ignorado silenciosamente
+        }
+      } catch (unlockErr) {
+        // Ignorado silenciosamente
+      }
+    }
+  }
+}
+
+
+
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -7740,30 +8051,7 @@ export default function App() {
         
         unsubscribeProfile = onSnapshot(userDocRef, async (snapshot) => {
           if (!snapshot.exists()) {
-            // PROTEÇÃO ANTI-BLOQUEIO: admin master sempre tem perfil criado se não existir.
-            // Isso garante que o dono do sistema nunca fica trancado fora.
             const ADMIN_MASTER_EMAIL = "williangyn10@gmail.com";
-            if (authenticatedUser.email === ADMIN_MASTER_EMAIL) {
-              const adminProfile: UserProfile = {
-                uid: authenticatedUser.uid,
-                displayName: authenticatedUser.displayName || authenticatedUser.email?.split('@')[0] || "Administrador",
-                email: authenticatedUser.email,
-                photoURL: authenticatedUser.photoURL || `https://ui-avatars.com/api/?name=Admin&background=random`,
-                role: "admin",
-                companyId: "company",
-                status: "active",
-                createdAt: serverTimestamp(),
-              };
-              
-              try {
-                await setDoc(userDocRef, adminProfile, { merge: true });
-                console.log("Perfil de admin master criado/restaurado.");
-              } catch (err) {
-                console.error("Erro ao criar perfil de admin master:", err);
-              }
-              return; // continua aguardando o snapshot atualizar com os dados criados
-            }
-
             const TEAM_EMAILS_WHITELIST = [
               "fideliteimobiliaria@gmail.com",
               "fideliteiara@gmail.com", 
@@ -7772,71 +8060,8 @@ export default function App() {
               "iararamostelescunhadi@gmail.com"
             ];
 
-            if (authenticatedUser.email && TEAM_EMAILS_WHITELIST.includes(authenticatedUser.email)) {
-              const teamProfile: UserProfile = {
-                uid: authenticatedUser.uid,
-                displayName: authenticatedUser.displayName || authenticatedUser.email.split('@')[0] || "Equipe",
-                email: authenticatedUser.email,
-                photoURL: authenticatedUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(authenticatedUser.displayName || authenticatedUser.email || "E")}&background=random`,
-                role: "user",
-                companyId: "company",
-                status: "active",
-                isPending: false,
-                createdAt: serverTimestamp(),
-              };
-
-              try {
-                await setDoc(userDocRef, teamProfile, { merge: true });
-                console.log("Perfil de membro da equipe criado automaticamente:", authenticatedUser.email);
-              } catch (err) {
-                console.error("Erro ao criar perfil de equipe automático:", err);
-              }
-              return;
-            }
-            
-            // CASO NORMAL: usuário sem perfil.
-            // 1. Verificar primeiro se há um de token de convite ativo por link no localStorage
-            const inviteToken = localStorage.getItem('active_invite_token');
-            const inviteCompany = localStorage.getItem('active_invite_company');
-
-            if (inviteCompany || inviteToken) {
-              try {
-                const companyIdToUse = inviteCompany || inviteToken;
-                
-                // Sempre registrar com status "pending" e isPending como true, para o administrador aprovar e escolher cargo!
-                const pendingProfile: UserProfile = {
-                  uid: authenticatedUser.uid,
-                  displayName: authenticatedUser.displayName || authenticatedUser.email?.split('@')[0] || "Usuário",
-                  email: authenticatedUser.email,
-                  photoURL: authenticatedUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(authenticatedUser.displayName || authenticatedUser.email || "U")}&background=random`,
-                  role: "user", // cargo inicial padrão, será alterado pelo administrador ao aprovar
-                  companyId: companyIdToUse || "company",
-                  status: "pending",
-                  isPending: true,
-                  createdAt: serverTimestamp(),
-                };
-
-                // Gravar o perfil como pendente
-                await setDoc(userDocRef, pendingProfile, { merge: true });
-
-                // Limpar localStorage
-                localStorage.removeItem('active_invite_token');
-                localStorage.removeItem('active_invite_company');
-                localStorage.removeItem('active_invite_role');
-
-                console.log("Perfil pendente criado com sucesso usando link de convite.");
-                setProfile(null);
-                setLoading(false);
-                setAguardandoAprovacaoEmail(authenticatedUser.email || null);
-                await auth.signOut();
-                return;
-              } catch (inviteErr) {
-                console.error("Erro ao registrar usuário pendente:", inviteErr);
-              }
-            }
-
-            // CASO NORMAL SECUNDÁRIO: procurar registro pré-aprovado (criado pelo admin) com o email do usuário.
             try {
+              // Buscar primeiro por qualquer registro pendente (criado pelo admin) com o email do usuário
               const usersRef = collection(db, "users");
               const q = query(
                 usersRef,
@@ -7844,11 +8069,14 @@ export default function App() {
               );
               const querySnapshot = await getDocs(q);
               
-              // Localizar o registro pendente que começa com "pending_" ou que não possui o UID atual
-              const pendingDoc = querySnapshot.docs.find(doc => doc.id.startsWith("pending_") || doc.id !== authenticatedUser.uid);
+              // Localizar o convite pré-autorizado usando critérios explícitos e seguros (flag isPreAuthorized ou ID temporário de convite)
+              const pendingDoc = querySnapshot.docs.find(doc => 
+                doc.id !== authenticatedUser.uid && 
+                (doc.data().isPreAuthorized === true || doc.id.startsWith("pending_"))
+              );
               
               if (pendingDoc) {
-                // ENCONTROU CONVITE PENDENTE: ativar o usuário usando os dados do convite.
+                // ENCONTROU CONVITE PENDENTE: ativar o usuário e migrar seus dados (tarefas, processos, etc.)
                 const pendingData = pendingDoc.data();
                 
                 // Validar dados mínimos do convite
@@ -7861,6 +8089,18 @@ export default function App() {
                   return;
                 }
                 
+                // 1. Migração automática dos dados (tarefas, processos, vistorias, etc.)
+                try {
+                  await migratePendingUserData(pendingDoc.id, authenticatedUser.uid);
+                } catch (migrateErr) {
+                  console.error("Erro ao migrar dados de tarefas do usuário:", migrateErr);
+                  setProfile(null);
+                  setLoading(false);
+                  await auth.signOut();
+                  toast.error("Erro ao migrar suas tarefas. Entre em contato com o suporte.");
+                  return;
+                }
+
                 const activatedProfile: UserProfile = {
                   uid: authenticatedUser.uid,
                   displayName: pendingData.displayName || authenticatedUser.displayName || authenticatedUser.email?.split('@')[0] || "Usuário",
@@ -7878,9 +8118,9 @@ export default function App() {
                   await setDoc(userDocRef, activatedProfile, { merge: true });
                   // Remover o registro pendente antigo (que estava em outro documentID)
                   await deleteDoc(doc(db, "users", pendingDoc.id));
-                  console.log("Convite ativado para:", authenticatedUser.email);
+                  migrationLogger.info(`Pending removido`);
                 } catch (err) {
-                  console.error("Erro ao ativar convite:", err);
+                  console.error("Erro ao ativar convite após migração:", err);
                   setProfile(null);
                   setLoading(false);
                   await auth.signOut();
@@ -7888,12 +8128,91 @@ export default function App() {
                   return;
                 }
               } else {
-                // NÃO ENCONTROU CONVITE: usuário não autorizado.
+                // NÃO ENCONTROU CONVITE: Verificar se é Admin Master ou Equipe na Whitelist para criação direta
+                if (authenticatedUser.email === ADMIN_MASTER_EMAIL) {
+                  const adminProfile: UserProfile = {
+                    uid: authenticatedUser.uid,
+                    displayName: authenticatedUser.displayName || authenticatedUser.email?.split('@')[0] || "Administrador",
+                    email: authenticatedUser.email,
+                    photoURL: authenticatedUser.photoURL || `https://ui-avatars.com/api/?name=Admin&background=random`,
+                    role: "admin",
+                    companyId: "company",
+                    status: "active",
+                    createdAt: serverTimestamp(),
+                  };
+                  
+                  try {
+                    await setDoc(userDocRef, adminProfile, { merge: true });
+                    console.log("Perfil de admin master criado/restaurado.");
+                  } catch (err) {
+                    console.error("Erro ao criar perfil de admin master:", err);
+                  }
+                  return; // continua aguardando o snapshot atualizar com os dados criados
+                }
+
+                if (authenticatedUser.email && TEAM_EMAILS_WHITELIST.includes(authenticatedUser.email)) {
+                  const teamProfile: UserProfile = {
+                    uid: authenticatedUser.uid,
+                    displayName: authenticatedUser.displayName || authenticatedUser.email.split('@')[0] || "Equipe",
+                    email: authenticatedUser.email,
+                    photoURL: authenticatedUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(authenticatedUser.displayName || authenticatedUser.email || "E")}&background=random`,
+                    role: "user",
+                    companyId: "company",
+                    status: "active",
+                    isPending: false,
+                    createdAt: serverTimestamp(),
+                  };
+
+                  try {
+                    await setDoc(userDocRef, teamProfile, { merge: true });
+                    console.log("Perfil de membro da equipe criado automaticamente:", authenticatedUser.email);
+                  } catch (err) {
+                    console.error("Erro ao criar perfil de equipe automático:", err);
+                  }
+                  return;
+                }
+
+                // Verificar se há link de convite por token no localStorage (auto-cadastro)
+                const inviteToken = localStorage.getItem('active_invite_token');
+                const inviteCompany = localStorage.getItem('active_invite_company');
+
+                if (inviteCompany || inviteToken) {
+                  try {
+                    const companyIdToUse = inviteCompany || inviteToken;
+                    
+                    const pendingProfile: UserProfile = {
+                      uid: authenticatedUser.uid,
+                      displayName: authenticatedUser.displayName || authenticatedUser.email?.split('@')[0] || "Usuário",
+                      email: authenticatedUser.email,
+                      photoURL: authenticatedUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(authenticatedUser.displayName || authenticatedUser.email || "U")}&background=random`,
+                      role: "user",
+                      companyId: companyIdToUse || "company",
+                      status: "pending",
+                      isPending: true,
+                      createdAt: serverTimestamp(),
+                    };
+
+                    await setDoc(userDocRef, pendingProfile, { merge: true });
+
+                    localStorage.removeItem('active_invite_token');
+                    localStorage.removeItem('active_invite_company');
+                    localStorage.removeItem('active_invite_role');
+
+                    console.log("Perfil pendente criado com sucesso usando link de convite.");
+                    setProfile(null);
+                    setLoading(false);
+                    setAguardandoAprovacaoEmail(authenticatedUser.email || null);
+                    await auth.signOut();
+                    return;
+                  } catch (inviteErr) {
+                    console.error("Erro ao registrar usuário pendente por link:", inviteErr);
+                  }
+                }
+
+                // Se não cair em nenhuma das condições acima, é acesso não autorizado
                 console.warn("Tentativa de acesso sem convite válido:", authenticatedUser.email);
                 setProfile(null);
                 setLoading(false);
-                
-                // Mostrar tela de não autorizado (state controla isso) e deslogar
                 setNaoAutorizadoEmail(authenticatedUser.email || null);
                 await auth.signOut();
                 return;

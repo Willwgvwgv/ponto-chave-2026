@@ -29,7 +29,9 @@ import {
   orderBy as realOrderBy,
   limit as realLimit,
   startAfter as realStartAfter,
-  limitToLast as realLimitToLast
+  limitToLast as realLimitToLast,
+  writeBatch as realWriteBatch,
+  runTransaction as realRunTransaction
 } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { sanitizeForFirestore } from './lib/utils';
@@ -324,40 +326,119 @@ const snapshotListeners = new Set<{
   path: string;
   isDoc: boolean;
   callback: (snapshot: any) => void;
+  ref?: any;
+  previousDocsMap: Map<string, string>;
 }>();
+
+function buildSnapshotForListener(listener: any) {
+  if (listener.isDoc) {
+    const parts = listener.path.split('/');
+    const id = parts[parts.length - 1];
+    const collectionPath = parts.slice(0, parts.length - 1).join('/');
+    const coll = getLocalCollection(collectionPath);
+    const data = coll[id];
+    return {
+      exists: () => data !== undefined,
+      id,
+      data: () => data
+    };
+  } else {
+    const pathValue = listener.path || '';
+    const coll = getLocalCollection(pathValue);
+    let docs = Object.entries(coll).map(([id, val]) => ({
+      id,
+      data: () => val,
+      exists: () => true
+    }));
+
+    // Apply ref/query filters if ref has filters
+    const ref = listener.ref;
+    if (ref && ref.filters && ref.filters.length > 0) {
+      docs = docs.filter((docSnap: any) => {
+        const docData = docSnap.data();
+        if (!docData) return false;
+        for (const filter of ref.filters) {
+          const { field, op, value } = filter;
+          const actual = docData[field];
+          if (op === '==') {
+            if (actual !== value) return false;
+          } else if (op === '!=') {
+            if (actual === value) return false;
+          } else if (op === 'array-contains') {
+            if (!Array.isArray(actual) || !actual.includes(value)) return false;
+          }
+        }
+        return true;
+      });
+    }
+
+    if (ref && ref.orders && ref.orders.length > 0) {
+      ref.orders.forEach((order: any) => {
+        docs.sort((a, b) => {
+          const valA = a.data()?.[order.field];
+          const valB = b.data()?.[order.field];
+          if (valA === undefined) return 1;
+          if (valB === undefined) return -1;
+          if (valA < valB) return order.dir === 'desc' ? 1 : -1;
+          if (valA > valB) return order.dir === 'desc' ? -1 : 1;
+          return 0;
+        });
+      });
+    }
+
+    if (ref && ref.limitVal !== null && ref.limitVal !== undefined) {
+      docs = docs.slice(0, ref.limitVal);
+    }
+
+    // Calculate changes
+    const changes: any[] = [];
+    const currentDocsMap = new Map<string, string>();
+
+    docs.forEach(docSnap => {
+      const docId = docSnap.id;
+      const docJson = JSON.stringify(docSnap.data());
+      currentDocsMap.set(docId, docJson);
+
+      if (!listener.previousDocsMap.has(docId)) {
+        changes.push({ type: 'added', doc: docSnap });
+      } else if (listener.previousDocsMap.get(docId) !== docJson) {
+        changes.push({ type: 'modified', doc: docSnap });
+      }
+    });
+
+    listener.previousDocsMap.forEach((oldJson: string, oldId: string) => {
+      if (!currentDocsMap.has(oldId)) {
+        changes.push({
+          type: 'removed',
+          doc: {
+            id: oldId,
+            data: () => JSON.parse(oldJson),
+            exists: () => false
+          }
+        });
+      }
+    });
+
+    // Update the map for the next run
+    listener.previousDocsMap = currentDocsMap;
+
+    return {
+      empty: docs.length === 0,
+      docs,
+      forEach: (cb: (doc: any) => void) => {
+        docs.forEach(cb);
+      },
+      docChanges: () => changes
+    };
+  }
+}
 
 function triggerSnapshotListeners(path: string) {
   snapshotListeners.forEach(listener => {
     const listenerBaseColl = listener.path.split('/')[0];
     const triggerBaseColl = path.split('/')[0];
     if (listenerBaseColl === triggerBaseColl) {
-      let snapshot: any;
-      if (listener.isDoc) {
-        const parts = listener.path.split('/');
-        const id = parts[parts.length - 1];
-        const collectionPath = parts.slice(0, parts.length - 1).join('/');
-        const coll = getLocalCollection(collectionPath);
-        const data = coll[id];
-        snapshot = {
-          exists: () => data !== undefined,
-          id,
-          data: () => data
-        };
-      } else {
-        const coll = getLocalCollection(listener.path);
-        const docs = Object.entries(coll).map(([id, val]) => ({
-          id,
-          data: () => val,
-          exists: () => true
-        }));
-        snapshot = {
-          empty: docs.length === 0,
-          docs,
-          forEach: (callback: (doc: any) => void) => {
-            docs.forEach(callback);
-          }
-        };
-      }
+      const snapshot = buildSnapshotForListener(listener);
       setTimeout(() => {
         listener.callback(snapshot);
       }, 10);
@@ -742,34 +823,10 @@ export function onSnapshot(ref: any, callback: (snapshot: any) => void, onError?
   if (isDemoMode) {
     const isDoc = ref && ref._type === 'doc';
     const path = ref && ref.path;
-    const listener = { path, isDoc, callback };
+    const listener = { path, isDoc, callback, ref, previousDocsMap: new Map<string, string>() };
     snapshotListeners.add(listener);
 
-    let initialSnapshot: any;
-    if (isDoc) {
-      const coll = getLocalCollection(ref.collectionPath);
-      const data = coll[ref.id];
-      initialSnapshot = {
-        exists: () => data !== undefined,
-        id: ref.id,
-        data: () => data
-      };
-    } else {
-      const pathValue = ref.path || ref.collectionRef?.path || ref || '';
-      const coll = getLocalCollection(pathValue);
-      const docs = Object.entries(coll).map(([id, val]) => ({
-        id,
-        data: () => val,
-        exists: () => true
-      }));
-      initialSnapshot = {
-        empty: docs.length === 0,
-        docs,
-        forEach: (cb: (doc: any) => void) => {
-          docs.forEach(cb);
-        }
-      };
-    }
+    const initialSnapshot = buildSnapshotForListener(listener);
     
     setTimeout(() => {
       callback(initialSnapshot);
@@ -899,6 +956,104 @@ export async function deleteDoc(docRef: any) {
   }
 }
 
+export function writeBatch(dbInstance: any) {
+  if (isDemoMode) {
+    const operations: Array<() => Promise<void>> = [];
+    const batchObj = {
+      set: (docRef: any, data: any, options?: any) => {
+        operations.push(async () => {
+          await setDoc(docRef, data, options);
+        });
+        return batchObj;
+      },
+      update: (docRef: any, data: any) => {
+        operations.push(async () => {
+          await updateDoc(docRef, data);
+        });
+        return batchObj;
+      },
+      delete: (docRef: any) => {
+        operations.push(async () => {
+          await deleteDoc(docRef);
+        });
+        return batchObj;
+      },
+      commit: async () => {
+        for (const op of operations) {
+          await op();
+        }
+      }
+    };
+    return batchObj as any;
+  }
+  return realWriteBatch(dbInstance);
+}
+
+export async function runTransaction(dbInstance: any, updateFunction: (transaction: any) => Promise<any>) {
+  if (isDemoMode) {
+    const transaction = {
+      get: async (docRef: any) => {
+        const parts = docRef.path?.split('/');
+        if (parts && parts.length >= 2) {
+          const id = parts[parts.length - 1];
+          const collectionPath = parts.slice(0, parts.length - 1).join('/');
+          const coll = getLocalCollection(collectionPath);
+          const data = coll[id];
+          return {
+            exists: () => data !== undefined,
+            id,
+            data: () => data
+          };
+        }
+        return {
+          exists: () => false,
+          id: docRef.id || "",
+          data: () => null
+        };
+      },
+      update: (docRef: any, data: any) => {
+        const parts = docRef.path?.split('/');
+        if (parts && parts.length >= 2) {
+          const id = parts[parts.length - 1];
+          const collectionPath = parts.slice(0, parts.length - 1).join('/');
+          const coll = getLocalCollection(collectionPath);
+          const existing = coll[id] || {};
+          coll[id] = { ...existing, ...data };
+          setLocalCollection(collectionPath, coll);
+        }
+        return transaction;
+      },
+      set: (docRef: any, data: any, options?: any) => {
+        const parts = docRef.path?.split('/');
+        if (parts && parts.length >= 2) {
+          const id = parts[parts.length - 1];
+          const collectionPath = parts.slice(0, parts.length - 1).join('/');
+          const coll = getLocalCollection(collectionPath);
+          const existing = coll[id] || {};
+          const sanitized = sanitizeForFirestore(data);
+          coll[id] = options?.merge ? { ...existing, ...sanitized } : sanitized;
+          setLocalCollection(collectionPath, coll);
+        }
+        return transaction;
+      },
+      delete: (docRef: any) => {
+        const parts = docRef.path?.split('/');
+        if (parts && parts.length >= 2) {
+          const id = parts[parts.length - 1];
+          const collectionPath = parts.slice(0, parts.length - 1).join('/');
+          const coll = getLocalCollection(collectionPath);
+          delete coll[id];
+          setLocalCollection(collectionPath, coll);
+        }
+        return transaction;
+      }
+    };
+    return await updateFunction(transaction);
+  }
+
+  return await realRunTransaction(dbInstance, updateFunction);
+}
+
 export function arrayUnion(...values: any[]) {
   if (isDemoMode) {
     return { _type: 'arrayUnion', values };
@@ -918,11 +1073,17 @@ export class Timestamp {
     this.seconds = seconds;
     this.nanoseconds = nanoseconds;
   }
-  static now() {
+  static now(): any {
+    if (!isDemoMode) {
+      return realTimestamp.now();
+    }
     const d = new Date();
     return new Timestamp(Math.floor(d.getTime() / 1000), 0);
   }
-  static fromDate(date: Date) {
+  static fromDate(date: Date): any {
+    if (!isDemoMode) {
+      return realTimestamp.fromDate(date);
+    }
     return new Timestamp(Math.floor(date.getTime() / 1000), 0);
   }
   toDate() {

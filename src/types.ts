@@ -33,6 +33,7 @@ export interface UserProfile {
   companyId?: string;
   status?: "active" | "blocked" | "pending";
   isPending?: boolean;
+  isPreAuthorized?: boolean;
   createdAt?: any;
   gcalLastSync?: string;
   isSocio?: boolean;        // true = pode ter múltiplos papéis na divisão de comissões

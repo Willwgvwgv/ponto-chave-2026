@@ -27,6 +27,17 @@ export const SalesList: React.FC<SalesListProps> = ({
   const [selectedStatus, setSelectedStatus] = useState<string>("TODAS");
   const [showCancelled, setShowCancelled] = useState(false);
 
+  const filteredBrokersForDropdown = useMemo(() => {
+    return team.filter((b) => {
+      const nameLower = b.name?.toLowerCase() || "";
+      const emailLower = b.email?.toLowerCase() || "";
+      const isCompanyProfile = 
+        nameLower === "fidelité imobiliária" || 
+        emailLower === "fideliteimobiliaria@gmail.com";
+      return !isCompanyProfile;
+    });
+  }, [team]);
+
   // Seletor de período para exportação de PDF
   const { first: defaultFirst, last: defaultLast } = useMemo(() => {
     const d = new Date();
@@ -1145,9 +1156,9 @@ export const SalesList: React.FC<SalesListProps> = ({
               className="w-full bg-slate-50 border border-slate-100 focus:border-blue-500 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-700 focus:outline-none transition-colors"
             >
               <option value="">Filtro por Corretor (Todos)</option>
-              {team.map((b) => (
+              {filteredBrokersForDropdown.map((b) => (
                 <option key={b.id} value={b.id}>
-                  {b.name} ({b.role})
+                  {b.name} ({b.role === "ADMIN" ? "Administrador" : b.role === "MANAGER" ? "Gestor" : "Corretor"})
                 </option>
               ))}
             </select>

@@ -233,7 +233,6 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
   }, [aluguelMensal, porcentagemLocador]);
 
   const valorCaptadoresValue = useMemo(() => {
-    return Number(((aluguelMensal * porcentagemCaptadores) / 105).toFixed(2)); // adjusted slightly or kept proportional
     return Number(((aluguelMensal * porcentagemCaptadores) / 100).toFixed(2));
   }, [aluguelMensal, porcentagemCaptadores]);
 
@@ -241,20 +240,22 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
     return Number((aluguelMensal - valorFidelite).toFixed(2));
   }, [aluguelMensal, valorFidelite]);
 
-  const computedRateios = useMemo(() => {
-    const locadorCount = rateios.filter(r => r.papel === "locacao").length;
-    const captadorCount = rateios.filter(r => r.papel === "captador").length;
+  const sumCaptadoresPct = useMemo(() => {
+    return Number(rateios.filter(r => r.papel === "captador").reduce((sum, r) => sum + (r.porcentagem || 0), 0).toFixed(2));
+  }, [rateios]);
 
+  const computedRateios = useMemo(() => {
     return rateios.map(r => {
-      if (r.papel === "locacao") {
+      if (r.papel === "locacao" || r.papel === "locador") {
         return {
           ...r,
+          papel: "locacao" as const,
           porcentagem: porcentagemLocador,
           valor: valorLocadorValue
         };
-      } else if (r.papel === "captador" || r.papel === "locador") {
-        const pct = captadorCount > 0 ? Number((porcentagemCaptadores / captadorCount).toFixed(2)) : 0;
-        const val = captadorCount > 0 ? Number((valorCaptadoresValue / captadorCount).toFixed(2)) : 0;
+      } else if (r.papel === "captador") {
+        const pct = r.porcentagem !== undefined ? r.porcentagem : 0;
+        const val = Number(((aluguelMensal * pct) / 100).toFixed(2));
         return {
           ...r,
           porcentagem: pct,
@@ -263,7 +264,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
       }
       return r;
     });
-  }, [rateios, porcentagemLocador, valorLocadorValue, porcentagemCaptadores, valorCaptadoresValue]);
+  }, [rateios, porcentagemLocador, valorLocadorValue, aluguelMensal]);
 
   const countAtraso = useMemo(() => {
     // legacy backward compat atraso trigger
@@ -401,20 +402,86 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
       return;
     }
 
+    const currentCaptadores = rateios.filter(r => r.papel === "captador");
+    const newCount = currentCaptadores.length + 1;
+    const equalPct = Number((porcentagemCaptadores / newCount).toFixed(2));
+
+    const updatedRateios = rateios.map(rt => {
+      if (rt.papel === "captador") {
+        return {
+          ...rt,
+          porcentagem: equalPct,
+          valor: Number(((aluguelMensal * equalPct) / 100).toFixed(2))
+        };
+      }
+      return rt;
+    });
+
     const newRateio: RateioComissao = {
       corretorId: brokerId,
       corretorNome: brokerObj.name,
       papel: "captador",
-      porcentagem: 0,
-      valor: 0
+      porcentagem: equalPct,
+      valor: Number(((aluguelMensal * equalPct) / 100).toFixed(2))
     };
 
-    setRateios([...rateios, newRateio]);
+    setRateios([...updatedRateios, newRateio]);
     setSelectedCaptadorId("");
   };
 
   const handleRemoveBrokerFromRateio = (id: string) => {
-    setRateios(rateios.filter(rt => rt.corretorId !== id));
+    const itemToRemove = rateios.find(rt => rt.corretorId === id);
+    const papel = itemToRemove?.papel || "";
+    const afterRemoval = rateios.filter(rt => rt.corretorId !== id);
+
+    if (papel === "captador") {
+      const remainingCaptadores = afterRemoval.filter(r => r.papel === "captador");
+      const count = remainingCaptadores.length;
+      const equalPct = count > 0 ? Number((porcentagemCaptadores / count).toFixed(2)) : 0;
+
+      setRateios(afterRemoval.map(rt => {
+        if (rt.papel === "captador") {
+          return {
+            ...rt,
+            porcentagem: equalPct,
+            valor: Number(((aluguelMensal * equalPct) / 100).toFixed(2))
+          };
+        }
+        return rt;
+      }));
+    } else {
+      setRateios(afterRemoval);
+    }
+  };
+
+  const handleUpdateCaptadorPct = (brokerId: string, pctValue: number) => {
+    setRateios(prev => prev.map(rt => {
+      if (rt.corretorId === brokerId && rt.papel === "captador") {
+        return {
+          ...rt,
+          porcentagem: pctValue,
+          valor: Number(((aluguelMensal * pctValue) / 100).toFixed(2))
+        };
+      }
+      return rt;
+    }));
+  };
+
+  const handleBalanceCaptadores = () => {
+    const captadores = rateios.filter(r => r.papel === "captador");
+    const count = captadores.length;
+    if (count === 0) return;
+    const equalPct = Number((porcentagemCaptadores / count).toFixed(2));
+    setRateios(prev => prev.map(rt => {
+      if (rt.papel === "captador") {
+        return {
+          ...rt,
+          porcentagem: equalPct,
+          valor: Number(((aluguelMensal * equalPct) / 100).toFixed(2))
+        };
+      }
+      return rt;
+    }));
   };
 
   const handleSaveRental = (e: React.FormEvent) => {
@@ -438,6 +505,11 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
     const hasCaptadorBroker = rateios.some(r => r.papel === "captador");
     if (porcentagemCaptadores > 0 && !hasCaptadorBroker) {
       toast.error(`Por favor, adicione pelo menos um Corretor Captador para receber a parte de captação (${porcentagemCaptadores}%).`);
+      return;
+    }
+
+    if (hasCaptadorBroker && sumCaptadoresPct !== porcentagemCaptadores) {
+      toast.error(`A soma das porcentagens dos captadores (${sumCaptadoresPct}%) deve ser igual a ${porcentagemCaptadores}%. Ajuste os valores ou utilize a opção de divisão igualitária.`);
       return;
     }
 
@@ -1135,6 +1207,27 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                   </div>
                 </div>
 
+                {rateios.filter(r => r.papel === "captador").length > 0 && sumCaptadoresPct !== porcentagemCaptadores && (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-700 font-medium space-y-1.5 shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold">⚠️ Rateio incompleto/excedente</span>
+                      <span className="font-mono font-black px-1.5 py-0.5 bg-amber-100 rounded">
+                        {sumCaptadoresPct}% de {porcentagemCaptadores}%
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-amber-600 leading-snug">
+                      A soma das porcentagens dos captadores precisa ser exatamente {porcentagemCaptadores}%. Atualmente está em {sumCaptadoresPct}%.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleBalanceCaptadores}
+                      className="w-full py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-black uppercase tracking-wider rounded-lg transition-all shadow-sm"
+                    >
+                      Dividir Igualmente ({Number(porcentagemCaptadores / rateios.filter(r => r.papel === "captador").length).toFixed(2).replace(/\.00$/, "")}% cada)
+                    </button>
+                  </div>
+                )}
+
                 {rateios.length === 0 ? (
                   <p className="text-xs text-slate-400 font-bold text-center italic py-6">Insira os corretores responsáveis nos respectivos campos acima.</p>
                 ) : (
@@ -1150,12 +1243,32 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                               }`}>
                                 {rt.papel === "locador" || rt.papel === "locacao" ? "Locador" : "Captador"}
                               </span>
-                              <span>•</span>
-                              <span>{Number(rt.porcentagem).toFixed(2).replace(/\.00$/, "")}%</span>
+                              
+                              {rt.papel === "captador" ? (
+                                <div className="flex items-center gap-1 ml-1">
+                                  <span>•</span>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max="100"
+                                    step="0.1"
+                                    value={rt.porcentagem || 0}
+                                    onChange={(e) => handleUpdateCaptadorPct(rt.corretorId, Number(e.target.value))}
+                                    className="w-14 px-1 py-0.5 bg-slate-50 border border-slate-205 rounded text-center text-[10px] font-bold text-slate-700 focus:outline-none focus:border-indigo-500"
+                                    placeholder="%"
+                                  />
+                                  <span className="text-[10px] font-bold text-slate-500">%</span>
+                                </div>
+                              ) : (
+                                <>
+                                  <span>•</span>
+                                  <span>{Number(rt.porcentagem).toFixed(2).replace(/\.00$/, "")}%</span>
+                                </>
+                              )}
                             </div>
                           </div>
                           <div className="flex items-center gap-2.5 font-bold">
-                            <span className="font-extrabold text-slate-850 font-mono">{formatCurrency(rt.valor)}</span>
+                            <span className="font-extrabold text-slate-855 font-mono">{formatCurrency(rt.valor)}</span>
                             <button
                               type="button"
                               onClick={() => handleRemoveBrokerFromRateio(rt.corretorId)}
