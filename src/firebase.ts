@@ -80,11 +80,49 @@ const isAIStudioPreview = typeof window !== 'undefined' && (
 
 const useEnvConfig = isAIStudioPreview ? isEnvConfigComplete : (isEnvConfigComplete || !!env.VITE_FIREBASE_API_KEY);
 
+const resolvedProjectId = cleanStr((useEnvConfig && env.VITE_FIREBASE_PROJECT_ID) ? env.VITE_FIREBASE_PROJECT_ID : firebaseConfig.projectId);
+
+const getStorageBucket = () => {
+  const envBucket = useEnvConfig ? cleanStr(env.VITE_FIREBASE_STORAGE_BUCKET) : '';
+  if (envBucket) return envBucket;
+  
+  const configBucket = cleanStr(firebaseConfig.storageBucket);
+  if (configBucket) return configBucket;
+  
+  if (useEnvConfig && env.VITE_FIREBASE_PROJECT_ID) {
+    const cleanProj = cleanStr(env.VITE_FIREBASE_PROJECT_ID);
+    return `${cleanProj}.firebasestorage.app`;
+  }
+  
+  if (resolvedProjectId) {
+    return `${resolvedProjectId}.firebasestorage.app`;
+  }
+  return '';
+};
+
+const getAuthDomain = () => {
+  const envDomain = useEnvConfig ? cleanStr(env.VITE_FIREBASE_AUTH_DOMAIN) : '';
+  if (envDomain) return envDomain;
+  
+  if (useEnvConfig && env.VITE_FIREBASE_PROJECT_ID) {
+    const cleanProj = cleanStr(env.VITE_FIREBASE_PROJECT_ID);
+    return `${cleanProj}.firebaseapp.com`;
+  }
+  
+  const configDomain = cleanStr(firebaseConfig.authDomain);
+  if (configDomain) return configDomain;
+  
+  if (resolvedProjectId) {
+    return `${resolvedProjectId}.firebaseapp.com`;
+  }
+  return '';
+};
+
 export const resolvedFirebaseConfig = {
   apiKey: cleanStr(useEnvConfig ? env.VITE_FIREBASE_API_KEY : firebaseConfig.apiKey),
-  authDomain: cleanStr((useEnvConfig && env.VITE_FIREBASE_AUTH_DOMAIN) ? env.VITE_FIREBASE_AUTH_DOMAIN : firebaseConfig.authDomain),
-  projectId: cleanStr((useEnvConfig && env.VITE_FIREBASE_PROJECT_ID) ? env.VITE_FIREBASE_PROJECT_ID : firebaseConfig.projectId),
-  storageBucket: cleanStr((useEnvConfig && env.VITE_FIREBASE_STORAGE_BUCKET) ? env.VITE_FIREBASE_STORAGE_BUCKET : firebaseConfig.storageBucket),
+  authDomain: getAuthDomain(),
+  projectId: resolvedProjectId,
+  storageBucket: getStorageBucket(),
   messagingSenderId: cleanStr((useEnvConfig && env.VITE_FIREBASE_MESSAGING_SENDER_ID) ? env.VITE_FIREBASE_MESSAGING_SENDER_ID : firebaseConfig.messagingSenderId),
   appId: cleanStr((useEnvConfig && env.VITE_FIREBASE_APP_ID) ? env.VITE_FIREBASE_APP_ID : firebaseConfig.appId),
   firestoreDatabaseId: useEnvConfig ? getSanitizedDatabaseId() : (cleanStr(firebaseConfig.firestoreDatabaseId) || "(default)")
@@ -115,6 +153,27 @@ export const isDemoMode = isLocalOverride ||
 
 // Initialize Firebase SDK or Mocks gracefully
 const app = initializeApp(resolvedFirebaseConfig);
+
+// Diagnostic Logs requested by the user
+const debugFirebase = typeof window !== 'undefined' && ((import.meta as any).env?.DEV || localStorage.getItem("VITE_DEBUG_FIREBASE") === "true");
+
+if (debugFirebase) {
+  console.log("=== DIAGNOSTICO FIREBASE ===");
+  console.log("Firebase resolvedFirebaseConfig:", {
+    projectId: resolvedFirebaseConfig.projectId,
+    authDomain: resolvedFirebaseConfig.authDomain,
+    storageBucket: resolvedFirebaseConfig.storageBucket,
+    firestoreDatabaseId: resolvedFirebaseConfig.firestoreDatabaseId
+  });
+  
+  // Safe sanitized snapshot exposed to window to prevent exposing raw keys/secrets in production
+  (window as any).__firebaseDebug = {
+    projectId: app.options.projectId,
+    storageBucket: app.options.storageBucket,
+    authDomain: app.options.authDomain,
+    currentUser: null
+  };
+}
 
 export const auth = isDemoMode ? (() => {
   const defaultUser = {
@@ -164,6 +223,622 @@ export const db = isDemoMode ? { _type: 'db_mock' } as any : (
 );
 export const storage = isDemoMode ? null as any : getStorage(app);
 export const googleProvider = new GoogleAuthProvider();
+
+export interface UploadDiagnostics {
+  beforeUpload: (storageRef: any, blob: Blob) => Promise<void>;
+  success: (snapshot: any, downloadUrl: string) => void;
+  error: (err: any) => void;
+  getReport: () => any;
+  setPhase?: (phase: "prepare" | "auth" | "createReference" | "uploadStarted" | "uploadFinished" | "downloadUrl") => void;
+}
+
+// Persistent Session ID for the active runtime instance of the app
+const sessionUUID = typeof crypto !== 'undefined' && crypto.randomUUID 
+  ? crypto.randomUUID() 
+  : Math.random().toString(36).substring(2, 15) + '-' + Date.now();
+
+/**
+ * Creates a diagnostic telemetry session for a single file upload.
+ * Consolidates browser, build, connection, auth, and performance data into a unified, clean console flow.
+ */
+export function createUploadDiagnostics(uploadId?: string): UploadDiagnostics {
+  const uid = uploadId || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15));
+  let startTime = 0;
+  let cachedRef: any = null;
+  let cachedBlob: Blob | null = null;
+
+  // Structured diagnostic data that can be exported as a JSON report
+  const report: any = {
+    trace: {
+      sessionId: sessionUUID,
+      uploadId: uid,
+      correlationId: uid,
+      traceId: `${sessionUUID.substring(0, 8)}-${uid.substring(0, 8)}`
+    },
+    diagnosticEngine: {
+      version: "1.6.0",
+      heuristicsVersion: "2026-07-v2"
+    },
+    status: "PENDING",
+    uploadPhase: "prepare",
+    performance: {
+      durationMs: null
+    },
+    buildInfo: {
+      appVersion: "1.6.0-expert-telemetry",
+      buildDate: "2026-07-06",
+      environment: (import.meta as any).env?.MODE || "production",
+      isDemoMode,
+      deployEnvironment: typeof window !== 'undefined' ? (
+        window.location.hostname.includes('localhost') || window.location.hostname.includes('127.0.0.1') ? 'development' :
+        window.location.hostname.includes('ais-dev') ? 'development-preview' : 'production'
+      ) : 'unknown',
+      hostname: typeof window !== 'undefined' ? window.location.hostname : 'N/A'
+    },
+    browser: {},
+    firebaseOptions: {},
+    fileDetails: {},
+    auth: {},
+    timeline: [],
+    healthChecks: {
+      firebaseInitialized: !isDemoMode && !!app,
+      authenticated: false,
+      tokenValid: false,
+      bucketResolved: false,
+      bucketName: "N/A",
+      bucketExpected: "N/A",
+      bucketMatchesExpected: false,
+      projectIdResolved: "N/A",
+      networkOnline: true,
+      preflightSucceeded: null,
+      uploadSucceeded: false,
+      downloadUrlGenerated: false
+    },
+    errorLayers: {
+      browserLayer: null,
+      httpNetworkLayer: null,
+      sdkLayer: null,
+      businessLayer: null
+    },
+    possibleCauses: [],
+    rootCauseAnalysis: null,
+    errorDetails: null,
+    successDetails: null
+  };
+
+  const addTimelineEvent = (event: string) => {
+    const elapsed = startTime > 0 ? `${(performance.now() - startTime).toFixed(0)}ms` : "0ms";
+    report.timeline.push(`[${elapsed}] ${event}`);
+  };
+
+  startTime = performance.now();
+  addTimelineEvent("Sessão de diagnóstico criada.");
+
+  return {
+    beforeUpload: async (storageRef: any, blob: Blob) => {
+      cachedRef = storageRef;
+      cachedBlob = blob;
+      report.uploadPhase = "createReference";
+      addTimelineEvent("Antes do Upload: Analisando metadados do arquivo, rede e estado de autenticação.");
+
+      const timestamp = new Date().toISOString();
+      report.timestampUtc = timestamp;
+
+      // Capture Connection Info if browser supports Network Information API
+      let networkConn: any = null;
+      if (typeof navigator !== 'undefined') {
+        const conn = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
+        if (conn) {
+          networkConn = {
+            effectiveType: conn.effectiveType || "N/A",
+            rtt: conn.rtt !== undefined ? conn.rtt : "N/A",
+            downlink: conn.downlink !== undefined ? conn.downlink : "N/A"
+          };
+        }
+      }
+
+      // Capture browser details
+      const browserInfo = typeof navigator !== 'undefined' ? {
+        userAgent: navigator.userAgent,
+        online: navigator.onLine,
+        language: navigator.language,
+        platform: navigator.platform,
+        connection: networkConn
+      } : {};
+
+      report.browser = browserInfo;
+      report.healthChecks.networkOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+      addTimelineEvent("Metadados do navegador e rede coletados.");
+
+      // Capture Firebase client config options
+      const firebaseOpts = !isDemoMode && app ? {
+        projectId: app.options.projectId || "N/A",
+        storageBucket: app.options.storageBucket || "N/A",
+        authDomain: app.options.authDomain || "N/A"
+      } : { demo: true };
+
+      report.firebaseOptions = firebaseOpts;
+
+      // Capture file details
+      const fileDetails = {
+        fullPath: storageRef?.fullPath || "N/A",
+        bucket: storageRef?.bucket || "N/A",
+        name: storageRef?.name || "N/A",
+        contentType: blob.type,
+        sizeBytes: blob.size,
+        sizeKb: `${(blob.size / 1024).toFixed(2)} KB`
+      };
+
+      report.fileDetails = fileDetails;
+      report.healthChecks.bucketResolved = !!(storageRef?.bucket);
+      report.healthChecks.bucketName = storageRef?.bucket || "N/A";
+      report.healthChecks.bucketExpected = (!isDemoMode && app && app.options.storageBucket) ? app.options.storageBucket : "N/A";
+      report.healthChecks.bucketMatchesExpected = (!isDemoMode && app && storageRef?.bucket) ? (storageRef.bucket === app.options.storageBucket) : true;
+      report.healthChecks.projectIdResolved = (!isDemoMode && app && app.options.projectId) ? app.options.projectId : "N/A";
+      
+      addTimelineEvent("Identificadores e tamanho do arquivo mapeados com correspondência de bucket.");
+      
+      report.uploadPhase = "auth";
+
+      // Get safe Auth details
+      let authDetails: any = { isAuthenticated: false };
+      if (!isDemoMode && auth && auth.currentUser) {
+        authDetails.isAuthenticated = true;
+        authDetails.uid = auth.currentUser.uid;
+        authDetails.email = auth.currentUser.email;
+        report.healthChecks.authenticated = true;
+        try {
+          addTimelineEvent("Solicitando IdToken do Firebase Auth.");
+          const tokenResult = await auth.currentUser.getIdTokenResult();
+          authDetails.issuedAt = tokenResult.issuedAtTime;
+          authDetails.expirationTime = tokenResult.expirationTime;
+          authDetails.authTime = tokenResult.authTime;
+          report.healthChecks.tokenValid = true;
+          addTimelineEvent("Token ID do Firebase Auth resolvido e validado.");
+        } catch (tokenErr: any) {
+          authDetails.tokenError = tokenErr?.message || "Erro ao ler token";
+          report.healthChecks.tokenValid = false;
+          addTimelineEvent(`Aviso: Falha ao obter IdTokenResult: ${tokenErr?.message || 'Erro'}`);
+        }
+      } else if (isDemoMode) {
+        authDetails.isDemoUser = true;
+        report.healthChecks.authenticated = true;
+        report.healthChecks.tokenValid = true;
+        addTimelineEvent("Modo de demonstração offline ativo (Sem autenticação real).");
+      } else {
+        report.healthChecks.authenticated = false;
+        report.healthChecks.tokenValid = false;
+        addTimelineEvent("ALERTA CRÍTICO: Nenhum usuário autenticado detectado.");
+      }
+
+      report.auth = authDetails;
+      report.uploadPhase = "uploadStarted";
+      addTimelineEvent("Pré-validações concluídas. Iniciando chamada de rede uploadBytes().");
+
+      // Output beautifully structured consolidated single console.group
+      console.group(`=== TELEMETRIA [SESSÃO: ${sessionUUID.substring(0, 8)}] [UPLOAD: ${uid.substring(0, 8)}] ===`);
+      console.log(`[INFO] [${timestamp}] Upload iniciado.`);
+      console.log("► Identificação e Trace:", report.trace);
+      console.log("► Motor de Heurísticas:", report.diagnosticEngine);
+      console.log("► Informações Gerais:", report.buildInfo);
+      console.log("► Navegador e Rede:", report.browser);
+      console.log("► Configuração Firebase:", report.firebaseOptions);
+      console.log("► Detalhes do Arquivo:", report.fileDetails);
+      console.log("► Estado da Autenticação:", report.auth);
+      console.log("► Validações de Saúde (Health Checks):", report.healthChecks);
+      console.log("► Linha do Tempo:", report.timeline);
+      console.groupEnd();
+    },
+
+    success: (snapshot: any, downloadUrl: string) => {
+      const endTime = performance.now();
+      const duration = endTime - startTime;
+      const timestamp = new Date().toISOString();
+
+      addTimelineEvent(`Upload finalizado com sucesso. Referência criada: ${snapshot?.ref?.fullPath || 'N/A'}`);
+      report.uploadPhase = "uploadFinished";
+      addTimelineEvent(`Geração da URL de download concluída.`);
+      report.uploadPhase = "downloadUrl";
+
+      report.status = "SUCCESS";
+      report.performance.durationMs = duration.toFixed(2);
+      report.healthChecks.uploadSucceeded = true;
+      report.healthChecks.downloadUrlGenerated = !!downloadUrl;
+      if (report.healthChecks.preflightSucceeded === null) {
+        report.healthChecks.preflightSucceeded = true;
+      }
+
+      const successDetails = {
+        downloadURL: downloadUrl,
+        fullPath: snapshot?.ref?.fullPath || cachedRef?.fullPath,
+        bucket: snapshot?.ref?.bucket || cachedRef?.bucket,
+        name: snapshot?.ref?.name || cachedRef?.name,
+        metadata: snapshot?.metadata || {}
+      };
+      report.successDetails = successDetails;
+
+      console.group(`=== UPLOAD SUCESSO [SESSÃO: ${sessionUUID.substring(0, 8)}] [UPLOAD: ${uid.substring(0, 8)}] ===`);
+      console.log(`[INFO] [${timestamp}] Upload finalizado com sucesso após ${duration.toFixed(2)}ms.`);
+      console.log("► Detalhes do Objeto Criado:", report.successDetails);
+      console.log("► Validações de Saúde (Health Checks):", report.healthChecks);
+      console.log("► Linha do Tempo de Eventos:", report.timeline);
+      console.groupEnd();
+
+      // Expose to window helper for developer copying
+      if (typeof window !== 'undefined') {
+        (window as any).__lastUploadDiagnostic = report;
+        const history = (window as any).__uploadDiagnosticsHistory || [];
+        history.push(report);
+        // Prevent memory growth over 100 entries
+        const MAX_HISTORY = 100;
+        while (history.length > MAX_HISTORY) {
+          history.shift();
+        }
+        (window as any).__uploadDiagnosticsHistory = history;
+      }
+    },
+
+    error: (err: any) => {
+      const endTime = performance.now();
+      const duration = endTime - startTime;
+      const timestamp = new Date().toISOString();
+
+      addTimelineEvent(`Exceção capturada no fluxo de upload: ${err?.code || err?.message || 'Erro sem código'}`);
+
+      report.status = "ERROR";
+      report.performance.durationMs = duration.toFixed(2);
+      report.healthChecks.uploadSucceeded = false;
+      report.healthChecks.downloadUrlGenerated = false;
+
+      const isFirebaseError = err && (err.name === 'FirebaseError' || typeof err.code === 'string');
+      const errCode = err?.code || "N/A";
+      const isCorsSuspect = errCode === 'storage/unknown' || err?.message?.toLowerCase().includes('cors') || (err?.serverResponse && err.serverResponse.toLowerCase().includes('cors'));
+      const hasAuth = report.auth?.isAuthenticated;
+      const isOnline = report.browser?.online ?? true;
+
+      // 1. Layered Error Categorization (Camadas de Observabilidade)
+      const browserLayer = typeof navigator !== 'undefined' ? {
+        userAgent: navigator.userAgent,
+        online: navigator.onLine,
+        connection: report.browser?.connection || null,
+        offlineDetected: !navigator.onLine
+      } : { online: true };
+
+      const httpNetworkLayer = {
+        inferredMethod: isCorsSuspect ? "OPTIONS (Preflight)" : "POST (Upload)",
+        inferredStatus: errCode === 'storage/unauthorized' ? 403 :
+                        errCode === 'storage/object-not-found' ? 404 :
+                        isCorsSuspect ? "OPTIONS_BLOCKED_403_CORS" : "UNKNOWN_HTTP",
+        endpoint: `https://firebasestorage.googleapis.com/v0/b/${cachedRef?.bucket || 'N/A'}/o`,
+        corsSuspected: isCorsSuspect
+      };
+
+      const sdkLayer = {
+        firebaseCode: errCode,
+        message: err?.message || "N/A",
+        serverResponse: err?.serverResponse || null,
+        name: err?.name || "N/A"
+      };
+
+      const businessLayer = {
+        sessionId: sessionUUID,
+        uploadId: uid,
+        correlationId: uid,
+        path: cachedRef?.fullPath || "N/A",
+        blobSize: cachedBlob ? `${(cachedBlob.size / 1024).toFixed(2)} KB` : "N/A"
+      };
+
+      report.errorLayers = {
+        browserLayer,
+        httpNetworkLayer,
+        sdkLayer,
+        businessLayer
+      };
+
+      const errorDetails = {
+        isFirebaseError,
+        name: err?.name || "N/A",
+        code: errCode,
+        message: err?.message || "N/A",
+        customData: err?.customData || "N/A",
+        serverResponse: err?.serverResponse || null,
+        stack: err?.stack || "N/A",
+        pathTried: cachedRef?.fullPath || "N/A",
+        bucketTried: cachedRef?.bucket || "N/A"
+      };
+
+      report.errorDetails = errorDetails;
+
+      // Automated Root Cause Analysis & Recommendations Engine with Categorized Confidence Level & Rule ID
+      const possibleCauses: Array<{
+        code: string;
+        category: string;
+        confidenceLevel: "ALTA" | "MÉDIA" | "BAIXA";
+        confidencePercent: string;
+        probableReason: string;
+        recommendations: string[];
+        matchedIndicators: string[];
+      }> = [];
+
+      // Rule RC-001: Security Rules Rejection (allow write restrictions)
+      if (errCode === 'storage/unauthorized') {
+        possibleCauses.push({
+          code: "RC-001",
+          category: "Regras de Segurança do Storage (Security Rules)",
+          confidenceLevel: "ALTA",
+          confidencePercent: "98%",
+          matchedIndicators: ["STORAGE_UNAUTHORIZED_CODE", "WRITE_DENIED_BY_RULES"],
+          probableReason: "O Firebase Storage rejeitou a gravação. O caminho do arquivo não corresponde a uma regra 'allow write' ativa.",
+          recommendations: [
+            `Verifique o arquivo firestore.rules ou regras de segurança do Storage para o caminho '${errorDetails.pathTried}'.`,
+            "Confirme se o formato do caminho de escrita exige autenticação específica e se o usuário atual atende.",
+            "Certifique-se de que a regra permite escrita, por exemplo: 'allow write: if request.auth != null;'"
+          ]
+        });
+      }
+
+      // Rule RC-002: Authentication Failure / Missing session
+      if (!hasAuth && !isDemoMode) {
+        const confidence: "ALTA" | "MÉDIA" = errCode === 'storage/unauthorized' ? "ALTA" : "MÉDIA";
+        const percent = errCode === 'storage/unauthorized' ? "90%" : "75%";
+        possibleCauses.push({
+          code: "RC-002",
+          category: "Falha de Autenticação Ativa",
+          confidenceLevel: confidence,
+          confidencePercent: percent,
+          matchedIndicators: ["AUTH_USER_NULL", "MISSING_SESSION_CREDENTIALS"],
+          probableReason: "Nenhum usuário autenticado ativo no Firebase Auth detectado durante o upload.",
+          recommendations: [
+            "Verifique se o usuário passou pelo fluxo de autenticação antes de tentar o upload.",
+            "Garanta que a sessão do usuário não expirou ou foi desconectada em segundo plano."
+          ]
+        });
+        report.healthChecks.authenticated = false;
+        report.healthChecks.tokenValid = false;
+      }
+
+      // Rule RC-003: CORS (Cross-Origin Resource Sharing) Preflight issue
+      if (isCorsSuspect) {
+        possibleCauses.push({
+          code: "RC-003",
+          category: "Erro de CORS ou Canal de Rede Bloqueado",
+          confidenceLevel: "ALTA",
+          confidencePercent: "95%",
+          matchedIndicators: ["CORS_PREFLIGHT_FAIL", "HTTP_OPTIONS_BLOCKED"],
+          probableReason: "A requisição preflight (OPTIONS) falhou ou o bucket de Storage não possui políticas CORS configuradas para a origem atual.",
+          recommendations: [
+            "Inspecione a aba 'Network' (Rede) no DevTools e busque pela requisição preflight OPTIONS. Se retornou status HTTP 403, as políticas CORS no bucket precisam ser configuradas.",
+            "Adicione cabeçalhos CORS ao seu bucket de Storage usando o utilitário gsutil ou console do GCP.",
+            `Confirme se a origem '${typeof window !== 'undefined' ? window.location.origin : '*'}' está liberada nas regras CORS.`
+          ]
+        });
+        report.healthChecks.preflightSucceeded = false;
+      }
+
+      // Rule RC-004: Invalid Bucket or Resource not found
+      if (errCode === 'storage/object-not-found' || errorDetails.bucketTried === 'N/A' || !report.healthChecks.bucketMatchesExpected) {
+        const isMismatch = !report.healthChecks.bucketMatchesExpected;
+        possibleCauses.push({
+          code: "RC-004",
+          category: "Bucket ou Caminho de Destino Inexistente / Divergente",
+          confidenceLevel: isMismatch ? "ALTA" : "MÉDIA",
+          confidencePercent: isMismatch ? "95%" : "80%",
+          matchedIndicators: isMismatch ? ["BUCKET_MISMATCH_WITH_CONFIG"] : ["OBJECT_NOT_FOUND_CODE", "BUCKET_NOT_RESOLVED"],
+          probableReason: isMismatch 
+            ? `O bucket de destino '${errorDetails.bucketTried}' difere do esperado nas variáveis de ambiente do app: '${report.healthChecks.bucketExpected}'.`
+            : "O bucket de armazenamento configurado não existe no projeto ou a referência informada está corrompida.",
+          recommendations: [
+            `Verifique se o bucket '${errorDetails.bucketTried}' está de fato correto no console do Firebase.`,
+            "Assegure-se de que as configurações de storageBucket no objeto de inicialização estão perfeitamente sincronizadas."
+          ]
+        });
+      }
+
+      // Rule RC-005: Offline / Network Instability
+      if (!isOnline || errCode === 'storage/retry-limit-exceeded') {
+        const level = !isOnline ? "ALTA" : "MÉDIA";
+        const percent = !isOnline ? "99%" : "85%";
+        possibleCauses.push({
+          code: "RC-005",
+          category: "Instabilidade de Rede / Conectividade Offline",
+          confidenceLevel: level as any,
+          confidencePercent: percent,
+          matchedIndicators: ["NAVIGATOR_OFFLINE", "RETRY_LIMIT_EXCEEDED"],
+          probableReason: "O navegador detectou perda total de conexão à internet ou estourou o limite de retentativas configurado.",
+          recommendations: [
+            "Verifique se o dispositivo está conectado a uma rede Wi-Fi/dados móveis ativa.",
+            "Desative proxies ou VPNs corporativas que possam filtrar conexões aos servidores do Google (googleapis.com)."
+          ]
+        });
+        report.healthChecks.networkOnline = false;
+      }
+
+      // Rule RC-006: Timeout / Runtime Limits
+      if (errCode === 'storage/retry-limit-exceeded' && isOnline) {
+        possibleCauses.push({
+          code: "RC-006",
+          category: "Limite de Tempo Excedido (Timeout)",
+          confidenceLevel: "MÉDIA",
+          confidencePercent: "80%",
+          matchedIndicators: ["RETRY_LIMIT_WITH_ONLINE_STATE"],
+          probableReason: "A conexão TCP ou o envio de dados levou mais tempo do que o máximo permitido.",
+          recommendations: [
+            "Verifique se o arquivo que está sendo enviado não é excessivamente grande para a taxa de upload atual.",
+            "Tente otimizar ou comprimir a imagem no cliente antes de enviá-la."
+          ]
+        });
+      }
+
+      // Fallback: Default cause if nothing matched well
+      if (possibleCauses.length === 0) {
+        possibleCauses.push({
+          code: "RC-007",
+          category: "Exceção Genérica do SDK",
+          confidenceLevel: "BAIXA",
+          confidencePercent: "50%",
+          matchedIndicators: ["GENERIC_FIREBASE_EXCEPTION"],
+          probableReason: errorDetails.message || "Ocorreu um erro interno sem categorização definida no motor de heurísticas.",
+          recommendations: [
+            "Verifique a stack trace original exibida no console para obter detalhes adicionais.",
+            "Pesquise o código de erro informado nas tabelas oficiais de erros do Firebase Storage."
+          ]
+        });
+      }
+
+      // Sort possible causes by confidence percent numeric parsed value
+      possibleCauses.sort((a, b) => parseInt(b.confidencePercent) - parseInt(a.confidencePercent));
+
+      report.possibleCauses = possibleCauses;
+      
+      // Top match is the primary root cause
+      const primary = possibleCauses[0];
+      report.rootCauseAnalysis = {
+        rootCause: primary.category,
+        probableReason: primary.probableReason,
+        recommendations: primary.recommendations,
+        confidenceLevel: primary.confidenceLevel,
+        confidencePercent: primary.confidencePercent,
+        code: primary.code
+      };
+
+      addTimelineEvent(`Análise de causa raiz gerada automaticamente: ${primary.category} (${primary.code})`);
+
+      console.group(`=== ERRO NO UPLOAD [SESSÃO: ${sessionUUID.substring(0, 8)}] [UPLOAD: ${uid.substring(0, 8)}] ===`);
+      console.error(`[ERROR] [${timestamp}] Falha no upload após ${duration.toFixed(2)}ms!`);
+      console.log("► Identificação e Trace:", report.trace);
+      console.log("► Camadas de Análise (Error Layers):", report.errorLayers);
+      console.log("► Análise Detalhada do Erro:", report.errorDetails);
+      console.log("► MECANISMO DE CAUSA RAIZ AUTOMÁTICA (RECOMENDAÇÕES):", report.rootCauseAnalysis);
+      console.log("► Todas as Causas Possíveis Ranqueadas:", report.possibleCauses);
+      console.log("► Validações de Saúde (Health Checks):", report.healthChecks);
+      console.log("► Linha do Tempo de Eventos:", report.timeline);
+      console.error("► Stack Trace original:", err);
+      console.groupEnd();
+
+      // Expose to window helper for developer copying
+      if (typeof window !== 'undefined') {
+        (window as any).__lastUploadDiagnostic = report;
+        const history = (window as any).__uploadDiagnosticsHistory || [];
+        history.push(report);
+        const MAX_HISTORY = 100;
+        while (history.length > MAX_HISTORY) {
+          history.shift();
+        }
+        (window as any).__uploadDiagnosticsHistory = history;
+      }
+    },
+
+    getReport: () => {
+      return report;
+    },
+    setPhase: (phase: "prepare" | "auth" | "createReference" | "uploadStarted" | "uploadFinished" | "downloadUrl") => {
+      report.uploadPhase = phase;
+      addTimelineEvent(`Fase do upload alterada manualmente para: ${phase}`);
+    }
+  };
+}
+
+/**
+ * Executes an automated test suite over the diagnostic heuristics engine to verify correctness.
+ * Simulates different error scenarios and validates categorization, confidence matching, and recommendations.
+ */
+export function testDiagnosticEngine(): any {
+  console.group("🧪 [SUITE DE TESTE] Root Cause Diagnostic Heuristics Engine");
+  
+  const testCases = [
+    {
+      name: "Teste 1: Regras do Storage Bloqueadas",
+      error: { name: "FirebaseError", code: "storage/unauthorized", message: "User is not authorized." },
+      expectedCode: "RC-001"
+    },
+    {
+      name: "Teste 2: Dispositivo Sem Conectividade (Timeout)",
+      error: { name: "FirebaseError", code: "storage/retry-limit-exceeded", message: "Network connection lost." },
+      expectedCode: "RC-005"
+    },
+    {
+      name: "Teste 3: Objeto ou Bucket Inexistente",
+      error: { name: "FirebaseError", code: "storage/object-not-found", message: "No bucket found." },
+      expectedCode: "RC-004"
+    },
+    {
+      name: "Teste 4: Possível Bloqueio CORS",
+      error: { name: "FirebaseError", code: "storage/unknown", message: "CORS preflight channel closed." },
+      expectedCode: "RC-003"
+    }
+  ];
+
+  const results = testCases.map(tc => {
+    const diagnostics = createUploadDiagnostics();
+    // Simulate error scenario
+    diagnostics.error(tc.error);
+    const rep = diagnostics.getReport();
+    const primaryCode = rep.rootCauseAnalysis?.code;
+    const passed = primaryCode === tc.expectedCode;
+    console.log(`${passed ? "✅" : "❌"} ${tc.name}: Código esperado ${tc.expectedCode}, obtido ${primaryCode} (Nível: ${rep.rootCauseAnalysis?.confidenceLevel} / ${rep.rootCauseAnalysis?.confidencePercent})`);
+    return { name: tc.name, passed, expected: tc.expectedCode, actual: primaryCode };
+  });
+
+  const allPassed = results.every(r => r.passed);
+  console.log(`\nResultado da execução: ${allPassed ? "SUCESSO ABSOLUTO" : "ALERTA DE REVERSSÃO"}`);
+  console.groupEnd();
+
+  return { allPassed, results };
+}
+
+// Listen and log the active real Firebase user state changes
+if (typeof window !== 'undefined' && !isDemoMode) {
+  try {
+    realOnAuthStateChanged(auth, (user) => {
+      if (debugFirebase) {
+        console.log("=== DIAGNOSTICO AUTH FIREBASE ===");
+        if (user) {
+          console.log("Usuário autenticado:", {
+            uid: user.uid,
+            email: user.email,
+            displayName: user.displayName,
+            emailVerified: user.emailVerified
+          });
+          // Update the sanitized window diagnostic object with safe info
+          if ((window as any).__firebaseDebug) {
+            (window as any).__firebaseDebug.currentUser = {
+              uid: user.uid,
+              email: user.email,
+              displayName: user.displayName
+            };
+          }
+        } else {
+          console.log("Nenhum usuário autenticado no Firebase Auth.");
+          if ((window as any).__firebaseDebug) {
+            (window as any).__firebaseDebug.currentUser = null;
+          }
+        }
+      }
+    });
+  } catch (err) {
+    console.error("Erro ao registrar logger de autenticação:", err);
+  }
+}
+
+// Expose a unified global utility to copy/export the full layered diagnostic report instantly
+if (typeof window !== 'undefined') {
+  (window as any).exportLastUploadReport = () => {
+    const report = (window as any).__lastUploadDiagnostic;
+    if (!report) {
+      console.warn("Nenhum diagnóstico de upload disponível ainda. Faça um upload para gerar.");
+      return null;
+    }
+    return report;
+  };
+  (window as any).exportLastUploadReportJson = () => {
+    const report = (window as any).__lastUploadDiagnostic;
+    if (!report) {
+      console.warn("Nenhum diagnóstico de upload disponível ainda.");
+      return "{}";
+    }
+    return JSON.stringify(report, null, 2);
+  };
+}
 
 // Local Storage Helper functions for Demo Mode
 function getLocalCollection(collectionPath: string): Record<string, any> {

@@ -37,7 +37,7 @@ import {
   limit
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, auth, storage } from '../firebase';
+import { db, auth, storage, createUploadDiagnostics } from '../firebase';
 import { Vistoria, ComodoVistoria, ItemVistoria, CompanySettings } from '../types';
 import { cn } from '../lib/utils';
 import { format } from 'date-fns';
@@ -362,6 +362,7 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
 
     try {
       const uploadPromises = fileList.map(async (file) => {
+        const diagnostics = createUploadDiagnostics();
         try {
           // 1. Process/Compress local image before upload
           const dataUrl = await new Promise<string>((resolve, reject) => {
@@ -399,10 +400,15 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
           const fileName = `v/${user.uid}/${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`;
           const storageRef = ref(storage, fileName);
           
+          await diagnostics.beforeUpload(storageRef, blob);
+          
           const snapshot = await uploadBytes(storageRef, blob, { contentType: 'image/jpeg' });
-          return await getDownloadURL(snapshot.ref);
+          const downloadUrl = await getDownloadURL(snapshot.ref);
+          
+          diagnostics.success(snapshot, downloadUrl);
+          return downloadUrl;
         } catch (err: any) {
-          console.error("Single photo upload error:", err);
+          diagnostics.error(err);
           return null;
         }
       });
