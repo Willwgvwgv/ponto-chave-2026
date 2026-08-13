@@ -683,7 +683,19 @@ const UserManagement = ({
   const [newUserRoleInvite] = useState<"Colaborador" | "Corretor" | "Gestor">("Colaborador");
   const [inviteTokenGenerated] = useState("");
   const [inviteUrlGenerated] = useState("");
-  const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean, userId: string | null }>({ isOpen: false, userId: null });
+  const [deleteUserModal, setDeleteUserModal] = useState<{
+    isOpen: boolean;
+    userToDelete: UserProfile | null;
+    taskAction: 'transfer' | 'delete';
+    transferTargetUid: string;
+    isDeleting: boolean;
+  }>({
+    isOpen: false,
+    userToDelete: null,
+    taskAction: 'transfer',
+    transferTargetUid: '',
+    isDeleting: false
+  });
   const [editingUserProfile, setEditingUserProfile] = useState<UserProfile | null>(null);
   const [subTab, setSubTab] = useState<'members' | 'rateio'>('members');
 
@@ -781,8 +793,77 @@ const UserManagement = ({
       toast.error("Você não pode excluir sua própria conta.");
       return;
     }
-    setDeleteConfirm({ isOpen: false, userId }); 
-    setDeleteConfirm({ isOpen: true, userId });
+    const targetUser = users.find(u => u.uid === userId);
+    if (!targetUser) return;
+
+    const availableTargets = users.filter(u => u.uid !== userId);
+    const defaultTargetUid = availableTargets.length > 0 ? availableTargets[0].uid : '';
+
+    setDeleteUserModal({
+      isOpen: true,
+      userToDelete: targetUser,
+      taskAction: 'transfer',
+      transferTargetUid: defaultTargetUid,
+      isDeleting: false
+    });
+  };
+
+  const handleConfirmDeleteUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const { userToDelete, taskAction, transferTargetUid } = deleteUserModal;
+    if (!userToDelete) return;
+
+    const userTasks = allTasks.filter(t => t.uid === userToDelete.uid);
+
+    if (userTasks.length > 0 && taskAction === 'transfer' && !transferTargetUid) {
+      toast.error("Selecione para qual colaborador as tarefas devem ser transferidas.");
+      return;
+    }
+
+    setDeleteUserModal(prev => ({ ...prev, isDeleting: true }));
+
+    try {
+      if (userTasks.length > 0) {
+        if (taskAction === 'transfer') {
+          const targetUser = users.find(u => u.uid === transferTargetUid);
+          const updates = userTasks.map(t => {
+            const updatedDesc = `${t.description || ''}\n\n[Transferida automaticamente devido à exclusão de ${userToDelete.displayName || userToDelete.email}]`.trim();
+            return updateDoc(doc(db, "tasks", t.id), {
+              uid: transferTargetUid,
+              transferredFrom: userToDelete.uid,
+              transferredFromName: userToDelete.displayName || userToDelete.email,
+              transferredAt: new Date().toISOString(),
+              description: updatedDesc
+            });
+          });
+          await Promise.all(updates);
+          toast.success(`${userTasks.length} tarefa(s) transferida(s) para ${targetUser?.displayName || targetUser?.email || 'novo colaborador'}.`);
+        } else if (taskAction === 'delete') {
+          const deletions = userTasks.map(t => deleteDoc(doc(db, "tasks", t.id)));
+          await Promise.all(deletions);
+          toast.success(`${userTasks.length} tarefa(s) do usuário foram excluídas com sucesso.`);
+        }
+      }
+
+      await updateDoc(doc(db, "users", userToDelete.uid), { status: "blocked", role: "none" });
+      await deleteDoc(doc(db, "users", userToDelete.uid));
+
+      setUsers(prev => prev.filter(u => u.uid !== userToDelete.uid));
+      toast.success(`Usuário ${userToDelete.displayName || userToDelete.email} removido com sucesso.`);
+
+      setDeleteUserModal({
+        isOpen: false,
+        userToDelete: null,
+        taskAction: 'transfer',
+        transferTargetUid: '',
+        isDeleting: false
+      });
+    } catch (error) {
+      console.error("Erro ao excluir usuário:", error);
+      toast.error("Erro ao excluir usuário.");
+      handleFirestoreError(error, OperationType.DELETE, `users/${userToDelete.uid}`);
+      setDeleteUserModal(prev => ({ ...prev, isDeleting: false }));
+    }
   };
 
   const handleSaveUserEdit = async (e: React.FormEvent) => {
@@ -1417,57 +1498,179 @@ const UserManagement = ({
         </div>
       )}
 
-      {/* MODAL DE EXCLUSÃO */}
-      {deleteConfirm.isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
-            onClick={() => setDeleteConfirm({ isOpen: false, userId: null })}
-          />
-          <motion.div 
-            initial={{ scale: 0.9, opacity: 0, y: 20 }}
-            animate={{ scale: 1, opacity: 1, y: 0 }}
-            className="relative bg-white w-full max-w-sm rounded-[32px] shadow-2xl overflow-hidden border border-slate-100 p-8 text-center"
-          >
-            <div className="w-16 h-16 bg-red-50 text-red-500 rounded-3xl flex items-center justify-center mx-auto mb-6">
-              <Trash2 className="w-8 h-8" />
-            </div>
-            <h3 className="text-xl font-bold text-slate-900 mb-2">Excluir Usuário?</h3>
-            <p className="text-slate-500 text-sm leading-relaxed mb-8">
-              Tem certeza que deseja excluir este usuário? Ele perderá o acesso ao sistema <span className="text-red-500 font-bold">imediatamente</span>.
-            </p>
-            <div className="flex flex-col gap-3">
-              <button 
-                onClick={async () => {
-                  if (deleteConfirm.userId) {
-                    try {
-                      await updateDoc(doc(db, "users", deleteConfirm.userId), { status: "blocked", role: "none" });
-                      await deleteDoc(doc(db, "users", deleteConfirm.userId));
-                      setUsers(prev => prev.filter(u => u.uid !== deleteConfirm.userId));
-                      toast.success("Usuário removido com sucesso.");
-                    } catch (error) {
-                      toast.error("Erro ao excluir usuário.");
-                      handleFirestoreError(error, OperationType.DELETE, `users/${deleteConfirm.userId}`);
-                    }
-                  }
-                  setDeleteConfirm({ isOpen: false, userId: null });
-                }}
-                className="w-full py-4 bg-red-500 text-white rounded-2xl font-bold uppercase tracking-widest text-xs shadow-lg shadow-red-500/25 hover:bg-red-650 transition-all cursor-pointer"
+      {/* MODAL DE EXCLUSÃO DE USUÁRIO COM DEISÃO DE TAREFAS */}
+      <AnimatePresence>
+        {deleteUserModal.isOpen && deleteUserModal.userToDelete && (() => {
+          const targetUser = deleteUserModal.userToDelete;
+          const userTasks = allTasks.filter(t => t.uid === targetUser.uid);
+          const availableTargets = users.filter(u => u.uid !== targetUser.uid);
+
+          return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+                onClick={() => !deleteUserModal.isDeleting && setDeleteUserModal(prev => ({ ...prev, isOpen: false }))}
+              />
+              <motion.div 
+                initial={{ scale: 0.95, opacity: 0, y: 20 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.95, opacity: 0, y: 20 }}
+                className="relative bg-white w-full max-w-lg rounded-[32px] shadow-2xl overflow-hidden border border-slate-100 flex flex-col max-h-[90vh]"
               >
-                Confirmar Exclusão
-              </button>
-              <button 
-                onClick={() => setDeleteConfirm({ isOpen: false, userId: null })}
-                className="w-full py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold uppercase tracking-widest text-xs hover:bg-slate-200 transition-all cursor-pointer"
-              >
-                Cancelar
-              </button>
+                {/* Header */}
+                <div className="flex justify-between items-center p-6 border-b border-slate-100 shrink-0">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-red-50 text-red-600 flex items-center justify-center font-bold">
+                      <Trash2 className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-slate-900">Excluir Usuário</h3>
+                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Confirmação e Destino das Tarefas</p>
+                    </div>
+                  </div>
+                  <button 
+                    disabled={deleteUserModal.isDeleting}
+                    onClick={() => setDeleteUserModal(prev => ({ ...prev, isOpen: false }))} 
+                    className="p-2 hover:bg-slate-100 rounded-full transition-colors disabled:opacity-50 cursor-pointer"
+                  >
+                    <X className="w-5 h-5 text-slate-400" />
+                  </button>
+                </div>
+
+                <form onSubmit={handleConfirmDeleteUser} className="p-6 space-y-5 overflow-y-auto custom-scrollbar flex-1">
+                  {/* User info card */}
+                  <div className="bg-red-50/50 border border-red-100 p-4 rounded-2xl flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-red-100 text-red-700 font-black text-xs flex items-center justify-center shrink-0">
+                      {getInitials(targetUser.displayName || targetUser.email)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-bold text-slate-900 truncate">{targetUser.displayName || "Usuário sem nome"}</p>
+                      <p className="text-xs text-slate-500 font-mono truncate">{targetUser.email}</p>
+                    </div>
+                    <div className="px-2.5 py-1 bg-white border border-red-200 text-red-700 rounded-full text-[10px] font-bold uppercase tracking-wider shrink-0">
+                      {userTasks.length} {userTasks.length === 1 ? 'tarefa' : 'tarefas'}
+                    </div>
+                  </div>
+
+                  {/* Tasks decision block */}
+                  <div className="space-y-3">
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                      O que fazer com as <span className="text-red-600 font-extrabold">{userTasks.length} tarefa(s)</span> deste usuário?
+                    </label>
+
+                    {userTasks.length === 0 ? (
+                      <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs text-slate-500 text-center font-medium">
+                        Este usuário não possui nenhuma tarefa vinculada no momento.
+                      </div>
+                    ) : (
+                      <div className="space-y-2.5">
+                        {/* Option 1: Transfer */}
+                        <div 
+                          onClick={() => setDeleteUserModal(prev => ({ ...prev, taskAction: 'transfer' }))}
+                          className={`p-4 rounded-2xl border-2 transition-all cursor-pointer flex flex-col gap-3 ${
+                            deleteUserModal.taskAction === 'transfer' 
+                              ? 'border-blue-500 bg-blue-50/30' 
+                              : 'border-slate-100 bg-white hover:border-slate-200'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <input 
+                              type="radio" 
+                              name="taskAction" 
+                              checked={deleteUserModal.taskAction === 'transfer'} 
+                              onChange={() => setDeleteUserModal(prev => ({ ...prev, taskAction: 'transfer' }))}
+                              className="w-4 h-4 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                            />
+                            <div className="flex items-center gap-2">
+                              <UserCheck className="w-4 h-4 text-blue-600" />
+                              <span className="text-xs font-bold text-slate-800">Transferir tarefas para outro colaborador</span>
+                            </div>
+                          </div>
+
+                          {deleteUserModal.taskAction === 'transfer' && (
+                            <div className="pt-2 pl-7 animate-in fade-in duration-200">
+                              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                                Selecione o novo responsável <span className="text-red-500">*</span>
+                              </label>
+                              <select
+                                required
+                                value={deleteUserModal.transferTargetUid}
+                                onChange={(e) => setDeleteUserModal(prev => ({ ...prev, transferTargetUid: e.target.value }))}
+                                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-bold text-slate-700 cursor-pointer"
+                              >
+                                <option value="">Selecione o colaborador...</option>
+                                {availableTargets.map((u) => (
+                                  <option key={u.uid} value={u.uid}>
+                                    {u.displayName || u.email} {u.role === 'admin' ? '(Admin)' : ''}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Option 2: Delete along */}
+                        <div 
+                          onClick={() => setDeleteUserModal(prev => ({ ...prev, taskAction: 'delete' }))}
+                          className={`p-4 rounded-2xl border-2 transition-all cursor-pointer flex items-center gap-3 ${
+                            deleteUserModal.taskAction === 'delete' 
+                              ? 'border-red-500 bg-red-50/30' 
+                              : 'border-slate-100 bg-white hover:border-slate-200'
+                          }`}
+                        >
+                          <input 
+                            type="radio" 
+                            name="taskAction" 
+                            checked={deleteUserModal.taskAction === 'delete'} 
+                            onChange={() => setDeleteUserModal(prev => ({ ...prev, taskAction: 'delete' }))}
+                            className="w-4 h-4 text-red-600 focus:ring-red-500 cursor-pointer"
+                          />
+                          <div className="flex items-center gap-2">
+                            <Trash2 className="w-4 h-4 text-red-600" />
+                            <div>
+                              <span className="text-xs font-bold text-slate-800 block">Excluir tarefas junto com o usuário</span>
+                              <span className="text-[10px] text-slate-400 font-medium block">As {userTasks.length} tarefas serão permanentemente apagadas.</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Buttons */}
+                  <div className="pt-3 flex items-center gap-3 border-t border-slate-100">
+                    <button
+                      type="button"
+                      disabled={deleteUserModal.isDeleting}
+                      onClick={() => setDeleteUserModal(prev => ({ ...prev, isOpen: false }))}
+                      className="flex-1 py-3.5 bg-slate-100 text-slate-600 rounded-2xl font-bold text-xs uppercase tracking-wider hover:bg-slate-200 transition-all disabled:opacity-50 cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={deleteUserModal.isDeleting || (userTasks.length > 0 && deleteUserModal.taskAction === 'transfer' && !deleteUserModal.transferTargetUid)}
+                      className="flex-1 py-3.5 bg-red-600 text-white rounded-2xl font-bold text-xs uppercase tracking-wider shadow-lg shadow-red-500/20 hover:bg-red-700 active:scale-95 transition-all disabled:opacity-50 disabled:scale-100 flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      {deleteUserModal.isDeleting ? (
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <>
+                          <Trash2 className="w-4 h-4" />
+                          <span>Excluir Usuário</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </form>
+              </motion.div>
             </div>
-          </motion.div>
-        </div>
-      )}
+          );
+        })()}
+      </AnimatePresence>
 
       {/* MODAL DE EDIÇÃO DO USUÁRIO */}
       <AnimatePresence>
