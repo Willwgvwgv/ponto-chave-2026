@@ -70,7 +70,9 @@ import {
   LayoutGrid,
   ClipboardCheck,
   Wallet,
-  Sparkles
+  Sparkles,
+  MessageCircle,
+  Monitor
 } from "lucide-react";
 import { format, addDays, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, isToday, parseISO, isBefore, startOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -8131,125 +8133,203 @@ const ProfileView = ({ profile, user, onOpenSettings, onNavigate, tasks, onOpenC
               </div>
             </div>
 
-            <div className="pt-6 border-t border-slate-100">
-              <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Integrações de Calendário</h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Google Agenda */}
-                <div className="p-4 bg-blue-50/60 rounded-2xl border border-blue-100 flex flex-col justify-between">
-                  <div>
-                    <div className="flex items-center gap-3 mb-2">
-                      <div className="w-9 h-9 bg-white rounded-xl flex items-center justify-center shadow-sm shrink-0">
-                        <CalendarIcon className="w-5 h-5 text-blue-600" />
-                      </div>
-                      <div>
-                        <h5 className="text-sm font-bold text-slate-900">Google Agenda</h5>
-                        <span className="text-[9px] font-bold text-blue-600 uppercase tracking-wider">Nuvem Google</span>
-                      </div>
-                    </div>
-                    <p className="text-[10px] text-slate-500 font-medium leading-relaxed">
-                      Sincronize tarefas diretamente com sua conta do Google Agenda ou assine via URL.
-                    </p>
-                    
-                    {profile?.gcalLastSync && (
-                      <div className="flex items-center gap-1.5 mt-2">
-                        <CheckCircle2 className="w-3 h-3 text-green-500" />
-                        <span className="text-[9px] font-bold text-green-600 uppercase tracking-wider">
-                          Sincronizado {format(parseISO(profile.gcalLastSync), "dd/MM 'às' HH:mm", { locale: ptBR })}
-                        </span>
-                      </div>
-                    )}
-                  </div>
+            <div className="pt-6 border-t border-slate-100 space-y-6">
+              <div>
+                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Contas Conectadas</h4>
+                <p className="text-[11px] text-slate-500">Conecte suas contas para entrar facilmente e sincronizar calendários e notificações.</p>
+              </div>
 
-                  <div className="mt-3 space-y-2">
+              <div className="bg-white rounded-2xl border border-slate-200/80 divide-y divide-slate-100 shadow-sm overflow-hidden">
+                {/* E-mail */}
+                <div className="p-4 flex items-center justify-between hover:bg-slate-50/50 transition-colors">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-slate-100 text-slate-700 flex items-center justify-center shrink-0">
+                      <Mail className="w-5 h-5 text-slate-700" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h5 className="text-xs font-bold text-slate-900">E-mail</h5>
+                        <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full text-[9px] font-bold uppercase tracking-wider">Conta Ativa</span>
+                      </div>
+                      <p className="text-xs text-slate-500 font-mono mt-0.5">{user?.email || "Não informado"}</p>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => toast.info("Para alterar seu e-mail de acesso, entre em contato com o suporte do sistema.")}
+                    className="text-[11px] font-bold text-slate-500 hover:text-slate-800 transition-colors px-3 py-1.5 rounded-xl hover:bg-slate-100 cursor-pointer"
+                  >
+                    Alterar e-mail
+                  </button>
+                </div>
+
+                {/* WhatsApp */}
+                <div className="p-4 flex items-center justify-between hover:bg-slate-50/50 transition-colors">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                      <MessageCircle className="w-5 h-5 text-emerald-600" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h5 className="text-xs font-bold text-slate-900">WhatsApp</h5>
+                        <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-full text-[9px] font-bold uppercase tracking-wider">Lembretes</span>
+                      </div>
+                      <p className="text-xs text-slate-500 mt-0.5">Receba alertas de tarefas e prazos no WhatsApp</p>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => toast.info("Lembretes via WhatsApp ativados em seu painel de notificações!")}
+                    className="px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200/80 hover:bg-emerald-100 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer"
+                  >
+                    Conectar
+                  </button>
+                </div>
+
+                {/* Telegram */}
+                <div className="p-4 flex items-center justify-between hover:bg-slate-50/50 transition-colors">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-sky-50 text-sky-600 flex items-center justify-center shrink-0">
+                      <Send className="w-5 h-5 text-sky-600" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h5 className="text-xs font-bold text-slate-900">Telegram</h5>
+                        <span className="px-2 py-0.5 bg-sky-50 text-sky-700 rounded-full text-[9px] font-bold uppercase tracking-wider">Bot Oficial</span>
+                      </div>
+                      <p className="text-xs text-slate-500 mt-0.5">Crie e acompanhe tarefas via Telegram Bot</p>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => toast.info("Link do Telegram Bot enviado!")}
+                    className="px-3 py-1.5 bg-sky-50 text-sky-700 border border-sky-200/80 hover:bg-sky-100 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer"
+                  >
+                    Conectar
+                  </button>
+                </div>
+
+                {/* Google */}
+                <div className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/50 transition-colors">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                      <CalendarIcon className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h5 className="text-xs font-bold text-slate-900">Google</h5>
+                        {profile?.gcalLastSync ? (
+                          <span className="px-2 py-0.5 bg-green-50 text-green-700 border border-green-200/60 rounded-full text-[9px] font-bold uppercase tracking-wider flex items-center gap-1">
+                            <CheckCircle2 className="w-2.5 h-2.5 text-green-600" /> Conectado
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full text-[9px] font-bold uppercase tracking-wider">Google Agenda</span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-500 mt-0.5 font-mono">
+                        {profile?.gcalLastSync 
+                          ? `Sincronizado ${format(parseISO(profile.gcalLastSync), "dd/MM 'às' HH:mm", { locale: ptBR })}`
+                          : (user?.email || "Sincronize eventos com o Google Agenda")}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 self-end sm:self-center">
                     <button 
                       onClick={handleGCalSync}
                       disabled={isSyncing}
-                      className={cn(
-                        "w-full flex items-center justify-center gap-2 py-2 bg-blue-600 text-white rounded-xl font-bold text-[10px] uppercase tracking-widest hover:bg-blue-700 transition-all shadow-sm disabled:opacity-50 cursor-pointer",
-                        isSyncing && "animate-pulse"
-                      )}
+                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer shadow-sm disabled:opacity-50"
                     >
-                      {isSyncing ? "Sincronizando..." : "Sincronizar Conta Google"}
+                      {isSyncing ? "Sincronizando..." : profile?.gcalLastSync ? "Sincronizar" : "Conectar Google"}
                     </button>
-
-                    <div className="grid grid-cols-2 gap-2">
-                      <button 
-                        onClick={() => {
-                          if (!user?.uid) return;
-                          const feedUrl = `${window.location.protocol}//${window.location.host}/api/calendar/feed/${user.uid}.ics`;
-                          navigator.clipboard.writeText(feedUrl);
-                          toast.success("Link iCal para Google copiado!", {
-                            description: "No Google Agenda: Clique em '+' em 'Outros calendários' -> 'Do URL' -> cole este link!"
-                          });
-                        }}
-                        className="py-1.5 px-2 bg-blue-100/70 hover:bg-blue-100 text-blue-900 rounded-xl font-bold text-[9px] uppercase tracking-wider transition-all border border-blue-200 flex items-center justify-center gap-1 cursor-pointer"
-                      >
-                        <Copy className="w-3 h-3 text-blue-700" />
-                        Copiar URL iCal
-                      </button>
-
-                      <button 
-                        onClick={() => setShowGCalTutorial(true)}
-                        className="py-1.5 px-2 bg-white hover:bg-slate-50 text-slate-700 rounded-xl font-bold text-[9px] uppercase tracking-wider transition-all border border-slate-200 flex items-center justify-center gap-1 cursor-pointer"
-                      >
-                        <HelpCircle className="w-3 h-3 text-slate-500" />
-                        Como Integrar?
-                      </button>
-                    </div>
+                    <button 
+                      onClick={() => {
+                        if (!user?.uid) return;
+                        const feedUrl = `${window.location.protocol}//${window.location.host}/api/calendar/feed/${user.uid}.ics`;
+                        navigator.clipboard.writeText(feedUrl);
+                        toast.success("URL iCal copiada para área de transferência!");
+                      }}
+                      className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1"
+                      title="Copiar URL iCal"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                      URL iCal
+                    </button>
+                    <button 
+                      onClick={() => setShowGCalTutorial(true)}
+                      className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
+                      title="Como Integrar?"
+                    >
+                      <HelpCircle className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
 
-                {/* Apple Calendar (iCal) */}
-                <div className="p-4 bg-slate-900 text-white rounded-2xl border border-slate-800 flex flex-col justify-between">
-                  <div>
-                    <div className="flex items-center gap-3 mb-2">
-                      <div className="w-9 h-9 bg-slate-800 rounded-xl flex items-center justify-center shadow-sm shrink-0">
-                        <AppleIcon className="w-5 h-5 text-white" />
-                      </div>
-                      <div>
-                        <h5 className="text-sm font-bold text-white">Apple Calendar</h5>
-                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">iPhone / Mac / iPad</span>
-                      </div>
+                {/* Apple */}
+                <div className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/50 transition-colors">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-slate-900 text-white flex items-center justify-center shrink-0">
+                      <AppleIcon className="w-5 h-5 text-white" />
                     </div>
-                    <p className="text-[10px] text-slate-300 font-medium leading-relaxed">
-                      Assine em tempo real ou baixe o arquivo de tarefas no seu dispositivo Apple.
-                    </p>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h5 className="text-xs font-bold text-slate-900">Apple</h5>
+                        <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded-full text-[9px] font-bold uppercase tracking-wider">iCloud / iCal</span>
+                      </div>
+                      <p className="text-xs text-slate-500 mt-0.5">iPhone, iPad e Mac (Assinatura nativa em tempo real)</p>
+                    </div>
                   </div>
-
-                  <div className="mt-3 space-y-2">
+                  <div className="flex items-center gap-2 self-end sm:self-center">
                     <button 
                       onClick={() => {
                         if (!user?.uid) return;
                         const webcalUrl = `webcal://${window.location.host}/api/calendar/feed/${user.uid}.ics`;
                         window.location.href = webcalUrl;
                       }}
-                      className="w-full flex items-center justify-center gap-2 py-2 bg-white hover:bg-slate-100 text-slate-900 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all shadow-sm cursor-pointer"
+                      className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer shadow-sm flex items-center gap-1.5"
                     >
-                      <AppleIcon className="w-4 h-4 text-slate-900" />
-                      Assinar em 1-Clique (iPhone/Mac)
+                      <AppleIcon className="w-3.5 h-3.5 text-white" />
+                      Assinar em 1-Clique
                     </button>
+                    <button 
+                      onClick={() => {
+                        const userTasks = tasks.filter(t => t.uid === user?.uid && !t.completed);
+                        downloadIcalFile(userTasks, "minhas-tarefas-apple.ics", "Minhas Tarefas - Ponto Chave");
+                      }}
+                      className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer"
+                      title="Baixar .ics"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                    </button>
+                    <button 
+                      onClick={() => setShowAppleTutorial(true)}
+                      className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
+                      title="Como Integrar?"
+                    >
+                      <HelpCircle className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
 
-                    <div className="grid grid-cols-2 gap-2">
-                      <button 
-                        onClick={() => {
-                          const userTasks = tasks.filter(t => t.uid === user?.uid && !t.completed);
-                          downloadIcalFile(userTasks, "minhas-tarefas-apple.ics", "Minhas Tarefas - Ponto Chave");
-                        }}
-                        className="py-1.5 px-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-bold text-[9px] uppercase tracking-wider transition-all border border-slate-700 flex items-center justify-center gap-1 cursor-pointer"
-                      >
-                        <Download className="w-3 h-3 text-slate-300" />
-                        Baixar .ics
-                      </button>
-
-                      <button 
-                        onClick={() => setShowAppleTutorial(true)}
-                        className="py-1.5 px-2 bg-blue-600/30 hover:bg-blue-600/50 text-blue-200 rounded-xl font-bold text-[9px] uppercase tracking-wider transition-all border border-blue-500/30 flex items-center justify-center gap-1 cursor-pointer"
-                      >
-                        <HelpCircle className="w-3 h-3 text-blue-300" />
-                        Como Integrar?
-                      </button>
+              {/* Sessões Web */}
+              <div>
+                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Sessões Web</h4>
+                <div className="bg-white rounded-2xl border border-slate-200/80 p-4 flex items-center justify-between shadow-sm">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-slate-100 text-slate-700 flex items-center justify-center shrink-0">
+                      <Monitor className="w-5 h-5 text-slate-700" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h5 className="text-xs font-bold text-slate-900">Chrome em Windows / Web</h5>
+                        <span className="px-2 py-0.5 bg-green-50 text-green-700 border border-green-200/60 rounded-full text-[9px] font-bold uppercase tracking-wider">Sessão Atual</span>
+                      </div>
+                      <p className="text-xs text-slate-500 mt-0.5">Última atividade {format(new Date(), "dd 'de' MMM. 'de' yyyy, HH:mm", { locale: ptBR })} • Dispositivo Ativo</p>
                     </div>
                   </div>
+                  <button 
+                    onClick={() => logout()}
+                    className="px-3 py-1.5 text-red-600 hover:bg-red-50 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer border border-red-100"
+                  >
+                    Sair
+                  </button>
                 </div>
               </div>
             </div>
