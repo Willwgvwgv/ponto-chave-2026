@@ -2494,64 +2494,208 @@ const UserManagement = ({
                 </button>
               </div>
 
-              <div className="space-y-4">
-                <div className="bg-blue-50 border border-blue-100 p-4 rounded-2xl text-xs text-blue-900 space-y-2">
-                  <p className="font-bold flex items-center gap-1.5">
-                    <Sparkles className="w-4 h-4 text-blue-600" />
-                    Redefinição Segura de Senha via E-mail
-                  </p>
-                  <p className="text-slate-600 leading-relaxed">
-                    Um e-mail oficial do Firebase com link seguro para redefinição de senha será enviado para <strong className="text-slate-900">{adminResetModal.targetUser.email}</strong>.
-                  </p>
-                  <p className="text-slate-500 text-[10px]">
-                    O colaborador abrirá o link, definirá sua nova senha de forma privada e segura, e poderá acessar o sistema imediatamente.
-                  </p>
-                </div>
-
-                <div className="flex gap-3">
-                  <button
-                    type="button"
-                    disabled={adminResetModal.isSendingEmail}
-                    onClick={async () => {
-                      setAdminResetModal(prev => ({ ...prev, isSendingEmail: true }));
-                      try {
-                        const actionCodeSettings = {
-                          url: window.location.origin + window.location.pathname,
-                          handleCodeInApp: true
-                        };
-                        await sendPasswordResetEmail(auth, adminResetModal.targetUser!.email, actionCodeSettings);
-                        toast.success(`E-mail de redefinição enviado com sucesso para ${adminResetModal.targetUser!.email}`);
-                        setAdminResetModal(prev => ({ ...prev, isOpen: false, isSendingEmail: false }));
-                      } catch (err: any) {
-                        setAdminResetModal(prev => ({ ...prev, isSendingEmail: false }));
-                        if (err?.code === 'auth/user-not-found') {
-                          toast.error("O cadastro existe no sistema, mas o colaborador ainda não criou a conta no Firebase Authentication. Ele deve aceitar o convite primeiro.");
-                        } else {
-                          toast.error(`Erro ao enviar e-mail: ${err?.message || 'Tente novamente.'}`);
-                        }
-                      }
-                    }}
-                    className="flex-1 py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold text-xs uppercase tracking-wider transition-all shadow-md shadow-blue-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                  >
-                    {adminResetModal.isSendingEmail ? (
-                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    ) : (
-                      <>
-                        <Mail className="w-4 h-4" />
-                        Enviar Link de Redefinição
-                      </>
-                    )}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setAdminResetModal(prev => ({ ...prev, isOpen: false }))}
-                    className="px-4 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl font-bold text-xs uppercase tracking-wider transition-all cursor-pointer"
-                  >
-                    Cancelar
-                  </button>
-                </div>
+              {/* Tabs Selection: Email Reset vs Direct Password */}
+              <div className="flex bg-slate-100 p-1 rounded-2xl mb-4 text-xs font-bold">
+                <button
+                  type="button"
+                  onClick={() => setAdminResetModal(prev => ({ ...prev, activeTab: 'email' }))}
+                  className={`flex-1 py-2.5 rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                    adminResetModal.activeTab === 'email'
+                      ? 'bg-white text-blue-600 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  <Mail className="w-3.5 h-3.5" />
+                  Link por E-mail
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAdminResetModal(prev => ({ ...prev, activeTab: 'direct' }))}
+                  className={`flex-1 py-2.5 rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                    adminResetModal.activeTab === 'direct'
+                      ? 'bg-white text-amber-600 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  <Lock className="w-3.5 h-3.5" />
+                  Senha Direta
+                </button>
               </div>
+
+              {adminResetModal.activeTab === 'email' ? (
+                <div className="space-y-4">
+                  <div className="bg-blue-50 border border-blue-100 p-4 rounded-2xl text-xs text-blue-900 space-y-2">
+                    <p className="font-bold flex items-center gap-1.5">
+                      <Sparkles className="w-4 h-4 text-blue-600" />
+                      Redefinição Segura de Senha via E-mail
+                    </p>
+                    <p className="text-slate-600 leading-relaxed">
+                      Um e-mail oficial do Firebase com link seguro para redefinição de senha será enviado para <strong className="text-slate-900">{adminResetModal.targetUser.email}</strong>.
+                    </p>
+                    <p className="text-slate-500 text-[10px]">
+                      O colaborador abrirá o link, definirá sua nova senha de forma privada e segura, e poderá acessar o sistema imediatamente.
+                    </p>
+                  </div>
+
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      disabled={adminResetModal.isSendingEmail}
+                      onClick={async () => {
+                        setAdminResetModal(prev => ({ ...prev, isSendingEmail: true }));
+                        try {
+                          const actionCodeSettings = {
+                            url: window.location.origin + window.location.pathname,
+                            handleCodeInApp: true
+                          };
+                          await sendPasswordResetEmail(auth, adminResetModal.targetUser!.email, actionCodeSettings);
+                          toast.success(`E-mail de redefinição enviado com sucesso para ${adminResetModal.targetUser!.email}`);
+                          setAdminResetModal(prev => ({ ...prev, isOpen: false, isSendingEmail: false }));
+                        } catch (err: any) {
+                          setAdminResetModal(prev => ({ ...prev, isSendingEmail: false }));
+                          if (err?.code === 'auth/user-not-found') {
+                            toast.error("O cadastro existe no sistema, mas o colaborador ainda não criou a conta no Firebase Authentication. Ele deve aceitar o convite primeiro.");
+                          } else {
+                            toast.error(`Erro ao enviar e-mail: ${err?.message || 'Tente novamente.'}`);
+                          }
+                        }
+                      }}
+                      className="flex-1 py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold text-xs uppercase tracking-wider transition-all shadow-md shadow-blue-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                    >
+                      {adminResetModal.isSendingEmail ? (
+                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      ) : (
+                        <>
+                          <Mail className="w-4 h-4" />
+                          Enviar Link de Redefinição
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setAdminResetModal(prev => ({ ...prev, isOpen: false }))}
+                      className="px-4 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl font-bold text-xs uppercase tracking-wider transition-all cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!adminResetModal.customPassword || adminResetModal.customPassword.length < 6) {
+                      toast.error("A senha deve ter no mínimo 6 caracteres.");
+                      return;
+                    }
+
+                    setAdminResetModal(prev => ({ ...prev, isSendingEmail: true }));
+
+                    try {
+                      const currentUser = auth.currentUser;
+                      if (!currentUser) {
+                        toast.error("Sessão expirada. Faça login novamente.");
+                        setAdminResetModal(prev => ({ ...prev, isSendingEmail: false }));
+                        return;
+                      }
+
+                      const idToken = await currentUser.getIdToken(true);
+                      const res = await fetch("/api/admin/reset-password", {
+                        method: "POST",
+                        headers: {
+                          "Authorization": `Bearer ${idToken}`,
+                          "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify({
+                          targetUid: adminResetModal.targetUser!.uid,
+                          newPassword: adminResetModal.customPassword
+                        })
+                      });
+
+                      const data = await res.json();
+
+                      if (!res.ok) {
+                        throw new Error(data.error || "Erro ao redefinir senha no servidor.");
+                      }
+
+                      toast.success(`Senha atualizada diretamente para ${adminResetModal.targetUser!.displayName || adminResetModal.targetUser!.email}!`);
+                      setAdminResetModal(prev => ({
+                        ...prev,
+                        isOpen: false,
+                        customPassword: '',
+                        isSendingEmail: false
+                      }));
+                    } catch (err: any) {
+                      setAdminResetModal(prev => ({ ...prev, isSendingEmail: false }));
+                      toast.error(err.message || "Erro ao atualizar senha diretamente.");
+                    }
+                  }}
+                  className="space-y-4 text-left"
+                >
+                  <div className="bg-amber-50 border border-amber-100 p-3.5 rounded-2xl text-xs text-amber-900 space-y-1.5">
+                    <p className="font-bold flex items-center gap-1.5 text-amber-800">
+                      <Key className="w-4 h-4 text-amber-600" />
+                      Definição Direta de Senha (Admin)
+                    </p>
+                    <p className="text-slate-600 leading-relaxed text-[11px]">
+                      A senha será atualizada diretamente no <strong>Firebase Authentication</strong> através do servidor seguro.
+                    </p>
+                    <p className="text-slate-500 text-[10px]">
+                      🔒 A senha é transmitida de forma criptografada e <strong>NUNCA é salva no banco de dados Firestore</strong>.
+                    </p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block">
+                      Nova Senha Direta <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={adminResetModal.showPassword ? "text" : "password"}
+                        required
+                        minLength={6}
+                        value={adminResetModal.customPassword}
+                        onChange={(e) => setAdminResetModal(prev => ({ ...prev, customPassword: e.target.value }))}
+                        placeholder="Mínimo 6 caracteres"
+                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 text-xs font-semibold text-slate-800 pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setAdminResetModal(prev => ({ ...prev, showPassword: !prev.showPassword }))}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                      >
+                        {adminResetModal.showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      type="submit"
+                      disabled={adminResetModal.isSendingEmail || !adminResetModal.customPassword || adminResetModal.customPassword.length < 6}
+                      className="flex-1 py-3.5 bg-amber-600 hover:bg-amber-700 text-white rounded-2xl font-bold text-xs uppercase tracking-wider transition-all shadow-md shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                    >
+                      {adminResetModal.isSendingEmail ? (
+                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      ) : (
+                        <>
+                          <Key className="w-4 h-4" />
+                          Definir Nova Senha
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setAdminResetModal(prev => ({ ...prev, isOpen: false }))}
+                      className="px-4 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl font-bold text-xs uppercase tracking-wider transition-all cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </form>
+              )}
             </motion.div>
           </div>
         )}

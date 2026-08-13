@@ -5,7 +5,7 @@ import fs from "fs";
 import crypto from "crypto";
 import { fileURLToPath } from "url";
 import { initializeApp as initAdminApp, getApps, cert } from "firebase-admin/app";
-import { getFirestore } from "firebase-admin/firestore";
+import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { getAuth as getAdminAuth } from "firebase-admin/auth";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -159,6 +159,113 @@ async function startServer() {
     // Multer error handler
     console.error("Upload error:", err.message);
     res.status(400).json({ error: err.message || "Erro ao processar arquivo" });
+  });
+
+  // API Route: Admin Reset Password (Direct Password Update)
+  app.post("/api/admin/reset-password", async (req, res) => {
+    // 1. Verify Authorization Header
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ error: "Acesso não autorizado: Token não fornecido" });
+    }
+
+    const idToken = authHeader.split("Bearer ")[1];
+
+    if (!adminAuthInstance || !adminDb) {
+      return res.status(503).json({ error: "Serviço de autenticação do servidor indisponível" });
+    }
+
+    try {
+      // 2. Verify Requester Token
+      const decodedToken = await adminAuthInstance.verifyIdToken(idToken);
+      const requesterUid = decodedToken.uid;
+
+      if (!requesterUid) {
+        return res.status(401).json({ error: "Acesso não autorizado: Token inválido" });
+      }
+
+      // 3. Verify Requester Admin Permissions in Firestore
+      const requesterDoc = await adminDb.collection("users").doc(requesterUid).get();
+      const requesterData = requesterDoc.exists ? requesterDoc.data() : null;
+
+      const isMasterAdmin = decodedToken.email === "williangyn10@gmail.com" || requesterData?.email === "williangyn10@gmail.com";
+      const isAdminRole = requesterData?.role === "admin" || requesterData?.role === "superadmin";
+      const isActive = requesterData?.status === "active";
+
+      if (!isMasterAdmin && (!isAdminRole || !isActive)) {
+        return res.status(403).json({ error: "Acesso negado: Apenas administradores ativos podem redefinir senhas diretamente." });
+      }
+
+      // 4. Validate Request Body
+      const { targetUid, newPassword } = req.body || {};
+
+      if (!targetUid || typeof targetUid !== "string") {
+        return res.status(400).json({ error: "ID do usuário de destino é obrigatório." });
+      }
+
+      if (!newPassword || typeof newPassword !== "string" || newPassword.length < 6) {
+        return res.status(400).json({ error: "A nova senha deve ter no mínimo 6 caracteres." });
+      }
+
+      // 5. Verify Target User
+      // Check if target user is in deleted_users
+      const deletedDoc = await adminDb.collection("deleted_users").doc(targetUid).get();
+      if (deletedDoc.exists) {
+        return res.status(400).json({ error: "Não é possível redefinir senha de uma conta excluída." });
+      }
+
+      // Check target user document in users collection
+      const targetDoc = await adminDb.collection("users").doc(targetUid).get();
+      if (!targetDoc.exists) {
+        return res.status(404).json({ error: "Usuário não encontrado no sistema." });
+      }
+
+      const targetData = targetDoc.data();
+
+      // Company isolation check (unless master admin)
+      if (!isMasterAdmin) {
+        const requesterCompanyId = requesterData?.companyId;
+        const targetCompanyId = targetData?.companyId;
+        if (!requesterCompanyId || requesterCompanyId !== targetCompanyId) {
+          return res.status(403).json({ error: "Acesso negado: Você só pode redefinir senhas de usuários da mesma empresa." });
+        }
+      }
+
+      // 6. Update Password in Firebase Authentication via Firebase Admin SDK
+      await adminAuthInstance.updateUser(targetUid, {
+        password: newPassword,
+      });
+
+      // 7. Revoke Refresh Tokens / Old Sessions
+      try {
+        await adminAuthInstance.revokeRefreshTokens(targetUid);
+      } catch (revokeErr) {
+        console.warn("Aviso: Falha ao revogar refresh tokens:", revokeErr);
+      }
+
+      // 8. Cleanup legacy/temporary fields in Firestore (without saving the new password)
+      try {
+        await adminDb.collection("users").doc(targetUid).update({
+          temporaryPassword: FieldValue.delete(),
+          mustChangePassword: FieldValue.delete(),
+          customPassword: FieldValue.delete(),
+          updatedAt: FieldValue.serverTimestamp()
+        });
+      } catch (cleanErr) {
+        console.warn("Aviso ao limpar campos temporários no Firestore:", cleanErr);
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: "Senha atualizada com sucesso no Firebase Authentication."
+      });
+
+    } catch (err: any) {
+      console.error("Erro na redefinição direta de senha:", err);
+      return res.status(500).json({
+        error: `Erro ao redefinir senha: ${err?.message || "Erro interno do servidor."}`
+      });
+    }
   });
 
   // iCal Feed for Apple Calendar Subscription (Fail-closed)
