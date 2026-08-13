@@ -69,7 +69,8 @@ import {
   Landmark,
   LayoutGrid,
   ClipboardCheck,
-  Wallet
+  Wallet,
+  Sparkles
 } from "lucide-react";
 import { format, addDays, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, isToday, parseISO, isBefore, startOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -3461,7 +3462,7 @@ function AppContent() {
       let iconUrl = "";
       try {
         const domain = new URL(formattedUrl).hostname;
-        iconUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
+        iconUrl = `https://icons.duckduckgo.com/ip3/${domain}.ico`;
       } catch (urlErr) {
         console.warn("Could not determine domain for favicon");
       }
@@ -3582,6 +3583,18 @@ function AppContent() {
     if (!icon) return null;
     // Se for URL local antiga que dava 404, retornar null para usar o ícone padrão
     if (icon.startsWith('/uploads/')) return null;
+    if (icon.includes('google.com/s2/favicons') || icon.includes('gstatic.com/faviconV2')) {
+      try {
+        const urlObj = new URL(icon);
+        const domain = urlObj.searchParams.get('domain') || urlObj.searchParams.get('url');
+        if (domain) {
+          const cleanDomain = domain.replace(/^https?:\/\//, '').split('/')[0];
+          return `https://icons.duckduckgo.com/ip3/${cleanDomain}.ico`;
+        }
+      } catch {
+        // Fallback
+      }
+    }
     return icon;
   };
 
@@ -4434,6 +4447,7 @@ function AppContent() {
             onOpenSettings={() => setActiveTab("settings")} 
             onNavigate={setActiveTab} 
             tasks={tasks}
+            onOpenChangePassword={() => setUserChangePasswordModal({ isOpen: true, newPass: '', confirmPass: '', showPass: false, isSubmitting: false })}
           />
         ) : (
           <SettingsView companySettings={companySettings} isAdmin={isAdmin} onNavigate={setActiveTab} />
@@ -7734,7 +7748,7 @@ const ProcessConfigView = ({ templates }: { templates: ProcessTemplate[] }) => {
 const GCAL_SCOPES = 'https://www.googleapis.com/auth/calendar.events';
 declare const google: any;
 
-const ProfileView = ({ profile, user, onOpenSettings, onNavigate, tasks }: { profile: UserProfile | null, user: User | null, onOpenSettings: () => void, onNavigate: (tab: any) => void, tasks: Task[] }) => {
+const ProfileView = ({ profile, user, onOpenSettings, onNavigate, tasks, onOpenChangePassword }: { profile: UserProfile | null, user: User | null, onOpenSettings: () => void, onNavigate: (tab: any) => void, tasks: Task[], onOpenChangePassword?: () => void }) => {
   const { confirm } = useConfirm();
   const [isSyncing, setIsSyncing] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
@@ -8053,7 +8067,7 @@ const ProfileView = ({ profile, user, onOpenSettings, onNavigate, tasks }: { pro
             <div className="pt-2 space-y-2">
               <button 
                 type="button"
-                onClick={() => setUserChangePasswordModal({ isOpen: true, newPass: '', confirmPass: '', showPass: false, isSubmitting: false })}
+                onClick={onOpenChangePassword}
                 className="w-full flex items-center justify-center gap-2 py-3.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-2xl font-bold uppercase tracking-widest text-xs transition-all cursor-pointer border border-blue-100 shadow-sm"
               >
                 <Key className="w-4 h-4 text-blue-600" />
