@@ -2,16 +2,19 @@ import express from "express";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import crypto from "crypto";
 import { fileURLToPath } from "url";
-import { initializeApp as initAdminApp, getApps, cert } from "firebase-admin/app";
+import { initializeApp as initAdminApp, getApps } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
+import { getAuth as getAdminAuth } from "firebase-admin/auth";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Initialize Firebase Admin for iCal Feed
+// Initialize Firebase Admin for iCal Feed and Token Verification
 const configPath = path.join(__dirname, "firebase-applet-config.json");
 let adminDb: any = null;
+let adminAuthInstance: any = null;
 
 if (fs.existsSync(configPath)) {
   try {
@@ -22,8 +25,9 @@ if (fs.existsSync(configPath)) {
       });
     }
     adminDb = getFirestore(firebaseConfig.firestoreDatabaseId || "(default)");
+    adminAuthInstance = getAdminAuth();
   } catch (err) {
-    console.warn("Could not initialize Firebase Admin DB for iCal feed:", err);
+    console.warn("Could not initialize Firebase Admin DB/Auth:", err);
   }
 }
 
@@ -37,36 +41,93 @@ async function startServer() {
     fs.mkdirSync(uploadsDir, { recursive: true });
   }
 
-  // Multer configuration
+  // Multer configuration with MIME and extension validation
+  const allowedMimeTypes = new Set([
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "application/pdf"
+  ]);
+
+  const allowedExtensions = new Set([
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".webp",
+    ".pdf"
+  ]);
+
   const storage = multer.diskStorage({
     destination: (req, file, cb) => {
       cb(null, uploadsDir);
     },
     filename: (req, file, cb) => {
-      const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-      cb(null, uniqueSuffix + path.extname(file.originalname));
+      const ext = path.extname(file.originalname).toLowerCase();
+      const safeName = `${Date.now()}-${crypto.randomUUID()}${ext}`;
+      cb(null, safeName);
     },
   });
 
   const upload = multer({ 
     storage,
     limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+    fileFilter: (req, file, cb) => {
+      const ext = path.extname(file.originalname).toLowerCase();
+      if (!allowedMimeTypes.has(file.mimetype) || !allowedExtensions.has(ext)) {
+        return cb(new Error("Formato ou extensão de arquivo não permitido"));
+      }
+      cb(null, true);
+    }
   });
 
   app.use(express.json());
 
-  // API Routes
-  app.post("/api/upload", upload.single("file"), (req, res) => {
+  // API Route: Secure Upload
+  app.post("/api/upload", async (req, res, next) => {
+    // 1. Verify Authorization Header
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ error: "Acesso não autorizado: Token não fornecido" });
+    }
+
+    const idToken = authHeader.split("Bearer ")[1];
+    
+    // Verify token if Admin Auth is available
+    if (adminAuthInstance) {
+      try {
+        const decoded = await adminAuthInstance.verifyIdToken(idToken);
+        if (!decoded || !decoded.uid) {
+          return res.status(401).json({ error: "Acesso não autorizado: Token inválido" });
+        }
+        (req as any).user = decoded;
+      } catch (err) {
+        return res.status(401).json({ error: "Acesso não autorizado: Falha na validação do token" });
+      }
+    }
+
+    next();
+  }, upload.single("file"), (req, res) => {
     if (!req.file) {
-      return res.status(400).json({ error: "No file uploaded" });
+      return res.status(400).json({ error: "Nenhum arquivo enviado ou formato inválido" });
     }
     const fileUrl = `/uploads/${req.file.filename}`;
     res.json({ url: fileUrl });
+  }, (err: any, req: any, res: any, next: any) => {
+    // Multer error handler
+    console.error("Upload error:", err.message);
+    res.status(400).json({ error: err.message || "Erro ao processar arquivo" });
   });
 
   // iCal Feed for Apple Calendar Subscription
   app.get("/api/calendar/feed/:userId.ics", async (req, res) => {
     const { userId } = req.params;
+    const feedSecret = process.env.CALENDAR_FEED_SECRET;
+    const reqToken = req.query.token;
+
+    // Validate feed token if secret is configured
+    if (feedSecret && reqToken !== feedSecret) {
+      return res.status(404).send("Not Found");
+    }
     
     res.setHeader("Content-Type", "text/calendar; charset=utf-8");
     res.setHeader("Content-Disposition", `inline; filename="agenda-${userId}.ics"`);

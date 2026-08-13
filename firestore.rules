@@ -2,34 +2,202 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function isSignedIn() { return request.auth != null; }
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
 
     function isSuperAdmin() {
-      return request.auth != null && (
+      return isSignedIn() && (
         request.auth.token.email == "williangyn10@gmail.com" ||
         request.auth.token.email == "willian.guimaraes.viana@gmail.com"
       );
     }
 
+    function userCompanyId() {
+      return getUserData().companyId;
+    }
+
+    function userRole() {
+      return getUserData().role;
+    }
+
+    function userStatus() {
+      return getUserData().status;
+    }
+
+    function isActiveUser() {
+      return isSignedIn() && (
+        isSuperAdmin() || 
+        userStatus() == 'active' || 
+        userStatus() == 'APPROVED' || 
+        userStatus() == 'ativo'
+      );
+    }
+
     function isCompanyAdmin(companyId) {
       return isSuperAdmin() || (
-        isSignedIn() &&
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.companyId == companyId &&
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'manager')
+        isActiveUser() &&
+        userCompanyId() == companyId &&
+        (userRole() == 'admin' || userRole() == 'manager' || userRole() == 'ADMIN' || userRole() == 'MANAGER')
       );
     }
 
     function belongsToCompany(companyId) {
-      return isSignedIn() &&
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.companyId == companyId;
+      return isSuperAdmin() || (
+        isActiveUser() &&
+        userCompanyId() == companyId
+      );
     }
 
-    // Regra global — usuários autenticados podem ler e escrever
-    match /{document=**} {
-      allow read, write: if isSignedIn();
+    // Collection: users
+    match /users/{userId} {
+      allow read: if isSuperAdmin() || (
+        isSignedIn() && (
+          request.auth.uid == userId ||
+          belongsToCompany(resource.data.companyId)
+        )
+      );
+      allow create: if isSignedIn() && request.auth.uid == userId && request.resource.data.uid == userId;
+      allow update: if isSuperAdmin() || (
+        isSignedIn() && (
+          isCompanyAdmin(resource.data.companyId) || (
+            request.auth.uid == userId &&
+            request.resource.data.role == resource.data.role &&
+            request.resource.data.status == resource.data.status &&
+            request.resource.data.companyId == resource.data.companyId &&
+            request.resource.data.uid == resource.data.uid
+          )
+        )
+      );
+      allow delete: if isSuperAdmin() || isCompanyAdmin(resource.data.companyId);
+    }
+
+    // Collection: tasks
+    match /tasks/{taskId} {
+      allow read: if isSuperAdmin() || (
+        isActiveUser() &&
+        belongsToCompany(resource.data.companyId) && (
+          isCompanyAdmin(resource.data.companyId) ||
+          resource.data.uid == request.auth.uid ||
+          resource.data.assignedToUid == request.auth.uid
+        )
+      );
+      allow create: if isActiveUser() &&
+        request.resource.data.companyId == userCompanyId() &&
+        request.resource.data.uid == request.auth.uid;
+      allow update: if isSuperAdmin() || (
+        isActiveUser() &&
+        belongsToCompany(resource.data.companyId) && (
+          isCompanyAdmin(resource.data.companyId) ||
+          resource.data.uid == request.auth.uid ||
+          resource.data.assignedToUid == request.auth.uid
+        ) &&
+        request.resource.data.companyId == resource.data.companyId &&
+        request.resource.data.uid == resource.data.uid
+      );
+      allow delete: if isSuperAdmin() || (
+        isActiveUser() &&
+        belongsToCompany(resource.data.companyId) && (
+          isCompanyAdmin(resource.data.companyId) ||
+          resource.data.uid == request.auth.uid
+        )
+      );
+    }
+
+    // Shared Company Resource helper
+    function isAllowedCompanyResourceRead(comp) {
+      return isSuperAdmin() || (isActiveUser() && belongsToCompany(comp));
+    }
+
+    function isAllowedCompanyResourceWrite(comp) {
+      return isSuperAdmin() || (isActiveUser() && belongsToCompany(comp));
+    }
+
+    match /tools/{docId} {
+      allow read: if isAllowedCompanyResourceRead(resource.data.companyId);
+      allow create: if isActiveUser() && request.resource.data.companyId == userCompanyId();
+      allow update: if isAllowedCompanyResourceWrite(resource.data.companyId) && request.resource.data.companyId == resource.data.companyId;
+      allow delete: if isCompanyAdmin(resource.data.companyId);
+    }
+
+    match /processes/{docId} {
+      allow read: if isAllowedCompanyResourceRead(resource.data.companyId);
+      allow create: if isActiveUser() && request.resource.data.companyId == userCompanyId();
+      allow update: if isAllowedCompanyResourceWrite(resource.data.companyId) && request.resource.data.companyId == resource.data.companyId;
+      allow delete: if isCompanyAdmin(resource.data.companyId);
+    }
+
+    match /process_templates/{docId} {
+      allow read: if isAllowedCompanyResourceRead(resource.data.companyId);
+      allow create: if isActiveUser() && request.resource.data.companyId == userCompanyId();
+      allow update: if isAllowedCompanyResourceWrite(resource.data.companyId) && request.resource.data.companyId == resource.data.companyId;
+      allow delete: if isCompanyAdmin(resource.data.companyId);
+    }
+
+    match /settings/{docId} {
+      allow read: if isAllowedCompanyResourceRead(resource.data.companyId);
+      allow create, update, delete: if isCompanyAdmin(request.resource.data.companyId || resource.data.companyId);
+    }
+
+    match /vistorias/{docId} {
+      allow read: if isAllowedCompanyResourceRead(resource.data.companyId);
+      allow create: if isActiveUser() && request.resource.data.companyId == userCompanyId();
+      allow update: if isAllowedCompanyResourceWrite(resource.data.companyId) && request.resource.data.companyId == resource.data.companyId;
+      allow delete: if isCompanyAdmin(resource.data.companyId) || (isActiveUser() && resource.data.uid == request.auth.uid);
+    }
+
+    match /comissoes/{docId} {
+      allow read: if isAllowedCompanyResourceRead(resource.data.companyId);
+      allow create: if isActiveUser() && request.resource.data.companyId == userCompanyId();
+      allow update: if isAllowedCompanyResourceWrite(resource.data.companyId) && request.resource.data.companyId == resource.data.companyId;
+      allow delete: if isCompanyAdmin(resource.data.companyId);
+    }
+
+    match /sales/{docId} {
+      allow read: if isAllowedCompanyResourceRead(resource.data.companyId);
+      allow create: if isActiveUser() && request.resource.data.companyId == userCompanyId();
+      allow update: if isAllowedCompanyResourceWrite(resource.data.companyId) && request.resource.data.companyId == resource.data.companyId;
+      allow delete: if isCompanyAdmin(resource.data.companyId);
+    }
+
+    match /broker_splits/{docId} {
+      allow read: if isAllowedCompanyResourceRead(resource.data.companyId);
+      allow create: if isActiveUser() && request.resource.data.companyId == userCompanyId();
+      allow update: if isAllowedCompanyResourceWrite(resource.data.companyId) && request.resource.data.companyId == resource.data.companyId;
+      allow delete: if isCompanyAdmin(resource.data.companyId);
+    }
+
+    match /bank_accounts/{docId} {
+      allow read: if isAllowedCompanyResourceRead(resource.data.companyId);
+      allow create, update, delete: if isCompanyAdmin(request.resource.data.companyId || resource.data.companyId);
+    }
+
+    match /financial_categories/{docId} {
+      allow read: if isAllowedCompanyResourceRead(resource.data.companyId);
+      allow create, update, delete: if isCompanyAdmin(request.resource.data.companyId || resource.data.companyId);
+    }
+
+    match /financial_transactions/{docId} {
+      allow read: if isAllowedCompanyResourceRead(resource.data.companyId);
+      allow create: if isActiveUser() && request.resource.data.companyId == userCompanyId();
+      allow update: if isAllowedCompanyResourceWrite(resource.data.companyId) && request.resource.data.companyId == resource.data.companyId;
+      allow delete: if isCompanyAdmin(resource.data.companyId);
+    }
+
+    match /despejos/{docId} {
+      allow read: if isAllowedCompanyResourceRead(resource.data.companyId);
+      allow create: if isActiveUser() && request.resource.data.companyId == userCompanyId();
+      allow update: if isAllowedCompanyResourceWrite(resource.data.companyId) && request.resource.data.companyId == resource.data.companyId;
+      allow delete: if isCompanyAdmin(resource.data.companyId);
+    }
+
+    match /invites/{docId} {
+      allow read: if isAllowedCompanyResourceRead(resource.data.companyId);
+      allow create, update, delete: if isCompanyAdmin(request.resource.data.companyId || resource.data.companyId);
     }
   }
 }
