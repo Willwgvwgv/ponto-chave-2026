@@ -101,6 +101,9 @@ import {
   loginWithEmail,
   registerWithEmail,
   sendPasswordResetEmail,
+  confirmPasswordReset,
+  verifyPasswordResetCode,
+  updateUserPassword,
   updateProfile,
   logout, 
   onAuthStateChanged, 
@@ -318,7 +321,43 @@ const Login = () => {
   const [inviteRole, setInviteRole] = useState<string | null>(null);
   const [inviteError, setInviteError] = useState<string | null>(null);
 
+  // States for handling email link action code (oobCode)
+  const [oobCodeState, setOobCodeState] = useState<{
+    code: string | null;
+    loading: boolean;
+    email: string | null;
+    error: string | null;
+  }>({ code: null, loading: false, email: null, error: null });
+
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [isPasswordResetSuccess, setIsPasswordResetSuccess] = useState(false);
+
   useEffect(() => {
+    // Detect oobCode in query params (Firebase email reset link)
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('oobCode');
+    const mode = params.get('mode');
+
+    if (code && (mode === 'resetPassword' || !mode)) {
+      setOobCodeState({ code, loading: true, email: null, error: null });
+      verifyPasswordResetCode(auth, code)
+        .then((userEmail: string) => {
+          setOobCodeState({ code, loading: false, email: userEmail, error: null });
+          if (userEmail) setEmail(userEmail);
+        })
+        .catch((err: any) => {
+          console.error("Erro ao verificar código de redefinição de senha:", err);
+          setOobCodeState({
+            code: null,
+            loading: false,
+            email: null,
+            error: "O link de redefinição de senha é inválido ou já expirou. Por favor, solicite um novo e-mail de redefinição."
+          });
+        });
+    }
+
     const token = localStorage.getItem('active_invite_token');
     if (token) {
       const fetchInvite = async () => {
@@ -463,6 +502,35 @@ const Login = () => {
     }
   };
 
+  const handleConfirmResetSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPassword || newPassword.length < 6) {
+      setError("A nova senha deve ter no mínimo 6 caracteres.");
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      setError("As senhas não coincidem. Verifique se digitou a mesma senha nos dois campos.");
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      if (oobCodeState.code) {
+        await confirmPasswordReset(auth, oobCodeState.code, newPassword);
+        setIsPasswordResetSuccess(true);
+        toast.success("Nova senha cadastrada com sucesso!");
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    } catch (err: any) {
+      console.error("Erro ao salvar nova senha:", err);
+      setError(err.message || "Erro ao atualizar a senha. O link pode ter expirado.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#F8FAFC] p-4 font-sans">
       <div className="max-w-md w-full">
@@ -530,7 +598,112 @@ const Login = () => {
             </div>
           )}
 
-          {isResettingPassword ? (
+          {oobCodeState.loading ? (
+            <div className="text-center py-8 space-y-4">
+              <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto" />
+              <p className="text-sm font-bold text-slate-700">Verificando link de redefinição de senha...</p>
+            </div>
+          ) : isPasswordResetSuccess ? (
+            <div className="text-center space-y-6 py-2">
+              <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto shadow-inner">
+                <Check className="w-8 h-8 stroke-[3px]" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-black text-slate-900 tracking-tight">Senha Alterada!</h2>
+                <p className="text-slate-500 text-xs mt-2 leading-relaxed">
+                  Sua nova senha foi cadastrada com sucesso no sistema. Você já pode fazer login para acessar sua conta.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsPasswordResetSuccess(false);
+                  setOobCodeState({ code: null, loading: false, email: null, error: null });
+                  setIsResettingPassword(false);
+                }}
+                className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs uppercase tracking-widest rounded-2xl shadow-lg shadow-blue-500/25 transition-all cursor-pointer"
+              >
+                Ir para a Tela de Login
+              </button>
+            </div>
+          ) : oobCodeState.code ? (
+            <div>
+              <div className="text-center mb-6">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-50 text-blue-600 rounded-full text-[10px] font-black uppercase tracking-wider mb-2 border border-blue-100">
+                  <Key className="w-3.5 h-3.5" />
+                  Redefinição Segura
+                </span>
+                <h2 className="text-xl font-extrabold text-slate-900">Criar Nova Senha</h2>
+                <p className="text-xs text-slate-500 mt-1">
+                  Defina a nova senha de acesso para <strong className="text-slate-800">{oobCodeState.email}</strong>
+                </p>
+              </div>
+
+              {error && (
+                <motion.div 
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-start gap-3 text-red-600 text-sm"
+                >
+                  <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                  <span className="font-medium whitespace-pre-line text-left block w-full">{error}</span>
+                </motion.div>
+              )}
+
+              <form onSubmit={handleConfirmResetSubmit} className="space-y-4 text-left">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">Nova Senha</label>
+                  <div className="relative">
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                    <input 
+                      type={showNewPassword ? "text" : "password"}
+                      required
+                      minLength={6}
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="Mínimo de 6 caracteres"
+                      className="w-full pl-12 pr-12 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition-all text-slate-700 placeholder:text-slate-400 text-sm font-medium"
+                    />
+                    <button 
+                      type="button"
+                      onClick={() => setShowNewPassword(!showNewPassword)}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                    >
+                      {showNewPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">Confirmar Nova Senha</label>
+                  <div className="relative">
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                    <input 
+                      type={showNewPassword ? "text" : "password"}
+                      required
+                      minLength={6}
+                      value={confirmNewPassword}
+                      onChange={(e) => setConfirmNewPassword(e.target.value)}
+                      placeholder="Repita a nova senha"
+                      className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition-all text-slate-700 placeholder:text-slate-400 text-sm font-medium"
+                    />
+                  </div>
+                </div>
+
+                <button 
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-4 bg-[#3B82F6] hover:bg-blue-600 text-white rounded-2xl font-bold uppercase tracking-widest text-xs shadow-lg shadow-blue-500/25 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50 disabled:scale-100 mt-4 flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  {loading ? (
+                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    "Cadastrar Nova Senha"
+                  )}
+                </button>
+              </form>
+            </div>
+          ) : isResettingPassword ? (
             <div>
               <h2 className="text-xl font-bold text-slate-800 mb-2 text-center">
                 Redefinir sua senha
@@ -825,6 +998,25 @@ const UserManagement = ({
   });
   const [editingUserProfile, setEditingUserProfile] = useState<UserProfile | null>(null);
   const [subTab, setSubTab] = useState<'members' | 'rateio'>('members');
+
+  // Admin Reset Password Modal
+  const [adminResetModal, setAdminResetModal] = useState<{
+    isOpen: boolean;
+    targetUser: UserProfile | null;
+    activeTab: 'email' | 'direct';
+    customPassword: string;
+    showPassword: boolean;
+    isSavedDirect: boolean;
+    isSendingEmail: boolean;
+  }>({
+    isOpen: false,
+    targetUser: null,
+    activeTab: 'email',
+    customPassword: '',
+    showPassword: false,
+    isSavedDirect: false,
+    isSendingEmail: false
+  });
 
   useEffect(() => {
     if (!companySettings?.id) return;
@@ -1455,24 +1647,17 @@ const UserManagement = ({
 
                             <button 
                               id={`reset-pass-btn-${u.uid}`}
-                              onClick={() => {
-                                confirm({
-                                  title: "Redefinir Senha do Usuário?",
-                                  message: `Deseja enviar um e-mail com o link para redefinição de senha para ${u.displayName || u.email} (${u.email})?`,
-                                  confirmColor: "blue",
-                                  onConfirm: async () => {
-                                    try {
-                                      await sendPasswordResetEmail(auth, u.email);
-                                      toast.success(`E-mail de redefinição de senha enviado com sucesso para ${u.email}!`);
-                                    } catch (err: any) {
-                                      console.error("Erro ao enviar e-mail de redefinição:", err);
-                                      toast.error(`Erro ao enviar e-mail de redefinição: ${err.message || 'Tente novamente'}`);
-                                    }
-                                  }
-                                });
-                              }}
+                              onClick={() => setAdminResetModal({
+                                isOpen: true,
+                                targetUser: u,
+                                activeTab: 'email',
+                                customPassword: '',
+                                showPassword: false,
+                                isSavedDirect: false,
+                                isSendingEmail: false
+                              })}
                               className="p-1.5 bg-slate-50 text-slate-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-all cursor-pointer"
-                              title="Redefinir Senha do Usuário"
+                              title="Redefinir / Criar Senha do Usuário"
                             >
                               <Key className="w-4 h-4" />
                             </button>
@@ -2261,6 +2446,236 @@ const UserManagement = ({
           </div>
         )}
       </AnimatePresence>
+
+      {/* MODAL REDEFINIR / DEFINIR SENHA DE COLABORADOR (ADMIN) */}
+      <AnimatePresence>
+        {adminResetModal.isOpen && adminResetModal.targetUser && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 text-left relative overflow-hidden"
+            >
+              <div className="flex justify-between items-center mb-4">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center font-bold">
+                    <Key className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-extrabold text-slate-900">Gestão de Senha</h3>
+                    <p className="text-[11px] text-slate-400 font-semibold">{adminResetModal.targetUser.displayName || adminResetModal.targetUser.email}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAdminResetModal(prev => ({ ...prev, isOpen: false }))}
+                  className="p-2 hover:bg-slate-100 rounded-full transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5 text-slate-400" />
+                </button>
+              </div>
+
+              {/* TABS: E-mail vs Definir Senha */}
+              <div className="flex bg-slate-100 p-1 rounded-2xl mb-5">
+                <button
+                  type="button"
+                  onClick={() => setAdminResetModal(prev => ({ ...prev, activeTab: 'email', isSavedDirect: false }))}
+                  className={cn(
+                    "flex-1 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5",
+                    adminResetModal.activeTab === 'email' ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-800"
+                  )}
+                >
+                  <Mail className="w-3.5 h-3.5" />
+                  Link por E-mail
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAdminResetModal(prev => ({ ...prev, activeTab: 'direct', isSavedDirect: false }))}
+                  className={cn(
+                    "flex-1 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5",
+                    adminResetModal.activeTab === 'direct' ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-800"
+                  )}
+                >
+                  <Key className="w-3.5 h-3.5" />
+                  Criar Nova Senha
+                </button>
+              </div>
+
+              {adminResetModal.activeTab === 'email' ? (
+                <div className="space-y-4">
+                  <div className="bg-blue-50 border border-blue-100 p-4 rounded-2xl text-xs text-blue-900 space-y-2">
+                    <p className="font-bold flex items-center gap-1.5">
+                      <Sparkles className="w-4 h-4 text-blue-600" />
+                      Redefinição Segura via E-mail Oficial
+                    </p>
+                    <p className="text-slate-600 leading-relaxed">
+                      Ao clicar no botão abaixo, um e-mail oficial com link seguro será enviado para <strong className="text-slate-900">{adminResetModal.targetUser.email}</strong>.
+                    </p>
+                    <p className="text-slate-500 text-[10px]">
+                      Quando o colaborador clicar no link do e-mail, ele abrirá a própria plataforma Ponto Chave para digitar sua nova senha diretamente.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={adminResetModal.isSendingEmail}
+                    onClick={async () => {
+                      setAdminResetModal(prev => ({ ...prev, isSendingEmail: true }));
+                      try {
+                        await sendPasswordResetEmail(auth, adminResetModal.targetUser!.email);
+                        toast.success(`E-mail enviado com sucesso para ${adminResetModal.targetUser!.email}!`);
+                        setAdminResetModal(prev => ({ ...prev, isOpen: false, isSendingEmail: false }));
+                      } catch (err: any) {
+                        toast.error(`Erro ao enviar e-mail: ${err.message || 'Tente novamente'}`);
+                        setAdminResetModal(prev => ({ ...prev, isSendingEmail: false }));
+                      }
+                    }}
+                    className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold text-xs uppercase tracking-wider transition-all shadow-md shadow-blue-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    {adminResetModal.isSendingEmail ? (
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <>
+                        <Mail className="w-4 h-4" />
+                        Enviar E-mail de Redefinição
+                      </>
+                    )}
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {adminResetModal.isSavedDirect ? (
+                    <div className="space-y-4">
+                      <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-emerald-800 text-xs space-y-2">
+                        <div className="font-extrabold text-sm text-emerald-900 flex items-center gap-2">
+                          <Check className="w-5 h-5 text-emerald-600" />
+                          Nova Senha Salva no Perfil!
+                        </div>
+                        <p className="text-slate-600 text-[11px] leading-relaxed">
+                          As credenciais foram atualizadas. Copie as informações abaixo e envie para o colaborador:
+                        </p>
+                      </div>
+
+                      <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2 font-mono text-xs">
+                        <div className="flex justify-between items-center pb-1.5 border-b border-slate-200">
+                          <span className="text-slate-400 font-sans font-semibold">E-mail:</span>
+                          <span className="font-bold text-slate-800">{adminResetModal.targetUser.email}</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-slate-400 font-sans font-semibold">Nova Senha:</span>
+                          <span className="font-extrabold text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">{adminResetModal.customPassword}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const link = window.location.origin;
+                            const msg = `Olá ${adminResetModal.targetUser?.displayName || ''}!\n\n` +
+                              `Sua senha do sistema *Ponto Chave* foi atualizada pelo Administrador.\n\n` +
+                              `📧 E-mail: ${adminResetModal.targetUser?.email}\n` +
+                              `🔑 Nova Senha: ${adminResetModal.customPassword}\n` +
+                              `🔗 Acesse: ${link}\n\n` +
+                              `Por favor, faça login com sua nova senha.`;
+                            
+                            navigator.clipboard.writeText(msg).then(() => {
+                              toast.success("Credenciais copiadas! Cole no WhatsApp ou e-mail.");
+                            }).catch(() => {
+                              toast.success("Copiado com sucesso!");
+                            });
+                          }}
+                          className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+                        >
+                          <ExternalLink className="w-4 h-4" />
+                          Copiar p/ WhatsApp
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAdminResetModal(prev => ({ ...prev, isOpen: false }))}
+                          className="px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl font-bold text-xs uppercase tracking-wider transition-all cursor-pointer"
+                        >
+                          Fechar
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <p className="text-xs text-slate-500 leading-relaxed">
+                        Defina uma nova senha para o colaborador <strong className="text-slate-800">{adminResetModal.targetUser.displayName || adminResetModal.targetUser.email}</strong>:
+                      </p>
+
+                      <div className="space-y-1.5 text-left">
+                        <div className="flex justify-between items-center">
+                          <label className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider">Nova Senha</label>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$";
+                              let pass = "Ponto@";
+                              for (let i = 0; i < 4; i++) {
+                                pass += chars.charAt(Math.floor(Math.random() * chars.length));
+                              }
+                              setAdminResetModal(prev => ({ ...prev, customPassword: pass }));
+                            }}
+                            className="text-[10px] font-bold text-blue-600 hover:underline cursor-pointer flex items-center gap-1"
+                          >
+                            🎲 Gerar Senha Forte
+                          </button>
+                        </div>
+                        <div className="relative">
+                          <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                          <input
+                            type={adminResetModal.showPassword ? "text" : "password"}
+                            value={adminResetModal.customPassword}
+                            onChange={(e) => setAdminResetModal(prev => ({ ...prev, customPassword: e.target.value }))}
+                            placeholder="Digite a nova senha (mín. 6 chars)"
+                            className="w-full pl-10 pr-10 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-semibold text-slate-800"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setAdminResetModal(prev => ({ ...prev, showPassword: !prev.showPassword }))}
+                            className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                          >
+                            {adminResetModal.showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!adminResetModal.customPassword || adminResetModal.customPassword.length < 6) {
+                            toast.error("A senha deve ter no mínimo 6 caracteres.");
+                            return;
+                          }
+                          try {
+                            await updateDoc(doc(db, "users", adminResetModal.targetUser!.uid), {
+                              mustChangePassword: true,
+                              temporaryPassword: adminResetModal.customPassword,
+                              updatedAt: serverTimestamp()
+                            });
+                            toast.success("Nova senha definida com sucesso!");
+                            setAdminResetModal(prev => ({ ...prev, isSavedDirect: true }));
+                          } catch (err: any) {
+                            console.error("Erro ao definir nova senha:", err);
+                            toast.error(`Erro ao salvar senha: ${err.message || 'Tente novamente'}`);
+                          }
+                        }}
+                        className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold text-xs uppercase tracking-wider transition-all shadow-md shadow-blue-500/20 cursor-pointer flex items-center justify-center gap-2"
+                      >
+                        <Key className="w-4 h-4" />
+                        Salvar Nova Senha
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
@@ -2570,6 +2985,57 @@ function AppContent() {
   const [transferTargetUid, setTransferTargetUid] = useState<string>("");
   const [transferReason, setTransferReason] = useState<string>("");
   const [isTransferring, setIsTransferring] = useState<boolean>(false);
+  
+  // Modal de Alteração de Senha do Usuário Logado
+  const [userChangePasswordModal, setUserChangePasswordModal] = useState<{
+    isOpen: boolean;
+    newPass: string;
+    confirmPass: string;
+    showPass: boolean;
+    isSubmitting: boolean;
+  }>({
+    isOpen: false,
+    newPass: '',
+    confirmPass: '',
+    showPass: false,
+    isSubmitting: false,
+  });
+
+  const handleUserPasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userChangePasswordModal.newPass || userChangePasswordModal.newPass.length < 6) {
+      toast.error("A nova senha deve ter no mínimo 6 caracteres.");
+      return;
+    }
+    if (userChangePasswordModal.newPass !== userChangePasswordModal.confirmPass) {
+      toast.error("As senhas não coincidem. Digite a mesma senha nos dois campos.");
+      return;
+    }
+
+    setUserChangePasswordModal(prev => ({ ...prev, isSubmitting: true }));
+    try {
+      if (auth.currentUser) {
+        await updateUserPassword(auth.currentUser, userChangePasswordModal.newPass);
+        toast.success("Sua senha foi alterada com sucesso!");
+        setUserChangePasswordModal({
+          isOpen: false,
+          newPass: '',
+          confirmPass: '',
+          showPass: false,
+          isSubmitting: false,
+        });
+      }
+    } catch (err: any) {
+      console.error("Erro ao alterar senha:", err);
+      if (err.code === 'auth/requires-recent-login') {
+        toast.error("Por segurança, faça login novamente na sua conta antes de alterar a senha.");
+      } else {
+        toast.error(err.message || "Erro ao atualizar a senha.");
+      }
+    } finally {
+      setUserChangePasswordModal(prev => ({ ...prev, isSubmitting: false }));
+    }
+  };
   
   // New Task Form
   const [newTaskTitle, setNewTaskTitle] = useState("");
@@ -4852,6 +5318,109 @@ function AppContent() {
                       <>
                         <UserCheck className="w-4 h-4" />
                         <span>Transferir</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL ALTERAR PRÓPRIA SENHA */}
+      <AnimatePresence>
+        {userChangePasswordModal.isOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setUserChangePasswordModal(prev => ({ ...prev, isOpen: false }))}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 text-left overflow-hidden z-10"
+            >
+              <div className="flex justify-between items-center mb-4 pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center font-bold">
+                    <Key className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-extrabold text-slate-900">Alterar Minha Senha</h3>
+                    <p className="text-[11px] text-slate-400 font-semibold">{user?.email}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setUserChangePasswordModal(prev => ({ ...prev, isOpen: false }))}
+                  className="p-2 hover:bg-slate-100 rounded-full transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5 text-slate-400" />
+                </button>
+              </div>
+
+              <form onSubmit={handleUserPasswordChange} className="space-y-4">
+                <div className="space-y-1.5 text-left">
+                  <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Nova Senha</label>
+                  <div className="relative">
+                    <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      type={userChangePasswordModal.showPass ? "text" : "password"}
+                      required
+                      value={userChangePasswordModal.newPass}
+                      onChange={(e) => setUserChangePasswordModal(prev => ({ ...prev, newPass: e.target.value }))}
+                      placeholder="Mínimo de 6 caracteres"
+                      className="w-full pl-10 pr-10 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-semibold text-slate-800"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setUserChangePasswordModal(prev => ({ ...prev, showPass: !prev.showPass }))}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                    >
+                      {userChangePasswordModal.showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5 text-left">
+                  <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Confirmar Nova Senha</label>
+                  <div className="relative">
+                    <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      type={userChangePasswordModal.showPass ? "text" : "password"}
+                      required
+                      value={userChangePasswordModal.confirmPass}
+                      onChange={(e) => setUserChangePasswordModal(prev => ({ ...prev, confirmPass: e.target.value }))}
+                      placeholder="Repita a mesma senha"
+                      className="w-full pl-10 pr-10 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-semibold text-slate-800"
+                    />
+                  </div>
+                </div>
+
+                <div className="pt-2 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setUserChangePasswordModal(prev => ({ ...prev, isOpen: false }))}
+                    className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-2xl font-bold text-xs uppercase tracking-wider transition-all cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={userChangePasswordModal.isSubmitting}
+                    className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold text-xs uppercase tracking-wider transition-all shadow-md shadow-blue-500/20 disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    {userChangePasswordModal.isSubmitting ? (
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <>
+                        <Key className="w-4 h-4" />
+                        Atualizar Senha
                       </>
                     )}
                   </button>
@@ -7481,13 +8050,24 @@ const ProfileView = ({ profile, user, onOpenSettings, onNavigate, tasks }: { pro
               </div>
             </div>
 
-            <button 
-              onClick={logout}
-              className="w-full flex items-center justify-center gap-2 py-4 bg-red-50 text-red-600 rounded-2xl font-bold uppercase tracking-widest text-xs hover:bg-red-100 transition-all"
-            >
-              <LogOut className="w-4 h-4" />
-              Sair da Conta
-            </button>
+            <div className="pt-2 space-y-2">
+              <button 
+                type="button"
+                onClick={() => setUserChangePasswordModal({ isOpen: true, newPass: '', confirmPass: '', showPass: false, isSubmitting: false })}
+                className="w-full flex items-center justify-center gap-2 py-3.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-2xl font-bold uppercase tracking-widest text-xs transition-all cursor-pointer border border-blue-100 shadow-sm"
+              >
+                <Key className="w-4 h-4 text-blue-600" />
+                Alterar Minha Senha
+              </button>
+
+              <button 
+                onClick={logout}
+                className="w-full flex items-center justify-center gap-2 py-3.5 bg-red-50 text-red-600 rounded-2xl font-bold uppercase tracking-widest text-xs hover:bg-red-100 transition-all cursor-pointer"
+              >
+                <LogOut className="w-4 h-4" />
+                Sair da Conta
+              </button>
+            </div>
           </div>
         </div>
       </div>

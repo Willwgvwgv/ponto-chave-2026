@@ -8,6 +8,9 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendPasswordResetEmail as realSendPasswordResetEmail,
+  confirmPasswordReset as realConfirmPasswordReset,
+  verifyPasswordResetCode as realVerifyPasswordResetCode,
+  updatePassword as realUpdatePassword,
   updateProfile as realUpdateProfile
 } from 'firebase/auth';
 import type { User } from 'firebase/auth';
@@ -1171,7 +1174,25 @@ export const logout = isDemoMode ? async () => {
 
 export const sendPasswordResetEmail = isDemoMode ? async (authInstance: any, email: string) => {
   toast.success(`E-mail de redefinição enviado para ${email} (Modo Simulação)`);
-} : (authInstance: any, email: string) => realSendPasswordResetEmail(authInstance, email);
+} : (authInstance: any, email: string) => {
+  const actionCodeSettings = {
+    url: window.location.origin + window.location.pathname,
+    handleCodeInApp: true,
+  };
+  return realSendPasswordResetEmail(authInstance, email, actionCodeSettings);
+};
+
+export const confirmPasswordReset = isDemoMode ? async (authInstance: any, oobCode: string, newPassword: string) => {
+  toast.success("Senha redefinida com sucesso! (Modo Simulação)");
+} : (authInstance: any, oobCode: string, newPassword: string) => realConfirmPasswordReset(authInstance, oobCode, newPassword);
+
+export const verifyPasswordResetCode = isDemoMode ? async (authInstance: any, oobCode: string) => {
+  return "usuario@email.com";
+} : (authInstance: any, oobCode: string) => realVerifyPasswordResetCode(authInstance, oobCode);
+
+export const updateUserPassword = isDemoMode ? async (user: any, newPassword: string) => {
+  toast.success("Senha alterada com sucesso! (Modo Simulação)");
+} : (user: any, newPassword: string) => realUpdatePassword(user, newPassword);
 
 export const updateProfile = isDemoMode ? async (user: any, profileData: any) => {
   const current = JSON.parse(localStorage.getItem("pc_auth_user") || "null");
