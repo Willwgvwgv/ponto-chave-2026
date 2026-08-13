@@ -7881,6 +7881,47 @@ const ProfileView = ({ profile, user, onOpenSettings, onNavigate, tasks, onOpenC
   const [newName, setNewName] = useState(profile?.displayName || "");
   const [showAppleTutorial, setShowAppleTutorial] = useState(false);
   const [showGCalTutorial, setShowGCalTutorial] = useState(false);
+  const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
+  const [showTelegramModal, setShowTelegramModal] = useState(false);
+  const [whatsappPhone, setWhatsappPhone] = useState(profile?.whatsapp || "");
+
+  const handleShareTasksWhatsApp = () => {
+    const userTasks = tasks.filter(t => t.uid === user?.uid && !t.completed);
+    if (userTasks.length === 0) {
+      toast.info("Você não tem tarefas pendentes para enviar.");
+      return;
+    }
+    let text = `📋 *Minhas Tarefas - Ponto Chave*\n\n`;
+    userTasks.slice(0, 15).forEach((t, i) => {
+      text += `${i + 1}. *${t.title}* (${t.date})\n`;
+      if (t.description) text += `   _${t.description}_\n`;
+    });
+    text += `\nTotal: ${userTasks.length} tarefas pendentes.`;
+
+    const cleanNumber = whatsappPhone.replace(/\D/g, '');
+    const url = cleanNumber 
+      ? `https://wa.me/${cleanNumber.startsWith('55') ? cleanNumber : '55' + cleanNumber}?text=${encodeURIComponent(text)}`
+      : `https://wa.me/?text=${encodeURIComponent(text)}`;
+
+    window.open(url, '_blank');
+    toast.success("Abrindo WhatsApp com o resumo das suas tarefas!");
+  };
+
+  const handleShareTasksTelegram = () => {
+    const userTasks = tasks.filter(t => t.uid === user?.uid && !t.completed);
+    if (userTasks.length === 0) {
+      toast.info("Você não tem tarefas pendentes para enviar.");
+      return;
+    }
+    let text = `📋 *Minhas Tarefas - Ponto Chave*\n\n`;
+    userTasks.slice(0, 15).forEach((t, i) => {
+      text += `${i + 1}. *${t.title}* (${t.date})\n`;
+    });
+
+    const url = `https://t.me/share/url?url=${encodeURIComponent(window.location.origin)}&text=${encodeURIComponent(text)}`;
+    window.open(url, '_blank');
+    toast.success("Abrindo Telegram para enviar suas tarefas!");
+  };
 
   const updateDisplayName = async () => {
     if (!user?.uid || !newName.trim()) return;
@@ -8171,16 +8212,16 @@ const ProfileView = ({ profile, user, onOpenSettings, onNavigate, tasks, onOpenC
                     <div>
                       <div className="flex items-center gap-2">
                         <h5 className="text-xs font-bold text-slate-900">WhatsApp</h5>
-                        <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-full text-[9px] font-bold uppercase tracking-wider">Lembretes</span>
+                        <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-full text-[9px] font-bold uppercase tracking-wider">Lembretes & Envio</span>
                       </div>
-                      <p className="text-xs text-slate-500 mt-0.5">Receba alertas de tarefas e prazos no WhatsApp</p>
+                      <p className="text-xs text-slate-500 mt-0.5">Envie e receba lista de tarefas direto no seu WhatsApp</p>
                     </div>
                   </div>
                   <button 
-                    onClick={() => toast.info("Lembretes via WhatsApp ativados em seu painel de notificações!")}
-                    className="px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200/80 hover:bg-emerald-100 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer"
+                    onClick={() => setShowWhatsAppModal(true)}
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer shadow-sm"
                   >
-                    Conectar
+                    Usar WhatsApp
                   </button>
                 </div>
 
@@ -8193,16 +8234,16 @@ const ProfileView = ({ profile, user, onOpenSettings, onNavigate, tasks, onOpenC
                     <div>
                       <div className="flex items-center gap-2">
                         <h5 className="text-xs font-bold text-slate-900">Telegram</h5>
-                        <span className="px-2 py-0.5 bg-sky-50 text-sky-700 rounded-full text-[9px] font-bold uppercase tracking-wider">Bot Oficial</span>
+                        <span className="px-2 py-0.5 bg-sky-50 text-sky-700 rounded-full text-[9px] font-bold uppercase tracking-wider">Envio Direto</span>
                       </div>
-                      <p className="text-xs text-slate-500 mt-0.5">Crie e acompanhe tarefas via Telegram Bot</p>
+                      <p className="text-xs text-slate-500 mt-0.5">Compartilhe suas tarefas em grupos ou conversas no Telegram</p>
                     </div>
                   </div>
                   <button 
-                    onClick={() => toast.info("Link do Telegram Bot enviado!")}
-                    className="px-3 py-1.5 bg-sky-50 text-sky-700 border border-sky-200/80 hover:bg-sky-100 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer"
+                    onClick={() => setShowTelegramModal(true)}
+                    className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer shadow-sm"
                   >
-                    Conectar
+                    Usar Telegram
                   </button>
                 </div>
 
@@ -8214,47 +8255,27 @@ const ProfileView = ({ profile, user, onOpenSettings, onNavigate, tasks, onOpenC
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <h5 className="text-xs font-bold text-slate-900">Google</h5>
-                        {profile?.gcalLastSync ? (
-                          <span className="px-2 py-0.5 bg-green-50 text-green-700 border border-green-200/60 rounded-full text-[9px] font-bold uppercase tracking-wider flex items-center gap-1">
-                            <CheckCircle2 className="w-2.5 h-2.5 text-green-600" /> Conectado
-                          </span>
-                        ) : (
-                          <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full text-[9px] font-bold uppercase tracking-wider">Google Agenda</span>
-                        )}
+                        <h5 className="text-xs font-bold text-slate-900">Google Agenda</h5>
+                        <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full text-[9px] font-bold uppercase tracking-wider">Exportar .ICS / Sync</span>
                       </div>
-                      <p className="text-xs text-slate-500 mt-0.5 font-mono">
-                        {profile?.gcalLastSync 
-                          ? `Sincronizado ${format(parseISO(profile.gcalLastSync), "dd/MM 'às' HH:mm", { locale: ptBR })}`
-                          : (user?.email || "Sincronize eventos com o Google Agenda")}
-                      </p>
+                      <p className="text-xs text-slate-500 mt-0.5">Importe suas tarefas no Google Agenda em qualquer dispositivo</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 self-end sm:self-center">
                     <button 
-                      onClick={handleGCalSync}
-                      disabled={isSyncing}
-                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer shadow-sm disabled:opacity-50"
-                    >
-                      {isSyncing ? "Sincronizando..." : profile?.gcalLastSync ? "Sincronizar" : "Conectar Google"}
-                    </button>
-                    <button 
                       onClick={() => {
-                        if (!user?.uid) return;
-                        const feedUrl = `${window.location.protocol}//${window.location.host}/api/calendar/feed/${user.uid}.ics`;
-                        navigator.clipboard.writeText(feedUrl);
-                        toast.success("URL iCal copiada para área de transferência!");
+                        const userTasks = tasks.filter(t => t.uid === user?.uid && !t.completed);
+                        downloadIcalFile(userTasks, "tarefas-ponto-chave.ics", "Tarefas Ponto Chave");
                       }}
-                      className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1"
-                      title="Copiar URL iCal"
+                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer shadow-sm flex items-center gap-1.5"
                     >
-                      <Copy className="w-3.5 h-3.5" />
-                      URL iCal
+                      <Download className="w-3.5 h-3.5 text-white" />
+                      Baixar .ICS (Google)
                     </button>
                     <button 
                       onClick={() => setShowGCalTutorial(true)}
                       className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
-                      title="Como Integrar?"
+                      title="Como Importar?"
                     >
                       <HelpCircle className="w-4 h-4" />
                     </button>
@@ -8269,38 +8290,27 @@ const ProfileView = ({ profile, user, onOpenSettings, onNavigate, tasks, onOpenC
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <h5 className="text-xs font-bold text-slate-900">Apple</h5>
-                        <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded-full text-[9px] font-bold uppercase tracking-wider">iCloud / iCal</span>
+                        <h5 className="text-xs font-bold text-slate-900">Apple Calendar</h5>
+                        <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded-full text-[9px] font-bold uppercase tracking-wider">iPhone / Mac</span>
                       </div>
-                      <p className="text-xs text-slate-500 mt-0.5">iPhone, iPad e Mac (Assinatura nativa em tempo real)</p>
+                      <p className="text-xs text-slate-500 mt-0.5">Adicione diretamente ao Calendário do iOS e macOS</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 self-end sm:self-center">
                     <button 
                       onClick={() => {
-                        if (!user?.uid) return;
-                        const webcalUrl = `webcal://${window.location.host}/api/calendar/feed/${user.uid}.ics`;
-                        window.location.href = webcalUrl;
+                        const userTasks = tasks.filter(t => t.uid === user?.uid && !t.completed);
+                        downloadIcalFile(userTasks, "tarefas-apple-calendar.ics", "Minhas Tarefas - Apple");
                       }}
                       className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer shadow-sm flex items-center gap-1.5"
                     >
-                      <AppleIcon className="w-3.5 h-3.5 text-white" />
-                      Assinar em 1-Clique
-                    </button>
-                    <button 
-                      onClick={() => {
-                        const userTasks = tasks.filter(t => t.uid === user?.uid && !t.completed);
-                        downloadIcalFile(userTasks, "minhas-tarefas-apple.ics", "Minhas Tarefas - Ponto Chave");
-                      }}
-                      className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer"
-                      title="Baixar .ics"
-                    >
-                      <Download className="w-3.5 h-3.5" />
+                      <Download className="w-3.5 h-3.5 text-white" />
+                      Baixar .ICS (Apple)
                     </button>
                     <button 
                       onClick={() => setShowAppleTutorial(true)}
                       className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
-                      title="Como Integrar?"
+                      title="Como Importar?"
                     >
                       <HelpCircle className="w-4 h-4" />
                     </button>
@@ -8334,6 +8344,126 @@ const ProfileView = ({ profile, user, onOpenSettings, onNavigate, tasks, onOpenC
               </div>
             </div>
 
+            {/* WhatsApp Modal */}
+            <AnimatePresence>
+              {showWhatsAppModal && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                  <motion.div 
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100"
+                  >
+                    <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-600">
+                          <MessageCircle className="w-5 h-5 text-emerald-600" />
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-slate-900 text-sm">Integrar com WhatsApp</h3>
+                          <p className="text-[11px] text-slate-500">Envie o resumo das suas tarefas diretamente</p>
+                        </div>
+                      </div>
+                      <button onClick={() => setShowWhatsAppModal(false)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-400">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    <div className="mt-4 space-y-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                          Seu Número do WhatsApp (com DDD)
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Ex: 62999999999"
+                          value={whatsappPhone}
+                          onChange={(e) => setWhatsappPhone(e.target.value)}
+                          className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                        />
+                      </div>
+
+                      <div className="p-3 bg-emerald-50/70 border border-emerald-100 rounded-2xl">
+                        <h4 className="font-bold text-emerald-900 text-xs mb-1">📲 Como funciona o envio?</h4>
+                        <p className="text-[11px] text-emerald-800 leading-relaxed">
+                          Ao clicar no botão abaixo, o aplicativo formata automaticamente suas tarefas pendentes em uma lista legível e abre o seu WhatsApp para envio direto ou para contatos!
+                        </p>
+                      </div>
+
+                      <button
+                        onClick={async () => {
+                          if (user?.uid && whatsappPhone.trim()) {
+                            try {
+                              await updateDoc(doc(db, "users", user.uid), {
+                                whatsapp: whatsappPhone.trim()
+                              });
+                            } catch (e) {
+                              console.error(e);
+                            }
+                          }
+                          handleShareTasksWhatsApp();
+                          setShowWhatsAppModal(false);
+                        }}
+                        className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition-all shadow-md cursor-pointer"
+                      >
+                        <MessageCircle className="w-4 h-4 text-white" />
+                        Enviar Lista de Tarefas pelo WhatsApp
+                      </button>
+                    </div>
+                  </motion.div>
+                </div>
+              )}
+            </AnimatePresence>
+
+            {/* Telegram Modal */}
+            <AnimatePresence>
+              {showTelegramModal && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                  <motion.div 
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100"
+                  >
+                    <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-sky-50 rounded-2xl flex items-center justify-center text-sky-600">
+                          <Send className="w-5 h-5 text-sky-600" />
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-slate-900 text-sm">Integrar com Telegram</h3>
+                          <p className="text-[11px] text-slate-500">Compartilhe tarefas em canais ou conversas</p>
+                        </div>
+                      </div>
+                      <button onClick={() => setShowTelegramModal(false)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-400">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    <div className="mt-4 space-y-4">
+                      <div className="p-3 bg-sky-50/70 border border-sky-100 rounded-2xl">
+                        <h4 className="font-bold text-sky-900 text-xs mb-1">✈️ Compartilhamento Rápido Telegram</h4>
+                        <p className="text-[11px] text-sky-800 leading-relaxed">
+                          Gere uma mensagem formatada com suas tarefas atuais para enviar no seu aplicativo Telegram (Mensagens Salvas, grupos ou conversas).
+                        </p>
+                      </div>
+
+                      <button
+                        onClick={() => {
+                          handleShareTasksTelegram();
+                          setShowTelegramModal(false);
+                        }}
+                        className="w-full py-3 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition-all shadow-md cursor-pointer"
+                      >
+                        <Send className="w-4 h-4 text-white" />
+                        Enviar Tarefas no Telegram
+                      </button>
+                    </div>
+                  </motion.div>
+                </div>
+              )}
+            </AnimatePresence>
+
             {/* Google Calendar Tutorial Modal */}
             <AnimatePresence>
               {showGCalTutorial && (
@@ -8350,8 +8480,8 @@ const ProfileView = ({ profile, user, onOpenSettings, onNavigate, tasks, onOpenC
                           <CalendarIcon className="w-5 h-5 text-blue-600" />
                         </div>
                         <div>
-                          <h3 className="font-bold text-slate-900 text-sm">Como Integrar ao Google Agenda</h3>
-                          <p className="text-[11px] text-slate-500">Computador e aplicativo Google Agenda</p>
+                          <h3 className="font-bold text-slate-900 text-sm">Como Importar no Google Agenda</h3>
+                          <p className="text-[11px] text-slate-500">Método 100% Funcional no Vercel & Web</p>
                         </div>
                       </div>
                       <button onClick={() => setShowGCalTutorial(false)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-400">
@@ -8360,36 +8490,31 @@ const ProfileView = ({ profile, user, onOpenSettings, onNavigate, tasks, onOpenC
                     </div>
 
                     <div className="mt-4 space-y-3">
-                      <div className="p-3 bg-blue-50 rounded-2xl border border-blue-100">
-                        <h4 className="font-bold text-blue-900 text-xs mb-1">🔗 Método 1: Assinatura por URL iCal (Recomendado)</h4>
-                        <p className="text-[11px] text-blue-800 leading-relaxed mb-2">
-                          Funciona em qualquer conta do Google sem solicitar logins ou abrir janelas de pop-up:
+                      <div className="p-3.5 bg-blue-50 rounded-2xl border border-blue-100">
+                        <h4 className="font-bold text-blue-900 text-xs mb-1">📥 Passo 1: Baixar o Arquivo .ICS</h4>
+                        <p className="text-[11px] text-blue-800 leading-relaxed mb-3">
+                          Clique no botão abaixo para baixar o arquivo com todas as suas tarefas pendentes formatadas para o Google Agenda:
                         </p>
-                        <ol className="list-decimal list-inside space-y-1 text-[11px] text-blue-900 font-medium">
-                          <li>Clique em <strong>Copiar URL iCal</strong> abaixo.</li>
-                          <li>Acesse o <a href="https://calendar.google.com" target="_blank" rel="noopener noreferrer" className="underline font-bold">Google Agenda no computador</a>.</li>
-                          <li>Na barra lateral esquerda, clique no ícone <strong>+</strong> ao lado de <strong>Outros calendários</strong>.</li>
-                          <li>Selecione <strong>Do URL</strong> e cole o link copiado.</li>
-                        </ol>
                         <button
                           onClick={() => {
-                            if (!user?.uid) return;
-                            const feedUrl = `${window.location.protocol}//${window.location.host}/api/calendar/feed/${user.uid}.ics`;
-                            navigator.clipboard.writeText(feedUrl);
-                            toast.success("URL iCal copiada com sucesso!");
+                            const userTasks = tasks.filter(t => t.uid === user?.uid && !t.completed);
+                            downloadIcalFile(userTasks, "tarefas-ponto-chave.ics", "Tarefas Ponto Chave");
                           }}
-                          className="mt-3 w-full py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+                          className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer shadow-sm"
                         >
-                          <Copy className="w-4 h-4 text-white" />
-                          Copiar URL iCal do Google
+                          <Download className="w-4 h-4 text-white" />
+                          Baixar Arquivo .ICS
                         </button>
                       </div>
 
-                      <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/60">
-                        <h5 className="font-bold text-slate-900 text-xs mb-1">⚡ Método 2: Sincronização Direta OAuth</h5>
-                        <p className="text-[11px] text-slate-600 leading-relaxed">
-                          Clique em <strong>Sincronizar Conta Google</strong> para fazer login diretamente com sua conta Google e enviar os eventos instantaneamente para a sua agenda principal.
-                        </p>
+                      <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80">
+                        <h5 className="font-bold text-slate-900 text-xs mb-1.5">📅 Passo 2: Importar no Google Agenda</h5>
+                        <ol className="list-decimal list-inside space-y-1.5 text-[11px] text-slate-700 font-medium">
+                          <li>Acesse o <a href="https://calendar.google.com" target="_blank" rel="noopener noreferrer" className="underline font-bold text-blue-600">Google Agenda no navegador</a>.</li>
+                          <li>Clique no ícone de Engrenagem ⚙️ no canto superior direito ➔ <strong>Configurações</strong>.</li>
+                          <li>Na barra lateral esquerda, selecione <strong>Importar e exportar</strong>.</li>
+                          <li>Selecione o arquivo <code>tarefas-ponto-chave.ics</code> que acabou de baixar e clique em <strong>Importar</strong>.</li>
+                        </ol>
                       </div>
                     </div>
 
@@ -8422,8 +8547,8 @@ const ProfileView = ({ profile, user, onOpenSettings, onNavigate, tasks, onOpenC
                           <AppleIcon className="w-5 h-5 text-white" />
                         </div>
                         <div>
-                          <h3 className="font-bold text-slate-900 text-sm">Como Integrar ao Apple Calendar</h3>
-                          <p className="text-[11px] text-slate-500">iPhone, iPad, Mac e iCloud</p>
+                          <h3 className="font-bold text-slate-900 text-sm">Como Importar no Apple Calendar</h3>
+                          <p className="text-[11px] text-slate-500">iPhone, iPad e Mac</p>
                         </div>
                       </div>
                       <button onClick={() => setShowAppleTutorial(false)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-400">
@@ -8432,60 +8557,21 @@ const ProfileView = ({ profile, user, onOpenSettings, onNavigate, tasks, onOpenC
                     </div>
 
                     <div className="mt-4 space-y-3">
-                      <div className="p-3 bg-blue-50 rounded-2xl border border-blue-100">
-                        <h4 className="font-bold text-blue-900 text-xs mb-1">⚡ Método 1: Assinatura Automática (Mais Fácil)</h4>
-                        <p className="text-[11px] text-blue-800 leading-relaxed mb-2">
-                          Se você está no iPhone ou Mac, basta clicar no botão de 1-Clique para abrir o app Calendário nativo:
+                      <div className="p-3.5 bg-slate-900 text-white rounded-2xl border border-slate-800">
+                        <h4 className="font-bold text-white text-xs mb-1">⚡ Passo Único: Baixar e Abrir</h4>
+                        <p className="text-[11px] text-slate-300 leading-relaxed mb-3">
+                          Baixe o arquivo <code>.ics</code> e toque nele no seu iPhone/iPad/Mac para adicionar os eventos instantaneamente ao seu aplicativo Calendário:
                         </p>
                         <button
                           onClick={() => {
-                            if (!user?.uid) return;
-                            const webcalUrl = `webcal://${window.location.host}/api/calendar/feed/${user.uid}.ics`;
-                            window.location.href = webcalUrl;
+                            const userTasks = tasks.filter(t => t.uid === user?.uid && !t.completed);
+                            downloadIcalFile(userTasks, "tarefas-apple.ics", "Minhas Tarefas - Apple");
                           }}
-                          className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+                          className="w-full py-2.5 bg-white text-slate-900 hover:bg-slate-100 font-bold rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer shadow-sm"
                         >
-                          <AppleIcon className="w-4 h-4 text-white" />
-                          Abrir App Calendário (1-Clique)
+                          <Download className="w-4 h-4 text-slate-900" />
+                          Baixar .ICS para Apple
                         </button>
-                      </div>
-
-                      <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/60">
-                        <h5 className="font-bold text-slate-900 text-xs mb-1">📱 No iPhone / iPad:</h5>
-                        <ol className="list-decimal list-inside space-y-1 text-[11px] text-slate-600">
-                          <li>Copie o link usando o botão abaixo.</li>
-                          <li>Abra <strong>Ajustes</strong> ➔ <strong>Calendário</strong> ➔ <strong>Contas</strong>.</li>
-                          <li>Toque em <strong>Adicionar Conta</strong> ➔ <strong>Outra</strong>.</li>
-                          <li>Escolha <strong>Adicionar Calendário Assinado</strong> e cole o link.</li>
-                        </ol>
-                        <button
-                          onClick={() => {
-                            if (!user?.uid) return;
-                            const feedUrl = `${window.location.protocol}//${window.location.host}/api/calendar/feed/${user.uid}.ics`;
-                            navigator.clipboard.writeText(feedUrl);
-                            toast.success("Link iCal copiado!");
-                          }}
-                          className="mt-2 w-full py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold rounded-lg text-[10px] uppercase tracking-wider flex items-center justify-center gap-1 cursor-pointer"
-                        >
-                          <Copy className="w-3 h-3" />
-                          Copiar Link de Inscrição
-                        </button>
-                      </div>
-
-                      <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/60">
-                        <h5 className="font-bold text-slate-900 text-xs mb-1">💻 No Mac (Apple Calendar):</h5>
-                        <ol className="list-decimal list-inside space-y-1 text-[11px] text-slate-600">
-                          <li>Abra o app <strong>Calendário</strong> no Mac.</li>
-                          <li>No menu superior, clique em <strong>Arquivo</strong> ➔ <strong>Nova Assinatura de Calendário...</strong></li>
-                          <li>Cole o link copiado e clique em <strong>Assinar</strong>.</li>
-                        </ol>
-                      </div>
-
-                      <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/60">
-                        <h5 className="font-bold text-slate-900 text-xs mb-1">📥 Arquivo .ics (iCloud Web):</h5>
-                        <p className="text-[11px] text-slate-600 leading-relaxed mb-2">
-                          Se você usa a web do iCloud, clique em <strong>"Baixar Arquivo .ics"</strong> e abra o arquivo no seu computador para sincronizar os eventos.
-                        </p>
                       </div>
                     </div>
 
@@ -8501,6 +8587,7 @@ const ProfileView = ({ profile, user, onOpenSettings, onNavigate, tasks, onOpenC
                 </div>
               )}
             </AnimatePresence>
+
             <div className="pt-6 border-t border-slate-100">
               <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Informações da Conta</h4>
               <div className="space-y-4">

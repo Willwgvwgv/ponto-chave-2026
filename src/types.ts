@@ -36,6 +36,7 @@ export interface UserProfile {
   isPreAuthorized?: boolean;
   createdAt?: any;
   gcalLastSync?: string;
+  whatsapp?: string;
   isSocio?: boolean;        // true = pode ter múltiplos papéis na divisão de comissões
   cargoComissao?: 'CORRETOR' | 'CAPTADOR' | 'GESTOR' | 'SOCIO' | null; // cargo específico para comissões
   cpf?: string;             // CPF para PDF fiscal e RPA
