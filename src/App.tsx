@@ -100,6 +100,7 @@ import {
   loginWithGoogle, 
   loginWithEmail,
   registerWithEmail,
+  sendPasswordResetEmail,
   updateProfile,
   logout, 
   onAuthStateChanged, 
@@ -306,6 +307,8 @@ const Login = () => {
   const { companySettings } = useAuth();
   const [loading, setLoading] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
+  const [resetSuccessMessage, setResetSuccessMessage] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -429,6 +432,37 @@ const Login = () => {
     }
   };
 
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.trim()) {
+      setError("Por favor, digite seu e-mail para enviar o link de redefinição de senha.");
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setResetSuccessMessage(null);
+
+    try {
+      await sendPasswordResetEmail(auth, email.trim());
+      setResetSuccessMessage(`Instruções de redefinição enviadas para ${email.trim()}! Verifique também sua caixa de entrada e spam.`);
+      toast.success("E-mail de redefinição de senha enviado!");
+    } catch (err: any) {
+      console.error("Erro ao solicitar redefinição:", err);
+      let errorMessage = "Erro ao enviar e-mail: ";
+      if (err.code === 'auth/user-not-found') {
+        errorMessage = "Nenhum usuário encontrado com este e-mail.";
+      } else if (err.code === 'auth/invalid-email') {
+        errorMessage = "E-mail informado é inválido.";
+      } else {
+        errorMessage += err.message || "Tente novamente mais tarde.";
+      }
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#F8FAFC] p-4 font-sans">
       <div className="max-w-md w-full">
@@ -496,129 +530,222 @@ const Login = () => {
             </div>
           )}
 
-          <div className="flex bg-slate-100 p-1 rounded-2xl mb-8">
-            <button 
-              onClick={() => { setIsRegistering(false); setError(null); }}
-              className={cn(
-                "flex-1 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2",
-                !isRegistering ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
-              )}
-            >
-              <LogIn className="w-4 h-4" />
-              Entrar
-            </button>
-            <button 
-              onClick={() => { setIsRegistering(true); setError(null); }}
-              className={cn(
-                "flex-1 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2",
-                isRegistering ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
-              )}
-            >
-              <UserPlus className="w-4 h-4" />
-              Cadastrar
-            </button>
-          </div>
+          {isResettingPassword ? (
+            <div>
+              <h2 className="text-xl font-bold text-slate-800 mb-2 text-center">
+                Redefinir sua senha
+              </h2>
+              <p className="text-slate-500 text-sm text-center mb-6">
+                Informe o e-mail cadastrado na sua conta para receber as instruções de alteração de senha.
+              </p>
 
-          <h2 className="text-xl font-bold text-slate-800 mb-2 text-center">
-            {isRegistering ? "Crie sua conta" : "Bem-vindo de volta"}
-          </h2>
-          <p className="text-slate-500 text-sm text-center mb-8">
-            {isRegistering ? "Comece a gerenciar suas atividades hoje." : "Acesse sua conta para gerenciar suas atividades."}
-          </p>
-
-          {error && (
-            <motion.div 
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-start gap-3 text-red-600 text-sm"
-            >
-              <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-              <span className="font-medium whitespace-pre-line text-left block w-full">{error}</span>
-            </motion.div>
-          )}
-
-          <form onSubmit={handleEmailAuth} className="space-y-4">
-            {isRegistering && (
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">Nome Completo</label>
-                <div className="relative">
-                  <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                  <input 
-                    type="text"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Seu nome"
-                    className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition-all text-slate-700 placeholder:text-slate-400"
-                  />
-                </div>
-              </div>
-            )}
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">E-mail</label>
-              <div className="relative">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                <input 
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="exemplo@email.com"
-                  className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition-all text-slate-700 placeholder:text-slate-400"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">Senha</label>
-              <div className="relative">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                <input 
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full pl-12 pr-12 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition-all text-slate-700 placeholder:text-slate-400"
-                />
-                <button 
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+              {resetSuccessMessage && (
+                <motion.div 
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="mb-6 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-start gap-3 text-emerald-700 text-xs font-medium leading-relaxed"
                 >
-                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  <Check className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
+                  <span>{resetSuccessMessage}</span>
+                </motion.div>
+              )}
+
+              {error && (
+                <motion.div 
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-start gap-3 text-red-600 text-sm"
+                >
+                  <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                  <span className="font-medium whitespace-pre-line text-left block w-full">{error}</span>
+                </motion.div>
+              )}
+
+              <form onSubmit={handleResetPassword} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">E-mail Cadastrado</label>
+                  <div className="relative">
+                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                    <input 
+                      type="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="exemplo@email.com"
+                      className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition-all text-slate-700 placeholder:text-slate-400"
+                    />
+                  </div>
+                </div>
+
+                <button 
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-4 bg-[#3B82F6] text-white rounded-2xl font-bold uppercase tracking-widest text-xs shadow-lg shadow-blue-500/25 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50 disabled:scale-100 mt-4 flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  {loading ? (
+                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    "Enviar Link de Redefinição"
+                  )}
+                </button>
+              </form>
+
+              <div className="mt-6 text-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsResettingPassword(false);
+                    setError(null);
+                    setResetSuccessMessage(null);
+                  }}
+                  className="text-xs font-bold text-slate-500 hover:text-blue-600 transition-colors uppercase tracking-wider cursor-pointer"
+                >
+                  ← Voltar para o Login
                 </button>
               </div>
             </div>
+          ) : (
+            <div>
+              <div className="flex bg-slate-100 p-1 rounded-2xl mb-8">
+                <button 
+                  onClick={() => { setIsRegistering(false); setError(null); }}
+                  className={cn(
+                    "flex-1 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 cursor-pointer",
+                    !isRegistering ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                  )}
+                >
+                  <LogIn className="w-4 h-4" />
+                  Entrar
+                </button>
+                <button 
+                  onClick={() => { setIsRegistering(true); setError(null); }}
+                  className={cn(
+                    "flex-1 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 cursor-pointer",
+                    isRegistering ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                  )}
+                >
+                  <UserPlus className="w-4 h-4" />
+                  Cadastrar
+                </button>
+              </div>
 
-            <button 
-              type="submit"
-              disabled={loading}
-              className="w-full py-4 bg-[#3B82F6] text-white rounded-2xl font-bold uppercase tracking-widest text-xs shadow-lg shadow-blue-500/25 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50 disabled:scale-100 mt-4 flex items-center justify-center gap-2"
-            >
-              {loading ? (
-                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              ) : (
-                isRegistering ? "Criar Conta" : "Entrar"
+              <h2 className="text-xl font-bold text-slate-800 mb-2 text-center">
+                {isRegistering ? "Crie sua conta" : "Bem-vindo de volta"}
+              </h2>
+              <p className="text-slate-500 text-sm text-center mb-8">
+                {isRegistering ? "Comece a gerenciar suas atividades hoje." : "Acesse sua conta para gerenciar suas atividades."}
+              </p>
+
+              {error && (
+                <motion.div 
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-start gap-3 text-red-600 text-sm"
+                >
+                  <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                  <span className="font-medium whitespace-pre-line text-left block w-full">{error}</span>
+                </motion.div>
               )}
-            </button>
-          </form>
 
-          <div className="relative my-8">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-slate-100"></div>
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-white px-4 text-slate-400 font-bold tracking-widest">Ou continue com</span>
-            </div>
-          </div>
+              <form onSubmit={handleEmailAuth} className="space-y-4">
+                {isRegistering && (
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">Nome Completo</label>
+                    <div className="relative">
+                      <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                      <input 
+                        type="text"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        placeholder="Seu nome"
+                        className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition-all text-slate-700 placeholder:text-slate-400"
+                      />
+                    </div>
+                  </div>
+                )}
 
-          <button 
-            onClick={handleGoogleLogin}
-            disabled={loading}
-            className="w-full flex items-center justify-center gap-3 py-4 bg-white border-2 border-slate-100 rounded-2xl font-bold text-slate-700 hover:bg-slate-50 hover:border-slate-200 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
-          >
-            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-5 h-5" alt="Google" />
-            Google
-          </button>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">E-mail</label>
+                  <div className="relative">
+                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                    <input 
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="exemplo@email.com"
+                      className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition-all text-slate-700 placeholder:text-slate-400"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between ml-1">
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Senha</label>
+                    {!isRegistering && (
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          setIsResettingPassword(true);
+                          setError(null);
+                          setResetSuccessMessage(null);
+                        }}
+                        className="text-[11px] font-bold text-blue-600 hover:text-blue-700 hover:underline transition-colors cursor-pointer"
+                      >
+                        Esqueceu sua senha?
+                      </button>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                    <input 
+                      type={showPassword ? "text" : "password"}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full pl-12 pr-12 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition-all text-slate-700 placeholder:text-slate-400"
+                    />
+                    <button 
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                    >
+                      {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                    </button>
+                  </div>
+                </div>
+
+                <button 
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-4 bg-[#3B82F6] text-white rounded-2xl font-bold uppercase tracking-widest text-xs shadow-lg shadow-blue-500/25 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50 disabled:scale-100 mt-4 flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  {loading ? (
+                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    isRegistering ? "Criar Conta" : "Entrar"
+                  )}
+                </button>
+              </form>
+
+              <div className="relative my-8">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-slate-100"></div>
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-white px-4 text-slate-400 font-bold tracking-widest">Ou continue com</span>
+                </div>
+              </div>
+
+              <button 
+                onClick={handleGoogleLogin}
+                disabled={loading}
+                className="w-full flex items-center justify-center gap-3 py-4 bg-white border-2 border-slate-100 rounded-2xl font-bold text-slate-700 hover:bg-slate-50 hover:border-slate-200 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+              >
+                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-5 h-5" alt="Google" />
+                Google
+              </button>
+            </div>
+          )}
 
           {!isForcedDemo && (
             <div className="mt-8 flex flex-col gap-4 p-5 bg-blue-50/50 rounded-3xl border border-blue-100/50 text-left">
@@ -1324,6 +1451,30 @@ const UserManagement = ({
                               title="Editar Cargo"
                             >
                               <Edit2 className="w-4 h-4" />
+                            </button>
+
+                            <button 
+                              id={`reset-pass-btn-${u.uid}`}
+                              onClick={() => {
+                                confirm({
+                                  title: "Redefinir Senha do Usuário?",
+                                  message: `Deseja enviar um e-mail com o link para redefinição de senha para ${u.displayName || u.email} (${u.email})?`,
+                                  confirmColor: "blue",
+                                  onConfirm: async () => {
+                                    try {
+                                      await sendPasswordResetEmail(auth, u.email);
+                                      toast.success(`E-mail de redefinição de senha enviado com sucesso para ${u.email}!`);
+                                    } catch (err: any) {
+                                      console.error("Erro ao enviar e-mail de redefinição:", err);
+                                      toast.error(`Erro ao enviar e-mail de redefinição: ${err.message || 'Tente novamente'}`);
+                                    }
+                                  }
+                                });
+                              }}
+                              className="p-1.5 bg-slate-50 text-slate-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-all cursor-pointer"
+                              title="Redefinir Senha do Usuário"
+                            >
+                              <Key className="w-4 h-4" />
                             </button>
 
                             <button 

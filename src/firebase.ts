@@ -7,6 +7,7 @@ import {
   onAuthStateChanged as realOnAuthStateChanged, 
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
+  sendPasswordResetEmail as realSendPasswordResetEmail,
   updateProfile as realUpdateProfile
 } from 'firebase/auth';
 import type { User } from 'firebase/auth';
@@ -1167,6 +1168,10 @@ export const logout = isDemoMode ? async () => {
   localStorage.setItem("pc_auth_user", "null");
   triggerAuthListeners(null);
 } : () => signOut(auth);
+
+export const sendPasswordResetEmail = isDemoMode ? async (authInstance: any, email: string) => {
+  toast.success(`E-mail de redefinição enviado para ${email} (Modo Simulação)`);
+} : (authInstance: any, email: string) => realSendPasswordResetEmail(authInstance, email);
 
 export const updateProfile = isDemoMode ? async (user: any, profileData: any) => {
   const current = JSON.parse(localStorage.getItem("pc_auth_user") || "null");
