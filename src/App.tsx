@@ -3104,31 +3104,31 @@ function AppContent() {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const tasksData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Task));
       
-      // Detectar novas tarefas para notificação sonora
+      // Detectar tarefas novas ou transferidas para notificação sonora e avisos no destinatário
       if (!isInitialLoad.current) {
         snapshot.docChanges().forEach((change) => {
-          if (change.type === "added") {
-            const newTask = change.doc.data() as Task;
-            // Notificar se for para o usuário atual ou se for admin vendo tudo
-            // E não notificar se foi o próprio usuário que criou (evitar notificar o admin que acabou de atribuir algo)
-            const isCreatedByMe = newTask.authorId === user.uid || (!newTask.authorId && isAdmin); // Fallback se não tiver authorId mas for admin no dashboard
+          const task = change.doc.data() as Task;
+          
+          // Notificar apenas se a tarefa pertencer ao usuário logado
+          if (task.uid === user.uid) {
+            const isTransferredByMe = task.transferredFrom === user.uid;
+            const isCreatedByMe = task.authorId === user.uid && !task.transferredFrom;
             
-            if (newTask.uid === user.uid && !isCreatedByMe) {
-              const isForMe = newTask.uid === user.uid;
-              const assignedUser = allUsers.find(u => u.uid === newTask.uid);
-              const userName = assignedUser?.displayName?.split(' ')[0] || "um colaborador";
-
-              playNotificationSound();
-              toast.info(`Nova tarefa: ${newTask.title}`, {
-                description: isForMe 
-                  ? "Uma nova atividade foi atribuída a você." 
-                  : `Atividade atribuída a ${userName}.`,
-                duration: Infinity,
-                action: {
-                  label: "Entendido",
-                  onClick: () => console.log("Notificação lida"),
-                },
-              });
+            // Se foi enviada ou transferida por OUTRO colaborador para mim:
+            if (!isTransferredByMe && !isCreatedByMe) {
+              if (change.type === "added" || change.type === "modified") {
+                const senderName = task.transferredFromName || allUsers.find(u => u.uid === task.authorId)?.displayName || "um colaborador";
+                
+                playNotificationSound();
+                toast.info(`Nova tarefa recebida!`, {
+                  description: `"${task.title}" (enviada por ${senderName})`,
+                  duration: 8000,
+                  action: {
+                    label: "Ver na Agenda",
+                    onClick: () => setActiveTab("calendar"),
+                  },
+                });
+              }
             }
           }
         });
@@ -3369,7 +3369,19 @@ function AppContent() {
         ...(transferReason ? { description: updatedDescription } : {})
       });
 
-      toast.success(`Tarefa transferida com sucesso para ${targetUser.displayName || targetUser.email}!`);
+      playNotificationSound();
+      if (transferTargetUid === user?.uid) {
+        toast.info(`Tarefa transferida para você mesmo!`, {
+          description: `A atividade "${transferModal.task.title}" foi atribuída à sua responsabilidade.`,
+          duration: 6000,
+          action: {
+            label: "Ver Agenda",
+            onClick: () => setActiveTab("calendar"),
+          },
+        });
+      } else {
+        toast.success(`Tarefa transferida com sucesso para ${targetUser.displayName || targetUser.email}!`);
+      }
       setTransferModal({ isOpen: false, task: null });
       setTransferTargetUid("");
       setTransferReason("");
@@ -4208,6 +4220,11 @@ function AppContent() {
                           {task.uid !== user?.uid && (
                             <span className="ml-2 text-[10px] text-blue-600 font-bold uppercase py-0.5 px-2 bg-blue-50 rounded-full">
                               Para: {allUsers.find(u => u.uid === task.uid)?.displayName || 'Colaborador'}
+                            </span>
+                          )}
+                          {task.transferredFromName && (
+                            <span className="ml-2 text-[10px] text-amber-700 font-bold uppercase py-0.5 px-2 bg-amber-50 rounded-full border border-amber-200">
+                              Transferida por: {task.transferredFromName}
                             </span>
                           )}
                         </div>
@@ -5553,7 +5570,21 @@ const CalendarView = ({ selectedDate, setSelectedDate, tasks, onAddTask, onToggl
         <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
           <div className="flex items-center justify-between mb-6">
             <h4 className="font-bold text-slate-800">Tarefas do Dia</h4>
-            <button onClick={onAddTask} className="p-2 bg-blue-50 text-[#3B82F6] rounded-xl hover:bg-blue-100 transition-all"><Plus className="w-4 h-4" /></button>
+            <div className="flex items-center gap-2">
+              {tasksForSelectedDate.length > 0 && (
+                <button
+                  onClick={() => downloadIcalFile(tasksForSelectedDate, `tarefas-${format(selectedDate, 'yyyy-MM-dd')}.ics`, `Tarefas - ${format(selectedDate, 'dd/MM/yyyy')}`)}
+                  title="Exportar tarefas do dia para Apple Calendar / iCal"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 text-white hover:bg-slate-800 rounded-xl transition-all shadow-sm cursor-pointer"
+                >
+                  <AppleIcon className="w-3.5 h-3.5 text-white" />
+                  <span className="text-[10px] font-bold uppercase tracking-wider">iCal</span>
+                </button>
+              )}
+              <button onClick={onAddTask} className="p-2 bg-blue-50 text-[#3B82F6] rounded-xl hover:bg-blue-100 transition-all cursor-pointer">
+                <Plus className="w-4 h-4" />
+              </button>
+            </div>
           </div>
           <div className="space-y-4">
             {tasksForSelectedDate.length === 0 ? (
@@ -5571,21 +5602,38 @@ const CalendarView = ({ selectedDate, setSelectedDate, tasks, onAddTask, onToggl
                         Para: {allUsers.find((u: any) => u.uid === task.uid)?.displayName || 'Colaborador'}
                       </p>
                     )}
+                    {task.transferredFromName && (
+                      <p className="text-[9px] text-amber-600 font-bold uppercase tracking-widest mt-0.5 truncate">
+                        Transferida por: {task.transferredFromName}
+                      </p>
+                    )}
                     {task.description && <p className="text-[10px] text-slate-400 mt-0.5 line-clamp-1">{task.description}</p>}
                   </div>
                 </div>
-                {onTransferTask && (
+                <div className="flex items-center gap-1 shrink-0">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      onTransferTask(task);
+                      downloadIcalFile([task], `tarefa-${task.id || 'apple'}.ics`, task.title);
                     }}
-                    title="Transferir tarefa"
-                    className="p-1.5 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all shrink-0"
+                    title="Exportar esta tarefa para Apple Calendar (.ics)"
+                    className="p-1.5 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all"
                   >
-                    <UserCheck className="w-4 h-4" />
+                    <AppleIcon className="w-4 h-4" />
                   </button>
-                )}
+                  {onTransferTask && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onTransferTask(task);
+                      }}
+                      title="Transferir tarefa"
+                      className="p-1.5 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all shrink-0"
+                    >
+                      <UserCheck className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -7745,6 +7793,81 @@ const ProcessConfigView = ({ templates }: { templates: ProcessTemplate[] }) => {
   );
 };
 
+const AppleIcon = ({ className = "w-5 h-5" }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+    <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.32c.67-.82 1.12-1.96.99-3.1-.97.04-2.15.65-2.85 1.47-.62.72-1.16 1.88-.01 3.01 1.08.08 2.19-.56 2.87-1.38z"/>
+  </svg>
+);
+
+const downloadIcalFile = (tasksToExport: Task[], filename = "tarefas-ponto-chave.ics", title = "Ponto Chave") => {
+  if (!tasksToExport || tasksToExport.length === 0) {
+    toast.info("Nenhuma tarefa para exportar.");
+    return;
+  }
+
+  const sanitize = (str: string) => (str || '').replace(/\r?\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\\;');
+  const createdIso = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+
+  const events = tasksToExport.map((task, index) => {
+    let dateStr = task.date ? task.date.replace(/-/g, '') : format(new Date(), 'yyyyMMdd');
+    let nextDayStr = dateStr;
+    if (task.date) {
+      try {
+        const d = parseISO(task.date);
+        nextDayStr = format(addDays(d, 1), 'yyyyMMdd');
+      } catch {
+        nextDayStr = dateStr;
+      }
+    }
+
+    const uid = `task-${task.id || index}-${Date.now()}@pontochave.app`;
+
+    return [
+      'BEGIN:VEVENT',
+      `UID:${uid}`,
+      `DTSTAMP:${createdIso}`,
+      `DTSTART;VALUE=DATE:${dateStr}`,
+      `DTEND;VALUE=DATE:${nextDayStr}`,
+      `SUMMARY:${sanitize(`📍 Tarefa: ${task.title}`)}`,
+      `DESCRIPTION:${sanitize((task.description ? task.description + '\\n\\n' : '') + 'Sincronizado via Ponto Chave')}`,
+      'STATUS:CONFIRMED',
+      'BEGIN:VALARM',
+      'TRIGGER:-PT15M',
+      'ACTION:DISPLAY',
+      `DESCRIPTION:${sanitize(task.title)}`,
+      'END:VALARM',
+      'END:VEVENT'
+    ].join('\r\n');
+  }).join('\r\n');
+
+  const icalContent = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Ponto Chave//Agenda de Tarefas//PT',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    `X-WR-CALNAME:${sanitize(title)}`,
+    'X-WR-TIMEZONE:America/Sao_Paulo',
+    events,
+    'END:VCALENDAR'
+  ].join('\r\n');
+
+  const blob = new Blob([icalContent], { type: 'text/calendar;charset=utf-8' });
+  const url = window.URL.createObjectURL(blob);
+  
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(url);
+
+  toast.success(`${tasksToExport.length} tarefa(s) exportada(s) para Apple Calendar!`, {
+    description: "Abra o arquivo .ics baixado para adicionar diretamente ao Calendário do seu iPhone, iPad ou Mac."
+  });
+};
+
 const GCAL_SCOPES = 'https://www.googleapis.com/auth/calendar.events';
 declare const google: any;
 
@@ -8006,15 +8129,23 @@ const ProfileView = ({ profile, user, onOpenSettings, onNavigate, tasks, onOpenC
             </div>
 
             <div className="pt-6 border-t border-slate-100">
-              <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Integrações</h4>
-              <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100">
-                <div className="flex items-start gap-4">
-                  <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm">
-                    <CalendarIcon className="w-5 h-5 text-blue-600" />
-                  </div>
-                  <div className="flex-1">
-                    <h5 className="text-sm font-bold text-slate-900">Google Agenda</h5>
-                    <p className="text-[10px] text-slate-500 font-medium leading-relaxed mt-0.5">Sincronize suas tarefas e receba notificações no seu calendário pessoal.</p>
+              <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Integrações de Calendário</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Google Agenda */}
+                <div className="p-4 bg-blue-50/60 rounded-2xl border border-blue-100 flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="w-9 h-9 bg-white rounded-xl flex items-center justify-center shadow-sm shrink-0">
+                        <CalendarIcon className="w-5 h-5 text-blue-600" />
+                      </div>
+                      <div>
+                        <h5 className="text-sm font-bold text-slate-900">Google Agenda</h5>
+                        <span className="text-[9px] font-bold text-blue-600 uppercase tracking-wider">Nuvem Google</span>
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-slate-500 font-medium leading-relaxed">
+                      Sincronize tarefas diretamente com sua conta do Google Agenda.
+                    </p>
                     
                     {profile?.gcalLastSync && (
                       <div className="flex items-center gap-1.5 mt-2">
@@ -8025,26 +8156,57 @@ const ProfileView = ({ profile, user, onOpenSettings, onNavigate, tasks, onOpenC
                       </div>
                     )}
                     
-                    {!((import.meta as any).env.VITE_GOOGLE_CLIENT_ID) ? (
-                      <div className="mt-3 p-3 bg-amber-50 rounded-xl border border-amber-100 flex items-start gap-2">
+                    {!((import.meta as any).env.VITE_GOOGLE_CLIENT_ID) && (
+                      <div className="mt-3 p-2.5 bg-amber-50 rounded-xl border border-amber-100 flex items-start gap-2">
                         <AlertCircle className="w-3.5 h-3.5 text-amber-500 mt-0.5 shrink-0" />
                         <p className="text-[9px] text-amber-700 leading-tight">
-                          Para ativar, configure o <span className="font-bold">VITE_GOOGLE_CLIENT_ID</span> no painel de configurações da plataforma.
+                          Requer <span className="font-bold">VITE_GOOGLE_CLIENT_ID</span> nas configurações.
                         </p>
                       </div>
-                    ) : (
-                      <button 
-                        onClick={handleGCalSync}
-                        disabled={isSyncing}
-                        className={cn(
-                          "mt-3 flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl font-bold text-[10px] uppercase tracking-widest hover:bg-blue-700 transition-all shadow-sm disabled:opacity-50",
-                          isSyncing && "animate-pulse"
-                        )}
-                      >
-                        {isSyncing ? "Sincronizando..." : "Sincronizar Agora"}
-                      </button>
                     )}
                   </div>
+
+                  {((import.meta as any).env.VITE_GOOGLE_CLIENT_ID) && (
+                    <button 
+                      onClick={handleGCalSync}
+                      disabled={isSyncing}
+                      className={cn(
+                        "mt-3 w-full flex items-center justify-center gap-2 py-2 bg-blue-600 text-white rounded-xl font-bold text-[10px] uppercase tracking-widest hover:bg-blue-700 transition-all shadow-sm disabled:opacity-50",
+                        isSyncing && "animate-pulse"
+                      )}
+                    >
+                      {isSyncing ? "Sincronizando..." : "Sincronizar Google"}
+                    </button>
+                  )}
+                </div>
+
+                {/* Apple Calendar (iCal) */}
+                <div className="p-4 bg-slate-900 text-white rounded-2xl border border-slate-800 flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="w-9 h-9 bg-slate-800 rounded-xl flex items-center justify-center shadow-sm shrink-0">
+                        <AppleIcon className="w-5 h-5 text-white" />
+                      </div>
+                      <div>
+                        <h5 className="text-sm font-bold text-white">Apple Calendar</h5>
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">iPhone / Mac / iPad</span>
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-slate-300 font-medium leading-relaxed">
+                      Exporte suas tarefas em formato .ics para o Calendário da Apple ou Outlook.
+                    </p>
+                  </div>
+
+                  <button 
+                    onClick={() => {
+                      const userTasks = tasks.filter(t => t.uid === user?.uid && !t.completed);
+                      downloadIcalFile(userTasks, "minhas-tarefas-apple.ics", "Minhas Tarefas - Ponto Chave");
+                    }}
+                    className="mt-3 w-full flex items-center justify-center gap-2 py-2 bg-white hover:bg-slate-100 text-slate-900 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all shadow-sm cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5 text-slate-900" />
+                    Exportar p/ Apple (.ics)
+                  </button>
                 </div>
               </div>
             </div>

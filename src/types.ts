@@ -109,6 +109,9 @@ export interface Task {
   proofName?: string;
   attachments?: { name: string, url: string }[];
   authorId?: string;
+  transferredFrom?: string;
+  transferredFromName?: string;
+  transferredAt?: string;
 }
 
 export interface DailyReport {
