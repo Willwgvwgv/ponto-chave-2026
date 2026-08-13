@@ -29,8 +29,14 @@ service cloud.firestore {
       return getUserData().status;
     }
 
-    function isActiveUser() {
+    function isDeletedUser() {
       return isSignedIn() && (
+        exists(/databases/$(database)/documents/deleted_users/$(request.auth.uid))
+      );
+    }
+
+    function isActiveUser() {
+      return isSignedIn() && !isDeletedUser() && (
         isSuperAdmin() || 
         userStatus() == 'active' || 
         userStatus() == 'APPROVED' || 
@@ -74,6 +80,20 @@ service cloud.firestore {
         )
       );
       allow delete: if isSuperAdmin() || isCompanyAdmin(resource.data.companyId);
+    }
+
+    // Collection: deleted_users (Tombstones for revoked/deleted users)
+    match /deleted_users/{docId} {
+      allow read: if isSignedIn() && (
+        request.auth.uid == docId ||
+        resource.data.uid == request.auth.uid ||
+        isSuperAdmin() ||
+        isCompanyAdmin(getUserData().companyId)
+      );
+      allow create, update: if isSuperAdmin() || (
+        isSignedIn() && isCompanyAdmin(getUserData().companyId)
+      );
+      allow delete: if isSuperAdmin();
     }
 
     // Collection: tasks

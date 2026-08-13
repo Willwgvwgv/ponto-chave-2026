@@ -4,7 +4,7 @@ import path from "path";
 import fs from "fs";
 import crypto from "crypto";
 import { fileURLToPath } from "url";
-import { initializeApp as initAdminApp, getApps } from "firebase-admin/app";
+import { initializeApp as initAdminApp, getApps, cert } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { getAuth as getAdminAuth } from "firebase-admin/auth";
 
@@ -16,19 +16,34 @@ const configPath = path.join(__dirname, "firebase-applet-config.json");
 let adminDb: any = null;
 let adminAuthInstance: any = null;
 
-if (fs.existsSync(configPath)) {
-  try {
+try {
+  let adminConfig: any = {};
+  if (fs.existsSync(configPath)) {
     const firebaseConfig = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-    if (getApps().length === 0) {
-      initAdminApp({
-        projectId: firebaseConfig.projectId,
-      });
-    }
-    adminDb = getFirestore(firebaseConfig.firestoreDatabaseId || "(default)");
-    adminAuthInstance = getAdminAuth();
-  } catch (err) {
-    console.warn("Could not initialize Firebase Admin DB/Auth:", err);
+    adminConfig.projectId = firebaseConfig.projectId;
+    var databaseId = firebaseConfig.firestoreDatabaseId;
   }
+  
+  if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+    try {
+      const sa = typeof process.env.FIREBASE_SERVICE_ACCOUNT_JSON === 'string'
+        ? JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON)
+        : process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+      adminConfig.credential = cert(sa);
+      if (sa.project_id) adminConfig.projectId = sa.project_id;
+    } catch (e) {
+      console.warn("Error parsing FIREBASE_SERVICE_ACCOUNT_JSON from env:", e);
+    }
+  }
+
+  if (getApps().length === 0) {
+    initAdminApp(adminConfig);
+  }
+  adminDb = getFirestore(databaseId || "(default)");
+  adminAuthInstance = getAdminAuth();
+  console.log("Firebase Admin SDK initialized successfully.");
+} catch (err) {
+  console.warn("Could not initialize Firebase Admin DB/Auth:", err);
 }
 
 async function startServer() {

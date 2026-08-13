@@ -1172,10 +1172,10 @@ export const logout = isDemoMode ? async () => {
   triggerAuthListeners(null);
 } : () => signOut(auth);
 
-export const sendPasswordResetEmail = isDemoMode ? async (authInstance: any, email: string) => {
+export const sendPasswordResetEmail = isDemoMode ? async (authInstance: any, email: string, customSettings?: any) => {
   toast.success(`E-mail de redefinição enviado para ${email} (Modo Simulação)`);
-} : (authInstance: any, email: string) => {
-  const actionCodeSettings = {
+} : (authInstance: any, email: string, customSettings?: any) => {
+  const actionCodeSettings = customSettings || {
     url: window.location.origin + window.location.pathname,
     handleCodeInApp: true,
   };

@@ -1168,7 +1168,21 @@ const UserManagement = ({
         }
       }
 
-      await updateDoc(doc(db, "users", userToDelete.uid), { status: "blocked", role: "none" });
+      // PASSO 3 — TENSIONAR E GRAVAR TOMBSTONE ANTES DE DELETAR PERFIL E TAREFAS
+      const tombstoneData = {
+        uid: userToDelete.uid,
+        email: (userToDelete.email || "").toLowerCase(),
+        displayName: userToDelete.displayName || "",
+        deletedAt: serverTimestamp(),
+        deletedBy: user?.uid || "admin",
+        deletedByEmail: user?.email || "",
+        reason: "admin_deleted"
+      };
+
+      // 1. Gravar tombstone primeiro em deleted_users/{uid}
+      await setDoc(doc(db, "deleted_users", userToDelete.uid), tombstoneData);
+
+      // 2. Apagar registro em users/{uid}
       await deleteDoc(doc(db, "users", userToDelete.uid));
 
       setUsers(prev => prev.filter(u => u.uid !== userToDelete.uid));
@@ -2480,202 +2494,64 @@ const UserManagement = ({
                 </button>
               </div>
 
-              {/* TABS: E-mail vs Definir Senha */}
-              <div className="flex bg-slate-100 p-1 rounded-2xl mb-5">
-                <button
-                  type="button"
-                  onClick={() => setAdminResetModal(prev => ({ ...prev, activeTab: 'email', isSavedDirect: false }))}
-                  className={cn(
-                    "flex-1 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5",
-                    adminResetModal.activeTab === 'email' ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-800"
-                  )}
-                >
-                  <Mail className="w-3.5 h-3.5" />
-                  Link por E-mail
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAdminResetModal(prev => ({ ...prev, activeTab: 'direct', isSavedDirect: false }))}
-                  className={cn(
-                    "flex-1 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5",
-                    adminResetModal.activeTab === 'direct' ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-800"
-                  )}
-                >
-                  <Key className="w-3.5 h-3.5" />
-                  Criar Nova Senha
-                </button>
-              </div>
+              <div className="space-y-4">
+                <div className="bg-blue-50 border border-blue-100 p-4 rounded-2xl text-xs text-blue-900 space-y-2">
+                  <p className="font-bold flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4 text-blue-600" />
+                    Redefinição Segura de Senha via E-mail
+                  </p>
+                  <p className="text-slate-600 leading-relaxed">
+                    Um e-mail oficial do Firebase com link seguro para redefinição de senha será enviado para <strong className="text-slate-900">{adminResetModal.targetUser.email}</strong>.
+                  </p>
+                  <p className="text-slate-500 text-[10px]">
+                    O colaborador abrirá o link, definirá sua nova senha de forma privada e segura, e poderá acessar o sistema imediatamente.
+                  </p>
+                </div>
 
-              {adminResetModal.activeTab === 'email' ? (
-                <div className="space-y-4">
-                  <div className="bg-blue-50 border border-blue-100 p-4 rounded-2xl text-xs text-blue-900 space-y-2">
-                    <p className="font-bold flex items-center gap-1.5">
-                      <Sparkles className="w-4 h-4 text-blue-600" />
-                      Redefinição Segura via E-mail Oficial
-                    </p>
-                    <p className="text-slate-600 leading-relaxed">
-                      Ao clicar no botão abaixo, um e-mail oficial com link seguro será enviado para <strong className="text-slate-900">{adminResetModal.targetUser.email}</strong>.
-                    </p>
-                    <p className="text-slate-500 text-[10px]">
-                      Quando o colaborador clicar no link do e-mail, ele abrirá a própria plataforma Ponto Chave para digitar sua nova senha diretamente.
-                    </p>
-                  </div>
-
+                <div className="flex gap-3">
                   <button
                     type="button"
                     disabled={adminResetModal.isSendingEmail}
                     onClick={async () => {
                       setAdminResetModal(prev => ({ ...prev, isSendingEmail: true }));
                       try {
-                        await sendPasswordResetEmail(auth, adminResetModal.targetUser!.email);
-                        toast.success(`E-mail enviado com sucesso para ${adminResetModal.targetUser!.email}!`);
+                        const actionCodeSettings = {
+                          url: window.location.origin + window.location.pathname,
+                          handleCodeInApp: true
+                        };
+                        await sendPasswordResetEmail(auth, adminResetModal.targetUser!.email, actionCodeSettings);
+                        toast.success(`E-mail de redefinição enviado com sucesso para ${adminResetModal.targetUser!.email}`);
                         setAdminResetModal(prev => ({ ...prev, isOpen: false, isSendingEmail: false }));
                       } catch (err: any) {
-                        toast.error(`Erro ao enviar e-mail: ${err.message || 'Tente novamente'}`);
                         setAdminResetModal(prev => ({ ...prev, isSendingEmail: false }));
+                        if (err?.code === 'auth/user-not-found') {
+                          toast.error("O cadastro existe no sistema, mas o colaborador ainda não criou a conta no Firebase Authentication. Ele deve aceitar o convite primeiro.");
+                        } else {
+                          toast.error(`Erro ao enviar e-mail: ${err?.message || 'Tente novamente.'}`);
+                        }
                       }
                     }}
-                    className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold text-xs uppercase tracking-wider transition-all shadow-md shadow-blue-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                    className="flex-1 py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold text-xs uppercase tracking-wider transition-all shadow-md shadow-blue-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                   >
                     {adminResetModal.isSendingEmail ? (
                       <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                     ) : (
                       <>
                         <Mail className="w-4 h-4" />
-                        Enviar E-mail de Redefinição
+                        Enviar Link de Redefinição
                       </>
                     )}
                   </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setAdminResetModal(prev => ({ ...prev, isOpen: false }))}
+                    className="px-4 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl font-bold text-xs uppercase tracking-wider transition-all cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
                 </div>
-              ) : (
-                <div className="space-y-4">
-                  {adminResetModal.isSavedDirect ? (
-                    <div className="space-y-4">
-                      <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-emerald-800 text-xs space-y-2">
-                        <div className="font-extrabold text-sm text-emerald-900 flex items-center gap-2">
-                          <Check className="w-5 h-5 text-emerald-600" />
-                          Nova Senha Salva no Perfil!
-                        </div>
-                        <p className="text-slate-600 text-[11px] leading-relaxed">
-                          As credenciais foram atualizadas. Copie as informações abaixo e envie para o colaborador:
-                        </p>
-                      </div>
-
-                      <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2 font-mono text-xs">
-                        <div className="flex justify-between items-center pb-1.5 border-b border-slate-200">
-                          <span className="text-slate-400 font-sans font-semibold">E-mail:</span>
-                          <span className="font-bold text-slate-800">{adminResetModal.targetUser.email}</span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-slate-400 font-sans font-semibold">Nova Senha:</span>
-                          <span className="font-extrabold text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">{adminResetModal.customPassword}</span>
-                        </div>
-                      </div>
-
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const link = window.location.origin;
-                            const msg = `Olá ${adminResetModal.targetUser?.displayName || ''}!\n\n` +
-                              `Sua senha do sistema *Ponto Chave* foi atualizada pelo Administrador.\n\n` +
-                              `📧 E-mail: ${adminResetModal.targetUser?.email}\n` +
-                              `🔑 Nova Senha: ${adminResetModal.customPassword}\n` +
-                              `🔗 Acesse: ${link}\n\n` +
-                              `Por favor, faça login com sua nova senha.`;
-                            
-                            navigator.clipboard.writeText(msg).then(() => {
-                              toast.success("Credenciais copiadas! Cole no WhatsApp ou e-mail.");
-                            }).catch(() => {
-                              toast.success("Copiado com sucesso!");
-                            });
-                          }}
-                          className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm"
-                        >
-                          <ExternalLink className="w-4 h-4" />
-                          Copiar p/ WhatsApp
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setAdminResetModal(prev => ({ ...prev, isOpen: false }))}
-                          className="px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl font-bold text-xs uppercase tracking-wider transition-all cursor-pointer"
-                        >
-                          Fechar
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      <p className="text-xs text-slate-500 leading-relaxed">
-                        Defina uma nova senha para o colaborador <strong className="text-slate-800">{adminResetModal.targetUser.displayName || adminResetModal.targetUser.email}</strong>:
-                      </p>
-
-                      <div className="space-y-1.5 text-left">
-                        <div className="flex justify-between items-center">
-                          <label className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider">Nova Senha</label>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$";
-                              let pass = "Ponto@";
-                              for (let i = 0; i < 4; i++) {
-                                pass += chars.charAt(Math.floor(Math.random() * chars.length));
-                              }
-                              setAdminResetModal(prev => ({ ...prev, customPassword: pass }));
-                            }}
-                            className="text-[10px] font-bold text-blue-600 hover:underline cursor-pointer flex items-center gap-1"
-                          >
-                            🎲 Gerar Senha Forte
-                          </button>
-                        </div>
-                        <div className="relative">
-                          <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                          <input
-                            type={adminResetModal.showPassword ? "text" : "password"}
-                            value={adminResetModal.customPassword}
-                            onChange={(e) => setAdminResetModal(prev => ({ ...prev, customPassword: e.target.value }))}
-                            placeholder="Digite a nova senha (mín. 6 chars)"
-                            className="w-full pl-10 pr-10 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-semibold text-slate-800"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setAdminResetModal(prev => ({ ...prev, showPassword: !prev.showPassword }))}
-                            className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
-                          >
-                            {adminResetModal.showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                          </button>
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          if (!adminResetModal.customPassword || adminResetModal.customPassword.length < 6) {
-                            toast.error("A senha deve ter no mínimo 6 caracteres.");
-                            return;
-                          }
-                          try {
-                            await updateDoc(doc(db, "users", adminResetModal.targetUser!.uid), {
-                              mustChangePassword: true,
-                              temporaryPassword: adminResetModal.customPassword,
-                              updatedAt: serverTimestamp()
-                            });
-                            toast.success("Nova senha definida com sucesso!");
-                            setAdminResetModal(prev => ({ ...prev, isSavedDirect: true }));
-                          } catch (err: any) {
-                            console.error("Erro ao definir nova senha:", err);
-                            toast.error(`Erro ao salvar senha: ${err.message || 'Tente novamente'}`);
-                          }
-                        }}
-                        className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold text-xs uppercase tracking-wider transition-all shadow-md shadow-blue-500/20 cursor-pointer flex items-center justify-center gap-2"
-                      >
-                        <Key className="w-4 h-4" />
-                        Salvar Nova Senha
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
+              </div>
             </motion.div>
           </div>
         )}
@@ -9612,6 +9488,7 @@ export default function App() {
   const [quotaExceeded, setQuotaExceeded] = useState(false);
   const [naoAutorizadoEmail, setNaoAutorizadoEmail] = useState<string | null>(null);
   const [aguardandoAprovacaoEmail, setAguardandoAprovacaoEmail] = useState<string | null>(null);
+  const [contaExcluidaEmail, setContaExcluidaEmail] = useState<string | null>(null);
   const [confirmState, setConfirmState] = useState<{
     open: boolean;
     title: string;
@@ -9715,6 +9592,48 @@ export default function App() {
         setLoading(false);
       }, 5000);
       if (authenticatedUser) {
+        // PASSO 3 — CONSULTAR DELETED_USERS ANTES DE PERMITIR SESSÃO/CRIAÇÃO/LEITURA
+        try {
+          const deletedRef = doc(db, "deleted_users", authenticatedUser.uid);
+          const deletedSnap = await getDoc(deletedRef);
+          let isAccountDeleted = deletedSnap.exists();
+
+          if (!isAccountDeleted && authenticatedUser.email) {
+            const qDel = query(collection(db, "deleted_users"), where("email", "==", authenticatedUser.email.toLowerCase()));
+            const qDelSnap = await getDocs(qDel);
+            if (!qDelSnap.empty) {
+              isAccountDeleted = true;
+            }
+          }
+
+          if (isAccountDeleted) {
+            console.warn("Acesso negado: Conta removida encontrada em deleted_users:", authenticatedUser.email);
+            setProfile(null);
+            setUser(null);
+            if (unsubscribeProfile) {
+              unsubscribeProfile();
+              unsubscribeProfile = null;
+            }
+            await auth.signOut();
+            setContaExcluidaEmail(authenticatedUser.email || null);
+            setLoading(false);
+            toast.error("Esta conta foi desativada e removida pelo administrador.");
+            return;
+          }
+        } catch (delCheckErr) {
+          console.error("Erro ao consultar histórico de exclusão de usuário (deleted_users):", delCheckErr);
+          setProfile(null);
+          setUser(null);
+          if (unsubscribeProfile) {
+            unsubscribeProfile();
+            unsubscribeProfile = null;
+          }
+          await auth.signOut();
+          setLoading(false);
+          toast.error("Erro de validação de segurança. Acesso bloqueado por precaução.");
+          return;
+        }
+
         setUser(authenticatedUser);
         
         // Use a real-time listener for the user profile
@@ -9956,6 +9875,34 @@ export default function App() {
       if (loadingTimeout) clearTimeout(loadingTimeout);
     };
   }, []);
+
+  if (contaExcluidaEmail) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#F8FAFC] p-4 text-center">
+        <div className="max-w-md w-full bg-white p-10 rounded-[40px] shadow-2xl border border-red-50">
+          <div className="w-20 h-20 bg-red-50 text-red-500 rounded-3xl flex items-center justify-center mx-auto mb-6">
+            <ShieldAlert className="w-10 h-10" />
+          </div>
+          <h2 className="text-2xl font-bold text-slate-900 mb-3">Conta Removida</h2>
+          <p className="text-slate-600 mb-2 leading-relaxed text-sm">
+            A conta <strong>{contaExcluidaEmail}</strong> foi desativada e removida pelo administrador.
+          </p>
+          <p className="text-slate-500 mb-8 leading-relaxed text-sm">
+            Você não possui mais permissão para acessar este sistema. Em caso de dúvidas, fale com o suporte da sua empresa.
+          </p>
+          <button
+            onClick={() => {
+              setContaExcluidaEmail(null);
+              window.location.reload();
+            }}
+            className="w-full py-4 bg-slate-900 text-white rounded-2xl font-bold uppercase tracking-widest text-xs hover:bg-slate-800 transition-all cursor-pointer"
+          >
+            Voltar ao Login
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (naoAutorizadoEmail) {
     return (
