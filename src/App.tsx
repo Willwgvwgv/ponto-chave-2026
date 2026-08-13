@@ -48,6 +48,8 @@ import {
   Eye,
   EyeOff,
   UserPlus,
+  UserCheck,
+  ArrowRightLeft,
   LogIn,
   ClipboardList,
   Key,
@@ -2210,6 +2212,10 @@ function AppContent() {
   const [rescheduleDate, setRescheduleDate] = useState(format(addDays(new Date(), 1), "yyyy-MM-dd"));
   const [showReschedule, setShowReschedule] = useState(false);
   const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean; taskId: string | null }>({ isOpen: false, taskId: null });
+  const [transferModal, setTransferModal] = useState<{ isOpen: boolean; task: Task | null }>({ isOpen: false, task: null });
+  const [transferTargetUid, setTransferTargetUid] = useState<string>("");
+  const [transferReason, setTransferReason] = useState<string>("");
+  const [isTransferring, setIsTransferring] = useState<boolean>(false);
   
   // New Task Form
   const [newTaskTitle, setNewTaskTitle] = useState("");
@@ -2339,8 +2345,8 @@ function AppContent() {
   useEffect(() => {
     if (!user) return;
     
-    // Fetch users if admin for task assignment
-    if (isAdmin && profile?.companyId) {
+    // Fetch users for task assignment & transfer
+    if (profile?.companyId) {
       const cid = profile.companyId;
       const usersQuery = query(collection(db, "users"), where("companyId", "==", cid));
       const uSub = onSnapshot(usersQuery, (snapshot) => {
@@ -2351,7 +2357,7 @@ function AppContent() {
       });
       return () => uSub();
     }
-  }, [user, isAdmin, profile?.companyId]);
+  }, [user, profile?.companyId]);
 
   // Fetch Processes
   useEffect(() => {
@@ -2512,6 +2518,47 @@ function AppContent() {
       handleFirestoreError(error, OperationType.DELETE, `tasks/${id}`);
     }
     setDeleteModal({ isOpen: false, taskId: null });
+  };
+
+  const handleTransferTask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!transferModal.task || !transferTargetUid) {
+      toast.error("Selecione o colaborador de destino.");
+      return;
+    }
+
+    const targetUser = allUsers.find(u => u.uid === transferTargetUid);
+    if (!targetUser) {
+      toast.error("Usuário de destino não encontrado.");
+      return;
+    }
+
+    setIsTransferring(true);
+    try {
+      const taskRef = doc(db, "tasks", transferModal.task.id);
+      const updatedDescription = transferReason 
+        ? `${transferModal.task.description || ''}\n\n[Transferida por ${profile?.displayName || user?.email || 'Usuário'} para ${targetUser.displayName || targetUser.email}: "${transferReason}"]`.trim()
+        : transferModal.task.description;
+
+      await updateDoc(taskRef, {
+        uid: transferTargetUid,
+        transferredFrom: user?.uid,
+        transferredFromName: profile?.displayName || user?.email || "Usuário",
+        transferredAt: new Date().toISOString(),
+        ...(transferReason ? { description: updatedDescription } : {})
+      });
+
+      toast.success(`Tarefa transferida com sucesso para ${targetUser.displayName || targetUser.email}!`);
+      setTransferModal({ isOpen: false, task: null });
+      setTransferTargetUid("");
+      setTransferReason("");
+    } catch (error) {
+      console.error("Erro ao transferir tarefa:", error);
+      toast.error("Erro ao transferir a tarefa. Tente novamente.");
+      handleFirestoreError(error, OperationType.UPDATE, `tasks/${transferModal.task.id}`);
+    } finally {
+      setIsTransferring(false);
+    }
   };
 
   const addTask = async (e: React.FormEvent) => {
@@ -3325,7 +3372,7 @@ function AppContent() {
                               ATRASADO
                             </span>
                           )}
-                          {isAdmin && task.uid !== user?.uid && (
+                          {task.uid !== user?.uid && (
                             <span className="ml-2 text-[10px] text-blue-600 font-bold uppercase py-0.5 px-2 bg-blue-50 rounded-full">
                               Para: {allUsers.find(u => u.uid === task.uid)?.displayName || 'Colaborador'}
                             </span>
@@ -3401,6 +3448,18 @@ function AppContent() {
                       <button 
                         onClick={(e) => {
                           e.stopPropagation();
+                          setTransferModal({ isOpen: true, task });
+                          setTransferTargetUid("");
+                          setTransferReason("");
+                        }}
+                        title="Transferir tarefa para outro colaborador"
+                        className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+                      >
+                        <UserCheck className="w-5 h-5" />
+                      </button>
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
                           setDeleteModal({ isOpen: true, taskId: task.id });
                         }}
                         className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
@@ -3421,6 +3480,11 @@ function AppContent() {
             tasks={filteredTasksByUser}
             onAddTask={() => setIsModalOpen(true)}
             onToggleTask={toggleTask}
+            onTransferTask={(task: Task) => {
+              setTransferModal({ isOpen: true, task });
+              setTransferTargetUid("");
+              setTransferReason("");
+            }}
             isAdmin={isAdmin}
             allUsers={allUsers}
             currentUser={user}
@@ -4336,13 +4400,120 @@ function AppContent() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Transfer Task Modal */}
+      <AnimatePresence>
+        {transferModal.isOpen && transferModal.task && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              exit={{ opacity: 0 }} 
+              onClick={() => setTransferModal({ isOpen: false, task: null })} 
+              className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" 
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }} 
+              animate={{ opacity: 1, scale: 1, y: 0 }} 
+              exit={{ opacity: 0, scale: 0.95, y: 20 }} 
+              className="relative bg-white w-full max-w-md rounded-[32px] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+            >
+              <div className="flex justify-between items-center p-6 border-b border-slate-100 shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                    <UserCheck className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-900">Transferir Tarefa</h3>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Reatribuir a outro colaborador</p>
+                  </div>
+                </div>
+                <button onClick={() => setTransferModal({ isOpen: false, task: null })} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
+                  <X className="w-5 h-5 text-slate-400" />
+                </button>
+              </div>
+
+              <form onSubmit={handleTransferTask} className="p-6 space-y-5 overflow-y-auto custom-scrollbar flex-1">
+                <div className="bg-slate-50 border border-slate-150 p-4 rounded-2xl space-y-1">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Tarefa Selecionada</span>
+                  <p className="text-sm font-bold text-slate-800 leading-snug">{transferModal.task.title}</p>
+                  {transferModal.task.date && (
+                    <p className="text-xs text-slate-500 font-medium flex items-center gap-1 mt-1">
+                      <Clock className="w-3.5 h-3.5 text-slate-400" /> Data: {transferModal.task.date}
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">
+                    Novo Responsável <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    required
+                    value={transferTargetUid}
+                    onChange={(e) => setTransferTargetUid(e.target.value)}
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-bold text-slate-700 transition-all cursor-pointer"
+                  >
+                    <option value="">Selecione o colaborador...</option>
+                    {allUsers.map((u) => {
+                      const isCurrentOwner = u.uid === transferModal.task?.uid;
+                      return (
+                        <option key={u.uid} value={u.uid} disabled={isCurrentOwner}>
+                          {u.displayName || u.email} {isCurrentOwner ? "(Responsável atual)" : u.role === 'admin' ? '(Admin)' : ''}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">
+                    Observação / Motivo (Opcional)
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={transferReason}
+                    onChange={(e) => setTransferReason(e.target.value)}
+                    placeholder="Ex: Repassando tarefa para acompanhamento..."
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-medium text-slate-700 transition-all resize-none"
+                  />
+                </div>
+
+                <div className="pt-2 flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setTransferModal({ isOpen: false, task: null })}
+                    className="flex-1 py-3.5 bg-slate-100 text-slate-600 rounded-2xl font-bold text-xs uppercase tracking-wider hover:bg-slate-200 transition-all"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isTransferring || !transferTargetUid}
+                    className="flex-1 py-3.5 bg-blue-600 text-white rounded-2xl font-bold text-xs uppercase tracking-wider shadow-lg shadow-blue-500/20 hover:bg-blue-700 active:scale-95 transition-all disabled:opacity-50 disabled:scale-100 flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    {isTransferring ? (
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <>
+                        <UserCheck className="w-4 h-4" />
+                        <span>Transferir</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
 // --- Sub-Views ---
 
-const CalendarView = ({ selectedDate, setSelectedDate, tasks, onAddTask, onToggleTask, isAdmin, allUsers, currentUser, adminTaskView, setAdminTaskView }: any) => {
+const CalendarView = ({ selectedDate, setSelectedDate, tasks, onAddTask, onToggleTask, onTransferTask, isAdmin, allUsers, currentUser, adminTaskView, setAdminTaskView }: any) => {
   const monthStart = startOfMonth(selectedDate);
   const monthEnd = endOfMonth(monthStart);
   const startDate = startOfWeek(monthStart);
@@ -4451,19 +4622,33 @@ const CalendarView = ({ selectedDate, setSelectedDate, tasks, onAddTask, onToggl
             {tasksForSelectedDate.length === 0 ? (
               <p className="text-center py-8 text-slate-400 text-sm">Nenhuma tarefa agendada.</p>
             ) : tasksForSelectedDate.map((task: any) => (
-              <div key={task.id} onClick={() => onToggleTask(task.id)} className="flex items-start gap-3 p-3 hover:bg-slate-50 rounded-2xl transition-all cursor-pointer">
-                <div className={cn("w-5 h-5 rounded-full border-2 mt-0.5 flex items-center justify-center", task.completed ? "bg-blue-500 border-blue-500 text-white" : "border-slate-300")}>
-                  {task.completed && <CheckCircle2 className="w-3 h-3" />}
+              <div key={task.id} onClick={() => onToggleTask(task.id)} className="flex items-start justify-between gap-3 p-3 hover:bg-slate-50 rounded-2xl transition-all cursor-pointer group">
+                <div className="flex items-start gap-3 min-w-0">
+                  <div className={cn("w-5 h-5 rounded-full border-2 mt-0.5 flex items-center justify-center shrink-0", task.completed ? "bg-blue-500 border-blue-500 text-white" : "border-slate-300")}>
+                    {task.completed && <CheckCircle2 className="w-3 h-3" />}
+                  </div>
+                  <div className="min-w-0">
+                    <p className={cn("text-sm font-semibold text-slate-700 truncate", task.completed && "line-through text-slate-400")}>{task.title}</p>
+                    {task.uid !== currentUser?.uid && (
+                      <p className="text-[9px] text-blue-500 font-bold uppercase tracking-widest mt-0.5 truncate">
+                        Para: {allUsers.find((u: any) => u.uid === task.uid)?.displayName || 'Colaborador'}
+                      </p>
+                    )}
+                    {task.description && <p className="text-[10px] text-slate-400 mt-0.5 line-clamp-1">{task.description}</p>}
+                  </div>
                 </div>
-                <div>
-                  <p className={cn("text-sm font-semibold text-slate-700", task.completed && "line-through text-slate-400")}>{task.title}</p>
-                  {isAdmin && task.uid !== currentUser?.uid && (
-                    <p className="text-[9px] text-blue-500 font-bold uppercase tracking-widest mt-0.5">
-                      Para: {allUsers.find((u: any) => u.uid === task.uid)?.displayName || 'Colaborador'}
-                    </p>
-                  )}
-                  {task.description && <p className="text-[10px] text-slate-400 mt-0.5 line-clamp-1">{task.description}</p>}
-                </div>
+                {onTransferTask && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onTransferTask(task);
+                    }}
+                    title="Transferir tarefa"
+                    className="p-1.5 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all shrink-0"
+                  >
+                    <UserCheck className="w-4 h-4" />
+                  </button>
+                )}
               </div>
             ))}
           </div>
