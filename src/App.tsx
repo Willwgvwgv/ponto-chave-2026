@@ -461,7 +461,7 @@ const Login = () => {
       if (err.code === 'auth/operation-not-allowed') {
         errorMessage += "O cadastro por E-mail não está ativado no Firebase. Por favor, ative 'E-mail/Senha' no Console do Firebase para o projeto gen-lang-client-0657849307.";
       } else if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
-        errorMessage = "E-mail ou senha incorretos ou inexistentes.";
+        errorMessage = "E-mail ou senha incorretos ou não cadastrados com senha de e-mail.\n\n💡 Como resolver:\n1. Se sua senha foi informada pelo administrador, clique em 'Esqueceu sua senha?' abaixo e digite seu e-mail para cadastrar sua nova senha com segurança.\n2. Se você cadastrou sua conta usando o Google, clique no botão 'Google' abaixo.";
       } else if (err.code === 'auth/email-already-in-use') {
         errorMessage = "Este e-mail já está em uso.";
       } else if (err.code === 'auth/weak-password') {
