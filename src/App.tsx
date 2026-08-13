@@ -8193,20 +8193,37 @@ const ProfileView = ({ profile, user, onOpenSettings, onNavigate, tasks, onOpenC
                       </div>
                     </div>
                     <p className="text-[10px] text-slate-300 font-medium leading-relaxed">
-                      Exporte suas tarefas em formato .ics para o Calendário da Apple ou Outlook.
+                      Sincronize automaticamente por assinatura iCal ou baixe o arquivo de tarefas.
                     </p>
                   </div>
 
-                  <button 
-                    onClick={() => {
-                      const userTasks = tasks.filter(t => t.uid === user?.uid && !t.completed);
-                      downloadIcalFile(userTasks, "minhas-tarefas-apple.ics", "Minhas Tarefas - Ponto Chave");
-                    }}
-                    className="mt-3 w-full flex items-center justify-center gap-2 py-2 bg-white hover:bg-slate-100 text-slate-900 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all shadow-sm cursor-pointer"
-                  >
-                    <Download className="w-3.5 h-3.5 text-slate-900" />
-                    Exportar p/ Apple (.ics)
-                  </button>
+                  <div className="mt-3 space-y-2">
+                    <button 
+                      onClick={() => {
+                        const userTasks = tasks.filter(t => t.uid === user?.uid && !t.completed);
+                        downloadIcalFile(userTasks, "minhas-tarefas-apple.ics", "Minhas Tarefas - Ponto Chave");
+                      }}
+                      className="w-full flex items-center justify-center gap-2 py-2 bg-white hover:bg-slate-100 text-slate-900 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all shadow-sm cursor-pointer"
+                    >
+                      <Download className="w-3.5 h-3.5 text-slate-900" />
+                      Baixar Arquivo .ics
+                    </button>
+
+                    <button 
+                      onClick={() => {
+                        if (!user?.uid) return;
+                        const feedUrl = `${window.location.protocol}//${window.location.host}/api/calendar/feed/${user.uid}.ics`;
+                        navigator.clipboard.writeText(feedUrl);
+                        toast.success("Link de Inscrição iCal copiado!", {
+                          description: "No iPhone/Mac: Abra o app Calendário -> Adicionar Calendário -> Assinar Calendário por URL -> Cole este link!"
+                        });
+                      }}
+                      className="w-full flex items-center justify-center gap-2 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all border border-slate-700 cursor-pointer"
+                    >
+                      <Copy className="w-3.5 h-3.5 text-slate-300" />
+                      Copiar Link de Inscrição
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
