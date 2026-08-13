@@ -107,17 +107,19 @@ async function startServer() {
 
     const idToken = authHeader.split("Bearer ")[1];
     
-    // Verify token if Admin Auth is available
-    if (adminAuthInstance) {
-      try {
-        const decoded = await adminAuthInstance.verifyIdToken(idToken);
-        if (!decoded || !decoded.uid) {
-          return res.status(401).json({ error: "Acesso não autorizado: Token inválido" });
-        }
-        (req as any).user = decoded;
-      } catch (err) {
-        return res.status(401).json({ error: "Acesso não autorizado: Falha na validação do token" });
+    // Fail-closed: Verify token if Admin Auth is available, error if unavailable
+    if (!adminAuthInstance) {
+      return res.status(503).json({ error: "Serviço de autenticação do servidor indisponível" });
+    }
+
+    try {
+      const decoded = await adminAuthInstance.verifyIdToken(idToken);
+      if (!decoded || !decoded.uid) {
+        return res.status(401).json({ error: "Acesso não autorizado: Token inválido" });
       }
+      (req as any).user = decoded;
+    } catch (err) {
+      return res.status(401).json({ error: "Acesso não autorizado: Falha na validação do token" });
     }
 
     next();
@@ -125,6 +127,32 @@ async function startServer() {
     if (!req.file) {
       return res.status(400).json({ error: "Nenhum arquivo enviado ou formato inválido" });
     }
+
+    // Magic Bytes Verification
+    try {
+      const filePath = req.file.path;
+      const buffer = Buffer.alloc(12);
+      const fd = fs.openSync(filePath, 'r');
+      fs.readSync(fd, buffer, 0, 12, 0);
+      fs.closeSync(fd);
+
+      const isJpeg = buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF;
+      const isPng = buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47;
+      const isWebp = buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46 && buffer.toString('utf8', 8, 12) === 'WEBP';
+      const isPdf = buffer[0] === 0x25 && buffer[1] === 0x50 && buffer[2] === 0x44 && buffer[3] === 0x46;
+
+      if (!isJpeg && !isPng && !isWebp && !isPdf) {
+        fs.unlinkSync(filePath);
+        return res.status(400).json({ error: "Conteúdo do arquivo não corresponde ao formato permitido" });
+      }
+    } catch (err) {
+      console.error("Magic bytes check error:", err);
+      if (req.file.path && fs.existsSync(req.file.path)) {
+        fs.unlinkSync(req.file.path);
+      }
+      return res.status(500).json({ error: "Erro na verificação de segurança do arquivo" });
+    }
+
     const fileUrl = `/uploads/${req.file.filename}`;
     res.json({ url: fileUrl });
   }, (err: any, req: any, res: any, next: any) => {
@@ -133,15 +161,15 @@ async function startServer() {
     res.status(400).json({ error: err.message || "Erro ao processar arquivo" });
   });
 
-  // iCal Feed for Apple Calendar Subscription
+  // iCal Feed for Apple Calendar Subscription (Fail-closed)
   app.get("/api/calendar/feed/:userId.ics", async (req, res) => {
     const { userId } = req.params;
     const feedSecret = process.env.CALENDAR_FEED_SECRET;
     const reqToken = req.query.token;
 
-    // Validate feed token if secret is configured
-    if (feedSecret && reqToken !== feedSecret) {
-      return res.status(404).send("Not Found");
+    // Validate feed token - fail closed if secret not configured or token mismatch
+    if (!feedSecret || !reqToken || reqToken !== feedSecret) {
+      return res.status(403).send("Acesso negado: Token de feed inválido ou não configurado");
     }
     
     res.setHeader("Content-Type", "text/calendar; charset=utf-8");
@@ -224,8 +252,34 @@ async function startServer() {
     }
   });
 
-  // Serve static uploads
-  app.use("/uploads", express.static(uploadsDir));
+  // Protected static file delivery for uploads
+  app.get("/uploads/:filename", async (req, res) => {
+    const { filename } = req.params;
+    const token = (req.headers.authorization?.split("Bearer ")[1]) || (req.query.token as string);
+
+    if (!token) {
+      return res.status(401).send("Acesso negado: Autenticação necessária");
+    }
+
+    if (!adminAuthInstance) {
+      return res.status(503).send("Serviço de autenticação temporariamente indisponível");
+    }
+
+    try {
+      await adminAuthInstance.verifyIdToken(token);
+    } catch {
+      return res.status(401).send("Acesso negado: Token inválido");
+    }
+
+    const safeFilename = path.basename(filename);
+    const filePath = path.join(uploadsDir, safeFilename);
+
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).send("Arquivo não encontrado");
+    }
+
+    res.sendFile(filePath);
+  });
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {

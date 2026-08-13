@@ -9596,15 +9596,7 @@ export default function App() {
         try {
           const deletedRef = doc(db, "deleted_users", authenticatedUser.uid);
           const deletedSnap = await getDoc(deletedRef);
-          let isAccountDeleted = deletedSnap.exists();
-
-          if (!isAccountDeleted && authenticatedUser.email) {
-            const qDel = query(collection(db, "deleted_users"), where("email", "==", authenticatedUser.email.toLowerCase()));
-            const qDelSnap = await getDocs(qDel);
-            if (!qDelSnap.empty) {
-              isAccountDeleted = true;
-            }
-          }
+          const isAccountDeleted = deletedSnap.exists();
 
           if (isAccountDeleted) {
             console.warn("Acesso negado: Conta removida encontrada em deleted_users:", authenticatedUser.email);
