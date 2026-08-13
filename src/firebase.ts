@@ -57,9 +57,9 @@ const cleanStr = (val: any): string => {
 const getSanitizedDatabaseId = () => {
   const envId = cleanStr(env.VITE_FIREBASE_DATABASE_ID);
   if (envId && (envId.startsWith("http") || envId.includes("example.com") || envId === "")) {
-    return cleanStr(firebaseConfig.firestoreDatabaseId) || "(default)";
+    return cleanStr((firebaseConfig as any).firestoreDatabaseId) || "(default)";
   }
-  return envId || cleanStr(firebaseConfig.firestoreDatabaseId) || "(default)";
+  return envId || cleanStr((firebaseConfig as any).firestoreDatabaseId) || "(default)";
 };
 
 const isValidApiKey = (key: any): boolean => {
@@ -129,7 +129,7 @@ export const resolvedFirebaseConfig = {
   storageBucket: getStorageBucket(),
   messagingSenderId: cleanStr((useEnvConfig && env.VITE_FIREBASE_MESSAGING_SENDER_ID) ? env.VITE_FIREBASE_MESSAGING_SENDER_ID : firebaseConfig.messagingSenderId),
   appId: cleanStr((useEnvConfig && env.VITE_FIREBASE_APP_ID) ? env.VITE_FIREBASE_APP_ID : firebaseConfig.appId),
-  firestoreDatabaseId: useEnvConfig ? getSanitizedDatabaseId() : (cleanStr(firebaseConfig.firestoreDatabaseId) || "(default)")
+  firestoreDatabaseId: useEnvConfig ? getSanitizedDatabaseId() : (cleanStr((firebaseConfig as any).firestoreDatabaseId) || "(default)")
 };
 
 // Log masked configuration for debugging purposes, but do not leak secrets

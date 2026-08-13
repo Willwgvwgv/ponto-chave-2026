@@ -129,6 +129,7 @@ import {
   writeBatch,
   runTransaction
 } from "./firebase";
+import firebaseConfig from "../firebase-applet-config.json";
 
 import { getApp } from "firebase/app";
 import { 
@@ -7876,6 +7877,8 @@ const ProfileView = ({ profile, user, onOpenSettings, onNavigate, tasks, onOpenC
   const [isSyncing, setIsSyncing] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
   const [newName, setNewName] = useState(profile?.displayName || "");
+  const [showAppleTutorial, setShowAppleTutorial] = useState(false);
+  const [showGCalTutorial, setShowGCalTutorial] = useState(false);
 
   const updateDisplayName = async () => {
     if (!user?.uid || !newName.trim()) return;
@@ -7892,7 +7895,7 @@ const ProfileView = ({ profile, user, onOpenSettings, onNavigate, tasks, onOpenC
   };
 
   const handleGCalSync = async () => {
-    const clientId = (import.meta as any).env.VITE_GOOGLE_CLIENT_ID;
+    const clientId = (import.meta as any).env.VITE_GOOGLE_CLIENT_ID || (firebaseConfig as any).oAuthClientId;
     if (!clientId) {
       toast.error("VITE_GOOGLE_CLIENT_ID não encontrado. Verifique as configurações.");
       return;
@@ -7983,7 +7986,7 @@ const ProfileView = ({ profile, user, onOpenSettings, onNavigate, tasks, onOpenC
       if (isPopupBlocked) {
         toast.error("O login do Google foi fechado. Tente novamente e autorize o acesso.", { id: "gcal-sync" });
       } else {
-        toast.error("Erro ao sincronizar. Verifique se permitiu popups e autorizou o acesso.", { id: "gcal-sync" });
+        toast.error("OAuth indisponível. Recomendado: Clique em 'Copiar Link p/ Google Agenda' abaixo para assinar via URL sem precisar de permissões!", { id: "gcal-sync", duration: 6000 });
       }
     } finally {
       setIsSyncing(false);
@@ -8144,7 +8147,7 @@ const ProfileView = ({ profile, user, onOpenSettings, onNavigate, tasks, onOpenC
                       </div>
                     </div>
                     <p className="text-[10px] text-slate-500 font-medium leading-relaxed">
-                      Sincronize tarefas diretamente com sua conta do Google Agenda.
+                      Sincronize tarefas diretamente com sua conta do Google Agenda ou assine via URL.
                     </p>
                     
                     {profile?.gcalLastSync && (
@@ -8155,29 +8158,45 @@ const ProfileView = ({ profile, user, onOpenSettings, onNavigate, tasks, onOpenC
                         </span>
                       </div>
                     )}
-                    
-                    {!((import.meta as any).env.VITE_GOOGLE_CLIENT_ID) && (
-                      <div className="mt-3 p-2.5 bg-amber-50 rounded-xl border border-amber-100 flex items-start gap-2">
-                        <AlertCircle className="w-3.5 h-3.5 text-amber-500 mt-0.5 shrink-0" />
-                        <p className="text-[9px] text-amber-700 leading-tight">
-                          Requer <span className="font-bold">VITE_GOOGLE_CLIENT_ID</span> nas configurações.
-                        </p>
-                      </div>
-                    )}
                   </div>
 
-                  {((import.meta as any).env.VITE_GOOGLE_CLIENT_ID) && (
+                  <div className="mt-3 space-y-2">
                     <button 
                       onClick={handleGCalSync}
                       disabled={isSyncing}
                       className={cn(
-                        "mt-3 w-full flex items-center justify-center gap-2 py-2 bg-blue-600 text-white rounded-xl font-bold text-[10px] uppercase tracking-widest hover:bg-blue-700 transition-all shadow-sm disabled:opacity-50",
+                        "w-full flex items-center justify-center gap-2 py-2 bg-blue-600 text-white rounded-xl font-bold text-[10px] uppercase tracking-widest hover:bg-blue-700 transition-all shadow-sm disabled:opacity-50 cursor-pointer",
                         isSyncing && "animate-pulse"
                       )}
                     >
-                      {isSyncing ? "Sincronizando..." : "Sincronizar Google"}
+                      {isSyncing ? "Sincronizando..." : "Sincronizar Conta Google"}
                     </button>
-                  )}
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <button 
+                        onClick={() => {
+                          if (!user?.uid) return;
+                          const feedUrl = `${window.location.protocol}//${window.location.host}/api/calendar/feed/${user.uid}.ics`;
+                          navigator.clipboard.writeText(feedUrl);
+                          toast.success("Link iCal para Google copiado!", {
+                            description: "No Google Agenda: Clique em '+' em 'Outros calendários' -> 'Do URL' -> cole este link!"
+                          });
+                        }}
+                        className="py-1.5 px-2 bg-blue-100/70 hover:bg-blue-100 text-blue-900 rounded-xl font-bold text-[9px] uppercase tracking-wider transition-all border border-blue-200 flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <Copy className="w-3 h-3 text-blue-700" />
+                        Copiar URL iCal
+                      </button>
+
+                      <button 
+                        onClick={() => setShowGCalTutorial(true)}
+                        className="py-1.5 px-2 bg-white hover:bg-slate-50 text-slate-700 rounded-xl font-bold text-[9px] uppercase tracking-wider transition-all border border-slate-200 flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <HelpCircle className="w-3 h-3 text-slate-500" />
+                        Como Integrar?
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Apple Calendar (iCal) */}
@@ -8193,40 +8212,215 @@ const ProfileView = ({ profile, user, onOpenSettings, onNavigate, tasks, onOpenC
                       </div>
                     </div>
                     <p className="text-[10px] text-slate-300 font-medium leading-relaxed">
-                      Sincronize automaticamente por assinatura iCal ou baixe o arquivo de tarefas.
+                      Assine em tempo real ou baixe o arquivo de tarefas no seu dispositivo Apple.
                     </p>
                   </div>
 
                   <div className="mt-3 space-y-2">
                     <button 
                       onClick={() => {
-                        const userTasks = tasks.filter(t => t.uid === user?.uid && !t.completed);
-                        downloadIcalFile(userTasks, "minhas-tarefas-apple.ics", "Minhas Tarefas - Ponto Chave");
+                        if (!user?.uid) return;
+                        const webcalUrl = `webcal://${window.location.host}/api/calendar/feed/${user.uid}.ics`;
+                        window.location.href = webcalUrl;
                       }}
                       className="w-full flex items-center justify-center gap-2 py-2 bg-white hover:bg-slate-100 text-slate-900 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all shadow-sm cursor-pointer"
                     >
-                      <Download className="w-3.5 h-3.5 text-slate-900" />
-                      Baixar Arquivo .ics
+                      <AppleIcon className="w-4 h-4 text-slate-900" />
+                      Assinar em 1-Clique (iPhone/Mac)
                     </button>
 
-                    <button 
-                      onClick={() => {
-                        if (!user?.uid) return;
-                        const feedUrl = `${window.location.protocol}//${window.location.host}/api/calendar/feed/${user.uid}.ics`;
-                        navigator.clipboard.writeText(feedUrl);
-                        toast.success("Link de Inscrição iCal copiado!", {
-                          description: "No iPhone/Mac: Abra o app Calendário -> Adicionar Calendário -> Assinar Calendário por URL -> Cole este link!"
-                        });
-                      }}
-                      className="w-full flex items-center justify-center gap-2 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all border border-slate-700 cursor-pointer"
-                    >
-                      <Copy className="w-3.5 h-3.5 text-slate-300" />
-                      Copiar Link de Inscrição
-                    </button>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button 
+                        onClick={() => {
+                          const userTasks = tasks.filter(t => t.uid === user?.uid && !t.completed);
+                          downloadIcalFile(userTasks, "minhas-tarefas-apple.ics", "Minhas Tarefas - Ponto Chave");
+                        }}
+                        className="py-1.5 px-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-bold text-[9px] uppercase tracking-wider transition-all border border-slate-700 flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <Download className="w-3 h-3 text-slate-300" />
+                        Baixar .ics
+                      </button>
+
+                      <button 
+                        onClick={() => setShowAppleTutorial(true)}
+                        className="py-1.5 px-2 bg-blue-600/30 hover:bg-blue-600/50 text-blue-200 rounded-xl font-bold text-[9px] uppercase tracking-wider transition-all border border-blue-500/30 flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <HelpCircle className="w-3 h-3 text-blue-300" />
+                        Como Integrar?
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
+
+            {/* Google Calendar Tutorial Modal */}
+            <AnimatePresence>
+              {showGCalTutorial && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                  <motion.div 
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto"
+                  >
+                    <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600">
+                          <CalendarIcon className="w-5 h-5 text-blue-600" />
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-slate-900 text-sm">Como Integrar ao Google Agenda</h3>
+                          <p className="text-[11px] text-slate-500">Computador e aplicativo Google Agenda</p>
+                        </div>
+                      </div>
+                      <button onClick={() => setShowGCalTutorial(false)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-400">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    <div className="mt-4 space-y-3">
+                      <div className="p-3 bg-blue-50 rounded-2xl border border-blue-100">
+                        <h4 className="font-bold text-blue-900 text-xs mb-1">🔗 Método 1: Assinatura por URL iCal (Recomendado)</h4>
+                        <p className="text-[11px] text-blue-800 leading-relaxed mb-2">
+                          Funciona em qualquer conta do Google sem solicitar logins ou abrir janelas de pop-up:
+                        </p>
+                        <ol className="list-decimal list-inside space-y-1 text-[11px] text-blue-900 font-medium">
+                          <li>Clique em <strong>Copiar URL iCal</strong> abaixo.</li>
+                          <li>Acesse o <a href="https://calendar.google.com" target="_blank" rel="noopener noreferrer" className="underline font-bold">Google Agenda no computador</a>.</li>
+                          <li>Na barra lateral esquerda, clique no ícone <strong>+</strong> ao lado de <strong>Outros calendários</strong>.</li>
+                          <li>Selecione <strong>Do URL</strong> e cole o link copiado.</li>
+                        </ol>
+                        <button
+                          onClick={() => {
+                            if (!user?.uid) return;
+                            const feedUrl = `${window.location.protocol}//${window.location.host}/api/calendar/feed/${user.uid}.ics`;
+                            navigator.clipboard.writeText(feedUrl);
+                            toast.success("URL iCal copiada com sucesso!");
+                          }}
+                          className="mt-3 w-full py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+                        >
+                          <Copy className="w-4 h-4 text-white" />
+                          Copiar URL iCal do Google
+                        </button>
+                      </div>
+
+                      <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/60">
+                        <h5 className="font-bold text-slate-900 text-xs mb-1">⚡ Método 2: Sincronização Direta OAuth</h5>
+                        <p className="text-[11px] text-slate-600 leading-relaxed">
+                          Clique em <strong>Sincronizar Conta Google</strong> para fazer login diretamente com sua conta Google e enviar os eventos instantaneamente para a sua agenda principal.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-5 pt-3 border-t border-slate-100 flex justify-end">
+                      <button
+                        onClick={() => setShowGCalTutorial(false)}
+                        className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-slate-800 cursor-pointer"
+                      >
+                        Entendido
+                      </button>
+                    </div>
+                  </motion.div>
+                </div>
+              )}
+            </AnimatePresence>
+
+            {/* Apple Calendar Tutorial Modal */}
+            <AnimatePresence>
+              {showAppleTutorial && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                  <motion.div 
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto"
+                  >
+                    <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-slate-900 rounded-2xl flex items-center justify-center text-white">
+                          <AppleIcon className="w-5 h-5 text-white" />
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-slate-900 text-sm">Como Integrar ao Apple Calendar</h3>
+                          <p className="text-[11px] text-slate-500">iPhone, iPad, Mac e iCloud</p>
+                        </div>
+                      </div>
+                      <button onClick={() => setShowAppleTutorial(false)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-400">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    <div className="mt-4 space-y-3">
+                      <div className="p-3 bg-blue-50 rounded-2xl border border-blue-100">
+                        <h4 className="font-bold text-blue-900 text-xs mb-1">⚡ Método 1: Assinatura Automática (Mais Fácil)</h4>
+                        <p className="text-[11px] text-blue-800 leading-relaxed mb-2">
+                          Se você está no iPhone ou Mac, basta clicar no botão de 1-Clique para abrir o app Calendário nativo:
+                        </p>
+                        <button
+                          onClick={() => {
+                            if (!user?.uid) return;
+                            const webcalUrl = `webcal://${window.location.host}/api/calendar/feed/${user.uid}.ics`;
+                            window.location.href = webcalUrl;
+                          }}
+                          className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+                        >
+                          <AppleIcon className="w-4 h-4 text-white" />
+                          Abrir App Calendário (1-Clique)
+                        </button>
+                      </div>
+
+                      <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/60">
+                        <h5 className="font-bold text-slate-900 text-xs mb-1">📱 No iPhone / iPad:</h5>
+                        <ol className="list-decimal list-inside space-y-1 text-[11px] text-slate-600">
+                          <li>Copie o link usando o botão abaixo.</li>
+                          <li>Abra <strong>Ajustes</strong> ➔ <strong>Calendário</strong> ➔ <strong>Contas</strong>.</li>
+                          <li>Toque em <strong>Adicionar Conta</strong> ➔ <strong>Outra</strong>.</li>
+                          <li>Escolha <strong>Adicionar Calendário Assinado</strong> e cole o link.</li>
+                        </ol>
+                        <button
+                          onClick={() => {
+                            if (!user?.uid) return;
+                            const feedUrl = `${window.location.protocol}//${window.location.host}/api/calendar/feed/${user.uid}.ics`;
+                            navigator.clipboard.writeText(feedUrl);
+                            toast.success("Link iCal copiado!");
+                          }}
+                          className="mt-2 w-full py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold rounded-lg text-[10px] uppercase tracking-wider flex items-center justify-center gap-1 cursor-pointer"
+                        >
+                          <Copy className="w-3 h-3" />
+                          Copiar Link de Inscrição
+                        </button>
+                      </div>
+
+                      <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/60">
+                        <h5 className="font-bold text-slate-900 text-xs mb-1">💻 No Mac (Apple Calendar):</h5>
+                        <ol className="list-decimal list-inside space-y-1 text-[11px] text-slate-600">
+                          <li>Abra o app <strong>Calendário</strong> no Mac.</li>
+                          <li>No menu superior, clique em <strong>Arquivo</strong> ➔ <strong>Nova Assinatura de Calendário...</strong></li>
+                          <li>Cole o link copiado e clique em <strong>Assinar</strong>.</li>
+                        </ol>
+                      </div>
+
+                      <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/60">
+                        <h5 className="font-bold text-slate-900 text-xs mb-1">📥 Arquivo .ics (iCloud Web):</h5>
+                        <p className="text-[11px] text-slate-600 leading-relaxed mb-2">
+                          Se você usa a web do iCloud, clique em <strong>"Baixar Arquivo .ics"</strong> e abra o arquivo no seu computador para sincronizar os eventos.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-5 pt-3 border-t border-slate-100 flex justify-end">
+                      <button
+                        onClick={() => setShowAppleTutorial(false)}
+                        className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-slate-800 cursor-pointer"
+                      >
+                        Entendido
+                      </button>
+                    </div>
+                  </motion.div>
+                </div>
+              )}
+            </AnimatePresence>
             <div className="pt-6 border-t border-slate-100">
               <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Informações da Conta</h4>
               <div className="space-y-4">
