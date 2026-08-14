@@ -1266,12 +1266,16 @@ const UserManagement = ({
 
   const handleGenerateInviteLink = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (!companySettings?.id) {
+      toast.error("Identificador da empresa ainda não carregado. Aguarde um instante.");
+      return;
+    }
     try {
-      const companyId = companySettings?.id || "default_agency";
-      const link = `${window.location.origin}/?invite=${companyId}`;
+      const companyId = companySettings.id;
+      const link = `${window.location.origin}/?company=${companyId}`;
 
       navigator.clipboard.writeText(link).then(() => {
-        toast.success("Link de convite copiado! Qualquer pessoa com este link pode solicitar acesso à equipe.");
+        toast.success("Link de convite da empresa copiado! Qualquer pessoa com este link pode solicitar acesso à equipe.");
       }).catch(() => {
         toast.success(`Link de convite: ${link}`);
       });
@@ -2277,19 +2281,25 @@ const UserManagement = ({
                           <input 
                             type="text" 
                             readOnly 
-                            value={`${window.location.origin}/?invite=${companySettings?.id || 'company'}`}
-                            className="bg-white border border-slate-200 text-[10px] px-3 py-2 rounded-xl flex-1 font-mono text-slate-600 focus:outline-none"
+                            value={companySettings?.id ? `${window.location.origin}/?company=${companySettings.id}` : "Carregando identificador da empresa..."}
+                            className="bg-white border border-slate-200 text-[10px] px-3 py-2 rounded-xl flex-1 font-mono text-slate-600 focus:outline-none disabled:opacity-60"
+                            disabled={!companySettings?.id}
                           />
                           <button
+                            disabled={!companySettings?.id}
                             onClick={async () => {
+                              if (!companySettings?.id) {
+                                toast.error("Identificador da empresa ainda não disponível.");
+                                return;
+                              }
                               try {
-                                await navigator.clipboard.writeText(`${window.location.origin}/?invite=${companySettings?.id || 'company'}`);
+                                await navigator.clipboard.writeText(`${window.location.origin}/?company=${companySettings.id}`);
                                 toast.success("URL copiada!");
                               } catch (err) {
                                 toast.error("Falha ao copiar.");
                               }
                             }}
-                            className="px-3 py-1.5 bg-slate-900 text-white rounded-lg font-bold text-[10px] uppercase tracking-wider hover:bg-slate-800 transition shrink-0 cursor-pointer"
+                            className="px-3 py-1.5 bg-slate-900 text-white rounded-lg font-bold text-[10px] uppercase tracking-wider hover:bg-slate-800 transition shrink-0 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             Copiar
                           </button>
@@ -2445,19 +2455,25 @@ const UserManagement = ({
                         <input 
                           type="text"
                           readOnly
-                          value={`${window.location.origin}/?invite=${companySettings?.id || 'company'}`}
-                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none text-[10px] font-mono text-slate-600"
-                          onClick={(e) => (e.target as HTMLInputElement).select()}
+                          value={companySettings?.id ? `${window.location.origin}/?company=${companySettings.id}` : "Carregando identificador da empresa..."}
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none text-[10px] font-mono text-slate-600 disabled:opacity-60"
+                          disabled={!companySettings?.id}
+                          onClick={(e) => {
+                            if (companySettings?.id) {
+                              (e.target as HTMLInputElement).select();
+                            }
+                          }}
                         />
                       </div>
 
                       <div className="pt-2">
                         <button 
                           type="button"
+                          disabled={!companySettings?.id}
                           onClick={() => handleGenerateInviteLink()}
-                          className="w-full py-2.5 bg-blue-600 text-white rounded-xl font-bold uppercase tracking-wider text-[10px] shadow-sm hover:bg-blue-700 transition cursor-pointer"
+                          className="w-full py-2.5 bg-blue-600 text-white rounded-xl font-bold uppercase tracking-wider text-[10px] shadow-sm hover:bg-blue-700 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          Copiar Link de Convite
+                          {companySettings?.id ? "Copiar Link de Convite" : "Carregando identificador da empresa..."}
                         </button>
                       </div>
                     </div>
@@ -9326,295 +9342,340 @@ const migrationLogger = {
   error: (msg: string, ...args: any[]) => console.error(`[Migration] ${msg}`, ...args)
 };
 
-async function migratePendingUserData(oldUid: string, newUid: string) {
-  const startTime = performance.now();
-  migrationLogger.info(`User: ${oldUid}`);
-  
-  const pendingUserRef = doc(db, "users", oldUid);
-  let hasLocked = false;
-  let isOrphanRecovered = false;
+const inMemoryMigrationPromises = new Map<string, Promise<void>>();
 
-  try {
-    // Adquirir lock para evitar migrações concorrentes utilizando runTransaction
-    await runTransaction(db, async (transaction) => {
-      const pendingSnap = await transaction.get(pendingUserRef);
-      if (pendingSnap.exists()) {
-        const data = pendingSnap.data();
-        if (data.migrationLocked === true) {
-          // Mecanismo de recuperação para locks órfãos (se ativo há mais de 10 minutos)
-          const nowMs = Date.now();
-          let startedAtMs = 0;
-          if (data.migrationStartedAt) {
-            if (data.migrationStartedAt.toMillis) {
-              startedAtMs = data.migrationStartedAt.toMillis();
-            } else if (data.migrationStartedAt.toDate) {
-              startedAtMs = data.migrationStartedAt.toDate().getTime();
-            } else if (typeof data.migrationStartedAt === 'string') {
-              startedAtMs = new Date(data.migrationStartedAt).getTime();
-            } else if (typeof data.migrationStartedAt === 'number') {
-              startedAtMs = data.migrationStartedAt;
+async function migratePendingUserData(oldUid: string, newUid: string): Promise<void> {
+  const migrationKey = `${oldUid}`;
+  if (inMemoryMigrationPromises.has(migrationKey)) {
+    migrationLogger.info(`Migração em andamento na memória para ${oldUid}. Reutilizando Promise.`);
+    return inMemoryMigrationPromises.get(migrationKey)!;
+  }
+
+  const migrationPromise = (async () => {
+    const startTime = performance.now();
+    migrationLogger.info(`Iniciando migração de ${oldUid} -> ${newUid}`);
+    
+    const pendingUserRef = doc(db, "users", oldUid);
+    let hasLocked = false;
+    let isOrphanRecovered = false;
+    let isReentrant = false;
+
+    try {
+      // Adquirir lock para evitar migrações concorrentes utilizando runTransaction
+      await runTransaction(db, async (transaction) => {
+        const pendingSnap = await transaction.get(pendingUserRef);
+        if (pendingSnap.exists()) {
+          const data = pendingSnap.data();
+
+          // Idempotência: Se a migração já foi finalizada anteriormente
+          if (data.migrationFinishedAt && !data.migrationLocked) {
+            migrationLogger.info(`Migração já finalizada anteriormente para ${oldUid}.`);
+            return;
+          }
+
+          if (data.migrationLocked === true) {
+            // Reentrância: Se o lock pertence ao próprio UID atual (mesmo usuário reconectando ou listener concorrente)
+            if (data.migrationLockOwner === newUid) {
+              migrationLogger.info(`Reentrância detectada: o lock já pertence ao usuário atual (${newUid}). Continuando migração de forma idempotente.`);
+              isReentrant = true;
+              transaction.update(pendingUserRef, {
+                migrationLockAt: Timestamp.now(),
+                migrationStartedAt: data.migrationStartedAt || Timestamp.now()
+              });
+              return;
+            }
+
+            // Mecanismo de recuperação para locks órfãos (se inativo há mais de 10 minutos)
+            const nowMs = Date.now();
+            let lockAtMs = 0;
+            const lockTimestamp = data.migrationLockAt || data.migrationStartedAt;
+            if (lockTimestamp) {
+              if (lockTimestamp.toMillis) {
+                lockAtMs = lockTimestamp.toMillis();
+              } else if (lockTimestamp.toDate) {
+                lockAtMs = lockTimestamp.toDate().getTime();
+              } else if (typeof lockTimestamp === 'string') {
+                lockAtMs = new Date(lockTimestamp).getTime();
+              } else if (typeof lockTimestamp === 'number') {
+                lockAtMs = lockTimestamp;
+              }
+            }
+            
+            const LOCK_TIMEOUT_MS = 600000; // 10 minutos (tempo seguro para operações de múltiplos batches)
+            if (lockAtMs > 0 && (nowMs - lockAtMs) > LOCK_TIMEOUT_MS) {
+              migrationLogger.warn(`Lock órfão detectado (ativo há ${((nowMs - lockAtMs) / 60000).toFixed(1)} minutos). Recuperando lock expirado...`);
+              isOrphanRecovered = true;
+            } else {
+              migrationLogger.warn("Lock de migração já ativo para este usuário por outro processo. Abortando execução concorrente.");
+              throw new Error("MIGRATION_ALREADY_RUNNING");
             }
           }
           
-          if (startedAtMs > 0 && (nowMs - startedAtMs) > 600000) { // 10 minutos
-            migrationLogger.warn(`Lock órfão detectado (ativo há ${((nowMs - startedAtMs) / 60000).toFixed(1)} minutos). Recuperando lock expirado...`);
-            isOrphanRecovered = true;
-          } else {
-            migrationLogger.warn("Lock de migração já ativo para este usuário. Abortando execução concorrente.");
-            throw new Error("MIGRATION_ALREADY_RUNNING");
-          }
+          // Marcar como bloqueado para migração, registrando data de início e proprietário do lock
+          transaction.update(pendingUserRef, {
+            migrationLocked: true,
+            migrationLockOwner: newUid,
+            migrationLockAt: Timestamp.now(),
+            migrationStartedAt: Timestamp.now()
+          });
         }
-        
-        // Marcar como bloqueado para migração, registrando data de início e proprietário do lock
-        transaction.update(pendingUserRef, {
-          migrationLocked: true,
-          migrationLockOwner: newUid,
-          migrationStartedAt: Timestamp.now()
-        });
-      }
-    });
-    hasLocked = true;
-    migrationLogger.info(`Lock adquirido${isOrphanRecovered ? " (recuperado de lock órfão)" : ""}`);
-
-    const tasksRef = collection(db, "tasks");
-    const tasksQueryUid = query(tasksRef, where("uid", "==", oldUid));
-    const tasksQueryAuthor = query(tasksRef, where("authorId", "==", oldUid));
-    
-    const processesRef = collection(db, "processes");
-    const processesQueryUid = query(processesRef, where("uid", "==", oldUid));
-    const processesQueryAssigned = query(processesRef, where("assignedTo", "==", oldUid));
-    
-    const vistoriasRef = collection(db, "vistorias");
-    const vistoriasQuery = query(vistoriasRef, where("corretorId", "==", oldUid));
-
-    const comissoesRef = collection(db, "comissoes");
-    const comissoesQuery = query(comissoesRef, where("criadoPor", "==", oldUid));
-
-    const brokerSplitsRef = collection(db, "broker_splits");
-    const brokerSplitsQuery = query(brokerSplitsRef, where("broker_id", "==", oldUid));
-
-    const brokerAdvancesRef = collection(db, "broker_advances");
-    const brokerAdvancesQuery = query(brokerAdvancesRef, where("broker_id", "==", oldUid));
-
-    const pontoRegistrosRef = collection(db, "ponto_registros");
-    const pontoRegistrosQuery = query(pontoRegistrosRef, where("userId", "==", oldUid));
-
-    const pontoAjustesRef = collection(db, "ponto_ajustes");
-    const pontoAjustesQuery = query(pontoAjustesRef, where("userId", "==", oldUid));
-
-    const [
-      tasksUidSnap,
-      tasksAuthorSnap,
-      processesUidSnap,
-      processesAssignedSnap,
-      vistoriasSnap,
-      comissoesSnap,
-      brokerSplitsSnap,
-      brokerAdvancesSnap,
-      pontoRegistrosSnap,
-      pontoAjustesSnap
-    ] = await Promise.all([
-      getDocs(tasksQueryUid),
-      getDocs(tasksQueryAuthor),
-      getDocs(processesQueryUid),
-      getDocs(processesQueryAssigned),
-      getDocs(vistoriasQuery),
-      getDocs(comissoesQuery),
-      getDocs(brokerSplitsQuery),
-      getDocs(brokerAdvancesQuery),
-      getDocs(pontoRegistrosQuery),
-      getDocs(pontoAjustesQuery)
-    ]);
-
-    const getSnapSize = (snap: any) => {
-      if (snap && snap.docs && Array.isArray(snap.docs)) {
-        return snap.docs.length;
-      }
-      return (snap && snap.size) || 0;
-    };
-
-    const totalDocs = 
-      getSnapSize(tasksUidSnap) + 
-      getSnapSize(tasksAuthorSnap) + 
-      getSnapSize(processesUidSnap) + 
-      getSnapSize(processesAssignedSnap) + 
-      getSnapSize(vistoriasSnap) + 
-      getSnapSize(comissoesSnap) + 
-      getSnapSize(brokerSplitsSnap) + 
-      getSnapSize(brokerAdvancesSnap) + 
-      getSnapSize(pontoRegistrosSnap) + 
-      getSnapSize(pontoAjustesSnap);
-    migrationLogger.info(`${totalDocs} documentos encontrados`);
-
-    const operations: MigrationOp[] = [];
-
-    // Process Tasks Uid
-    tasksUidSnap.forEach((docSnap) => {
-      operations.push({
-        ref: doc(db, "tasks", docSnap.id),
-        type: 'update',
-        data: { uid: newUid, updatedAt: serverTimestamp() }
       });
-    });
+      hasLocked = true;
+      migrationLogger.info(`Lock adquirido${isReentrant ? " (reentrância)" : isOrphanRecovered ? " (recuperado de lock órfão)" : ""}`);
 
-    // Process Tasks Author
-    tasksAuthorSnap.forEach((docSnap) => {
-      operations.push({
-        ref: doc(db, "tasks", docSnap.id),
-        type: 'update',
-        data: { authorId: newUid, updatedAt: serverTimestamp() }
-      });
-    });
+      const tasksRef = collection(db, "tasks");
+      const tasksQueryUid = query(tasksRef, where("uid", "==", oldUid));
+      const tasksQueryAuthor = query(tasksRef, where("authorId", "==", oldUid));
+      
+      const processesRef = collection(db, "processes");
+      const processesQueryUid = query(processesRef, where("uid", "==", oldUid));
+      const processesQueryAssigned = query(processesRef, where("assignedTo", "==", oldUid));
+      
+      const vistoriasRef = collection(db, "vistorias");
+      const vistoriasQuery = query(vistoriasRef, where("corretorId", "==", oldUid));
 
-    // Process Processes Uid
-    processesUidSnap.forEach((docSnap) => {
-      operations.push({
-        ref: doc(db, "processes", docSnap.id),
-        type: 'update',
-        data: { uid: newUid, updatedAt: serverTimestamp() }
-      });
-    });
+      const comissoesRef = collection(db, "comissoes");
+      const comissoesQuery = query(comissoesRef, where("criadoPor", "==", oldUid));
 
-    // Process Processes AssignedTo
-    processesAssignedSnap.forEach((docSnap) => {
-      operations.push({
-        ref: doc(db, "processes", docSnap.id),
-        type: 'update',
-        data: { assignedTo: newUid, updatedAt: serverTimestamp() }
-      });
-    });
+      const brokerSplitsRef = collection(db, "broker_splits");
+      const brokerSplitsQuery = query(brokerSplitsRef, where("broker_id", "==", oldUid));
 
-    // Process Vistorias corretorId
-    vistoriasSnap.forEach((docSnap) => {
-      operations.push({
-        ref: doc(db, "vistorias", docSnap.id),
-        type: 'update',
-        data: { corretorId: newUid }
-      });
-    });
+      const brokerAdvancesRef = collection(db, "broker_advances");
+      const brokerAdvancesQuery = query(brokerAdvancesRef, where("broker_id", "==", oldUid));
 
-    // Process Comissoes criadoPor
-    comissoesSnap.forEach((docSnap) => {
-      operations.push({
-        ref: doc(db, "comissoes", docSnap.id),
-        type: 'update',
-        data: { criadoPor: newUid }
-      });
-    });
+      const pontoRegistrosRef = collection(db, "ponto_registros");
+      const pontoRegistrosQuery = query(pontoRegistrosRef, where("userId", "==", oldUid));
 
-    // Process BrokerSplits broker_id
-    brokerSplitsSnap.forEach((docSnap) => {
-      operations.push({
-        ref: doc(db, "broker_splits", docSnap.id),
-        type: 'update',
-        data: { broker_id: newUid }
-      });
-    });
+      const pontoAjustesRef = collection(db, "ponto_ajustes");
+      const pontoAjustesQuery = query(pontoAjustesRef, where("userId", "==", oldUid));
 
-    // Process Broker Advances broker_id
-    brokerAdvancesSnap.forEach((docSnap) => {
-      operations.push({
-        ref: doc(db, "broker_advances", docSnap.id),
-        type: 'update',
-        data: { broker_id: newUid }
-      });
-    });
+      const [
+        tasksUidSnap,
+        tasksAuthorSnap,
+        processesUidSnap,
+        processesAssignedSnap,
+        vistoriasSnap,
+        comissoesSnap,
+        brokerSplitsSnap,
+        brokerAdvancesSnap,
+        pontoRegistrosSnap,
+        pontoAjustesSnap
+      ] = await Promise.all([
+        getDocs(tasksQueryUid),
+        getDocs(tasksQueryAuthor),
+        getDocs(processesQueryUid),
+        getDocs(processesQueryAssigned),
+        getDocs(vistoriasQuery),
+        getDocs(comissoesQuery),
+        getDocs(brokerSplitsQuery),
+        getDocs(brokerAdvancesQuery),
+        getDocs(pontoRegistrosQuery),
+        getDocs(pontoAjustesQuery)
+      ]);
 
-    // Process Ponto Registros - Re-key documents and update userId
-    pontoRegistrosSnap.forEach((docSnap) => {
-      const data = docSnap.data();
-      const date = data.date || docSnap.id.split('_')[1] || new Date().toISOString().split('T')[0];
-      const newDocId = `${newUid}_${date}`;
-      const newData = {
-        ...data,
-        userId: newUid,
-        id: newDocId
+      const getSnapSize = (snap: any) => {
+        if (snap && snap.docs && Array.isArray(snap.docs)) {
+          return snap.docs.length;
+        }
+        return (snap && snap.size) || 0;
       };
-      // Criar o documento na nova chave
-      operations.push({
-        ref: doc(db, "ponto_registros", newDocId),
-        type: 'set',
-        data: newData
-      });
-      // Deletar o documento na chave antiga
-      operations.push({
-        ref: doc(db, "ponto_registros", docSnap.id),
-        type: 'delete'
-      });
-    });
 
-    // Process Ponto Ajustes - Update userId and registroId
-    pontoAjustesSnap.forEach((docSnap) => {
-      const data = docSnap.data();
-      const oldRegistroId = data.registroId || "";
-      const newRegistroId = oldRegistroId.startsWith(oldUid + "_")
-        ? oldRegistroId.replace(oldUid + "_", newUid + "_")
-        : oldRegistroId;
+      const totalDocs = 
+        getSnapSize(tasksUidSnap) + 
+        getSnapSize(tasksAuthorSnap) + 
+        getSnapSize(processesUidSnap) + 
+        getSnapSize(processesAssignedSnap) + 
+        getSnapSize(vistoriasSnap) + 
+        getSnapSize(comissoesSnap) + 
+        getSnapSize(brokerSplitsSnap) + 
+        getSnapSize(brokerAdvancesSnap) + 
+        getSnapSize(pontoRegistrosSnap) + 
+        getSnapSize(pontoAjustesSnap);
+      migrationLogger.info(`${totalDocs} documentos encontrados`);
 
-      operations.push({
-        ref: doc(db, "ponto_ajustes", docSnap.id),
-        type: 'update',
-        data: {
+      const operations: MigrationOp[] = [];
+
+      // Process Tasks Uid
+      tasksUidSnap.forEach((docSnap) => {
+        operations.push({
+          ref: doc(db, "tasks", docSnap.id),
+          type: 'update',
+          data: { uid: newUid, updatedAt: serverTimestamp() }
+        });
+      });
+
+      // Process Tasks Author
+      tasksAuthorSnap.forEach((docSnap) => {
+        operations.push({
+          ref: doc(db, "tasks", docSnap.id),
+          type: 'update',
+          data: { authorId: newUid, updatedAt: serverTimestamp() }
+        });
+      });
+
+      // Process Processes Uid
+      processesUidSnap.forEach((docSnap) => {
+        operations.push({
+          ref: doc(db, "processes", docSnap.id),
+          type: 'update',
+          data: { uid: newUid, updatedAt: serverTimestamp() }
+        });
+      });
+
+      // Process Processes AssignedTo
+      processesAssignedSnap.forEach((docSnap) => {
+        operations.push({
+          ref: doc(db, "processes", docSnap.id),
+          type: 'update',
+          data: { assignedTo: newUid, updatedAt: serverTimestamp() }
+        });
+      });
+
+      // Process Vistorias corretorId
+      vistoriasSnap.forEach((docSnap) => {
+        operations.push({
+          ref: doc(db, "vistorias", docSnap.id),
+          type: 'update',
+          data: { corretorId: newUid }
+        });
+      });
+
+      // Process Comissoes criadoPor
+      comissoesSnap.forEach((docSnap) => {
+        operations.push({
+          ref: doc(db, "comissoes", docSnap.id),
+          type: 'update',
+          data: { criadoPor: newUid }
+        });
+      });
+
+      // Process BrokerSplits broker_id
+      brokerSplitsSnap.forEach((docSnap) => {
+        operations.push({
+          ref: doc(db, "broker_splits", docSnap.id),
+          type: 'update',
+          data: { broker_id: newUid }
+        });
+      });
+
+      // Process Broker Advances broker_id
+      brokerAdvancesSnap.forEach((docSnap) => {
+        operations.push({
+          ref: doc(db, "broker_advances", docSnap.id),
+          type: 'update',
+          data: { broker_id: newUid }
+        });
+      });
+
+      // Process Ponto Registros - Re-key documents and update userId
+      pontoRegistrosSnap.forEach((docSnap) => {
+        const data = docSnap.data();
+        const date = data.date || docSnap.id.split('_')[1] || new Date().toISOString().split('T')[0];
+        const newDocId = `${newUid}_${date}`;
+        const newData = {
+          ...data,
           userId: newUid,
-          registroId: newRegistroId
-        }
+          id: newDocId
+        };
+        // Criar o documento na nova chave
+        operations.push({
+          ref: doc(db, "ponto_registros", newDocId),
+          type: 'set',
+          data: newData
+        });
+        // Deletar o documento na chave antiga
+        operations.push({
+          ref: doc(db, "ponto_registros", docSnap.id),
+          type: 'delete'
+        });
       });
-    });
 
-    let batchesCount = 0;
-    if (operations.length > 0) {
-      // Executar as operações em blocos/lotes (chunks) de no máximo 400 operações cada
-      const CHUNK_SIZE = 400;
-      for (let i = 0; i < operations.length; i += CHUNK_SIZE) {
-        const chunk = operations.slice(i, i + CHUNK_SIZE);
-        const chunkBatch = writeBatch(db);
-        
-        for (const op of chunk) {
-          if (op.type === 'update') {
-            chunkBatch.update(op.ref, op.data);
-          } else if (op.type === 'set') {
-            chunkBatch.set(op.ref, op.data, op.options);
-          } else if (op.type === 'delete') {
-            chunkBatch.delete(op.ref);
+      // Process Ponto Ajustes - Update userId and registroId
+      pontoAjustesSnap.forEach((docSnap) => {
+        const data = docSnap.data();
+        const oldRegistroId = data.registroId || "";
+        const newRegistroId = oldRegistroId.startsWith(oldUid + "_")
+          ? oldRegistroId.replace(oldUid + "_", newUid + "_")
+          : oldRegistroId;
+
+        operations.push({
+          ref: doc(db, "ponto_ajustes", docSnap.id),
+          type: 'update',
+          data: {
+            userId: newUid,
+            registroId: newRegistroId
           }
-        }
-        
-        await chunkBatch.commit();
-        batchesCount++;
-      }
-    }
-    migrationLogger.info(`${batchesCount} batches executados`);
-
-    // Registrar data de conclusão com sucesso no documento do convite pendente
-    try {
-      await updateDoc(pendingUserRef, {
-        migrationFinishedAt: Timestamp.now()
+        });
       });
-    } catch (finishErr) {
-      // Ignorar se o documento já sumiu
-    }
 
-    const durationSec = ((performance.now() - startTime) / 1000).toFixed(1);
-    migrationLogger.info(`Migração concluída em ${durationSec} s`);
+      let batchesCount = 0;
+      if (operations.length > 0) {
+        // Executar as operações em blocos/lotes (chunks) de no máximo 400 operações cada
+        const CHUNK_SIZE = 400;
+        for (let i = 0; i < operations.length; i += CHUNK_SIZE) {
+          const chunk = operations.slice(i, i + CHUNK_SIZE);
+          const chunkBatch = writeBatch(db);
+          
+          for (const op of chunk) {
+            if (op.type === 'update') {
+              chunkBatch.update(op.ref, op.data);
+            } else if (op.type === 'set') {
+              chunkBatch.set(op.ref, op.data, op.options);
+            } else if (op.type === 'delete') {
+              chunkBatch.delete(op.ref);
+            }
+          }
+          
+          await chunkBatch.commit();
+          batchesCount++;
+        }
+      }
+      migrationLogger.info(`${batchesCount} batches executados`);
 
-  } catch (error: any) {
-    migrationLogger.error("Erro fatal durante a migração dos dados do usuário pendente:", error);
-    throw error;
-  } finally {
-    // Desbloquear/liberar o lock em caso de falha ou conclusão
-    if (hasLocked) {
+      // Registrar data de conclusão com sucesso no documento do convite pendente
       try {
-        const pendingSnap = await getDoc(pendingUserRef);
-        if (pendingSnap.exists()) {
-          await updateDoc(pendingUserRef, { migrationLocked: false });
-          migrationLogger.info("Lock de migração liberado com sucesso.");
-        } else {
+        await updateDoc(pendingUserRef, {
+          migrationFinishedAt: Timestamp.now()
+        });
+      } catch (finishErr) {
+        // Ignorar se o documento já sumiu
+      }
+
+      const durationSec = ((performance.now() - startTime) / 1000).toFixed(1);
+      migrationLogger.info(`Migração concluída em ${durationSec} s`);
+
+    } catch (error: any) {
+      migrationLogger.error("Erro fatal durante a migração dos dados do usuário pendente:", error);
+      throw error;
+    } finally {
+      // Desbloquear/liberar o lock no Firestore SOMENTE se o lock ainda pertencer ao processo atual
+      if (hasLocked) {
+        try {
+          await runTransaction(db, async (transaction) => {
+            const pendingSnap = await transaction.get(pendingUserRef);
+            if (pendingSnap.exists()) {
+              const data = pendingSnap.data();
+              if (data.migrationLockOwner === newUid) {
+                transaction.update(pendingUserRef, { migrationLocked: false });
+                migrationLogger.info("Lock de migração liberado com sucesso.");
+              } else {
+                migrationLogger.warn(`Lock não liberado: proprietário atual (${data.migrationLockOwner}) difere de ${newUid}.`);
+              }
+            }
+          });
+        } catch (unlockErr) {
           // Ignorado silenciosamente
         }
-      } catch (unlockErr) {
-        // Ignorado silenciosamente
       }
     }
+  })();
+
+  inMemoryMigrationPromises.set(migrationKey, migrationPromise);
+
+  try {
+    await migrationPromise;
+  } finally {
+    inMemoryMigrationPromises.delete(migrationKey);
   }
 }
 
@@ -9678,16 +9739,7 @@ export default function App() {
       const company = params.get('company');
       const role = params.get('role');
       
-      if (invite) {
-        localStorage.setItem('active_invite_company', invite);
-        localStorage.setItem('active_invite_token', invite);
-        
-        // Limpa os parâmetros da URL para manter a barra de navegação limpa
-        const newUrl = window.location.pathname;
-        window.history.replaceState({}, document.title, newUrl);
-        
-        toast.info("Processando seu convite de acesso...");
-      } else if (token) {
+      if (token) {
         localStorage.setItem('active_invite_token', token);
         if (company) localStorage.setItem('active_invite_company', company);
         if (role) localStorage.setItem('active_invite_role', role);
@@ -9697,6 +9749,29 @@ export default function App() {
         window.history.replaceState({}, document.title, newUrl);
         
         toast.info("Processando seu convite de acesso...");
+      } else if (company) {
+        localStorage.setItem('active_invite_company', company);
+        if (role) localStorage.setItem('active_invite_role', role);
+        
+        // Limpa os parâmetros da URL para manter a barra de navegação limpa
+        const newUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, newUrl);
+        
+        toast.info("Link de acesso da equipe identificado.");
+      } else if (invite) {
+        // Compatibilidade com links que continham ?invite=
+        if (invite.startsWith('inv_') || invite.length > 20) {
+          localStorage.setItem('active_invite_token', invite);
+        } else {
+          localStorage.setItem('active_invite_company', invite);
+        }
+        if (role) localStorage.setItem('active_invite_role', role);
+        
+        // Limpa os parâmetros da URL para manter a barra de navegação limpa
+        const newUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, newUrl);
+        
+        toast.info("Processando link de convite...");
       }
     } catch (e) {
       console.error("Erro ao processar URL de convite:", e);
@@ -9824,12 +9899,15 @@ export default function App() {
                 // 1. Migração automática dos dados (tarefas, processos, vistorias, etc.)
                 try {
                   await migratePendingUserData(pendingDoc.id, authenticatedUser.uid);
-                } catch (migrateErr) {
+                } catch (migrateErr: any) {
                   console.error("Erro ao migrar dados de tarefas do usuário:", migrateErr);
+                  if (migrateErr?.message === "MIGRATION_ALREADY_RUNNING") {
+                    console.warn("Migração já em execução em outro processo. Aguardando conclusão...");
+                    return;
+                  }
                   setProfile(null);
                   setLoading(false);
-                  await auth.signOut();
-                  toast.error("Erro ao migrar suas tarefas. Entre em contato com o suporte.");
+                  toast.error("Houve uma instabilidade temporária ao sincronizar seus dados. Por favor, recarregue a página.");
                   return;
                 }
 
@@ -9850,13 +9928,12 @@ export default function App() {
                   await setDoc(userDocRef, activatedProfile, { merge: true });
                   // Remover o registro pendente antigo (que estava em outro documentID)
                   await deleteDoc(doc(db, "users", pendingDoc.id));
-                  migrationLogger.info(`Pending removido`);
+                  migrationLogger.info(`Pending ${pendingDoc.id} removido e usuário ativado com sucesso.`);
                 } catch (err) {
                   console.error("Erro ao ativar convite após migração:", err);
                   setProfile(null);
                   setLoading(false);
-                  await auth.signOut();
-                  toast.error("Erro ao ativar sua conta. Tente novamente em alguns minutos.");
+                  toast.error("Erro ao ativar sua conta. Recarregue a página em alguns instantes.");
                   return;
                 }
               } else {
@@ -9904,38 +9981,55 @@ export default function App() {
                   return;
                 }
 
-                // Verificar se há link de convite por token no localStorage (auto-cadastro)
+                // Verificar se há link de convite por token ou empresa no localStorage (auto-cadastro)
                 const inviteToken = localStorage.getItem('active_invite_token');
                 const inviteCompany = localStorage.getItem('active_invite_company');
+                const inviteRoleStored = localStorage.getItem('active_invite_role');
 
                 if (inviteCompany || inviteToken) {
                   try {
-                    const companyIdToUse = inviteCompany || inviteToken;
-                    
-                    const pendingProfile: UserProfile = {
-                      uid: authenticatedUser.uid,
-                      displayName: authenticatedUser.displayName || authenticatedUser.email?.split('@')[0] || "Usuário",
-                      email: authenticatedUser.email,
-                      photoURL: authenticatedUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(authenticatedUser.displayName || authenticatedUser.email || "U")}&background=random`,
-                      role: "user",
-                      companyId: companyIdToUse || "company",
-                      status: "pending",
-                      isPending: true,
-                      createdAt: serverTimestamp(),
-                    };
+                    let companyIdToUse: string | null = inviteCompany || null;
+                    let roleToUse: "admin" | "user" = (inviteRoleStored as any) || "user";
 
-                    await setDoc(userDocRef, pendingProfile, { merge: true });
+                    if (!companyIdToUse && inviteToken) {
+                      try {
+                        const invSnap = await getDoc(doc(db, "invites", inviteToken));
+                        if (invSnap.exists()) {
+                          const invData = invSnap.data();
+                          if (invData.companyId) companyIdToUse = invData.companyId;
+                          if (invData.role) roleToUse = invData.role;
+                        }
+                      } catch (invReadErr) {
+                        console.error("Erro ao ler documento de convite:", invReadErr);
+                      }
+                    }
 
-                    localStorage.removeItem('active_invite_token');
-                    localStorage.removeItem('active_invite_company');
-                    localStorage.removeItem('active_invite_role');
+                    if (companyIdToUse && companyIdToUse !== "undefined" && companyIdToUse !== "null" && companyIdToUse !== "company") {
+                      const pendingProfile: UserProfile = {
+                        uid: authenticatedUser.uid,
+                        displayName: authenticatedUser.displayName || authenticatedUser.email?.split('@')[0] || "Usuário",
+                        email: authenticatedUser.email,
+                        photoURL: authenticatedUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(authenticatedUser.displayName || authenticatedUser.email || "U")}&background=random`,
+                        role: roleToUse,
+                        companyId: companyIdToUse,
+                        status: "pending",
+                        isPending: true,
+                        createdAt: serverTimestamp(),
+                      };
 
-                    console.log("Perfil pendente criado com sucesso usando link de convite.");
-                    setProfile(null);
-                    setLoading(false);
-                    setAguardandoAprovacaoEmail(authenticatedUser.email || null);
-                    await auth.signOut();
-                    return;
+                      await setDoc(userDocRef, pendingProfile, { merge: true });
+
+                      localStorage.removeItem('active_invite_token');
+                      localStorage.removeItem('active_invite_company');
+                      localStorage.removeItem('active_invite_role');
+
+                      console.log("Perfil pendente criado com sucesso usando link de convite.");
+                      setProfile(null);
+                      setLoading(false);
+                      setAguardandoAprovacaoEmail(authenticatedUser.email || null);
+                      await auth.signOut();
+                      return;
+                    }
                   } catch (inviteErr) {
                     console.error("Erro ao registrar usuário pendente por link:", inviteErr);
                   }

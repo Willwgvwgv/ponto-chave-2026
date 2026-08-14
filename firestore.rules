@@ -97,6 +97,19 @@ service cloud.firestore {
       allow delete: if isSuperAdmin();
     }
 
+    // Collection: invites
+    match /invites/{inviteId} {
+      // Leitura individual de token de convite necessária para pré-validação antes do login
+      allow get: if true;
+      // Listagem restrita a administradores da empresa ou SuperAdmin
+      allow list: if isSuperAdmin() || (isActiveUser() && isCompanyAdmin(resource.data.companyId));
+      allow create: if isSuperAdmin() || (isActiveUser() && isCompanyAdmin(request.resource.data.companyId));
+      allow update: if isSuperAdmin() || (isActiveUser() && isCompanyAdmin(resource.data.companyId)) || (
+        isSignedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'usedBy', 'usedAt'])
+      );
+      allow delete: if isSuperAdmin() || (isActiveUser() && isCompanyAdmin(resource.data.companyId));
+    }
+
     // Collection: companies
     match /companies/{id} {
       allow read: if isSuperAdmin() || (isActiveUser() && (getUserData().companyId == id || resource.data.id == getUserData().companyId));
