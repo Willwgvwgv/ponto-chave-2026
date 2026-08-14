@@ -735,6 +735,46 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
     toast.success("Pagamento registrado com sucesso");
   };
 
+  const handleDeletePayment = (paymentId: string) => {
+    if (!selectedRental) return;
+    const nextPayments = (selectedRental.legacyDoc.pagamentosCorretores || []).filter(p => p.id !== paymentId);
+
+    const updatedRateio = selectedRental.legacyDoc.rateio.map(rt => {
+      const brokerPago = nextPayments
+        ?.filter(p => p.corretorId === rt.corretorId)
+        ?.reduce((acc, curr) => {
+          if (curr.tipo === "pagamento" || curr.tipo === "adiantamento") return acc + curr.valor;
+          return acc - curr.valor;
+        }, 0) || 0;
+
+      return {
+        ...rt,
+        totalPago: Number(brokerPago.toFixed(2)),
+        status: brokerPago >= rt.valor ? ("pago" as const) : ("pendente" as const)
+      };
+    });
+
+    let checksAllPaid = true;
+    updatedRateio.forEach(rt => {
+      if ((rt.totalPago || 0) < rt.valor) {
+        checksAllPaid = false;
+      }
+    });
+
+    const updatedRental: Comissao = {
+      ...selectedRental.legacyDoc,
+      pagamentosCorretores: nextPayments,
+      rateio: updatedRateio,
+      jaPagoCorretores: checksAllPaid,
+      status: checksAllPaid ? "pago" : "pendente",
+      statusFinanceiro: checksAllPaid ? "concluida" : "repasses_pendentes",
+      updatedAt: new Date().toISOString()
+    };
+
+    onUpdateRental(updatedRental);
+    toast.success("Lançamento de repasse removido.");
+  };
+
   const handleUpdateStatusFinanceiro = (nextStatus: FinancialStatus) => {
     if (!selectedRental) return;
 
@@ -846,265 +886,464 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
         </div>
       )}
 
-      {/* RENTAL DETAIL VIEW */}
-      {selectedRental ? (
-        <div className="bg-white border border-slate-100 rounded-[32px] p-8 shadow-xl space-y-8 animate-fade-in select-none">
-          {/* Header */}
-          <div className="flex items-center justify-between border-b border-slate-100/80 pb-6 shrink-0">
-            <div className="flex items-center gap-2">
-              <button 
-                onClick={() => { setSelectedRentalId(null); setEditingRentalId(null); }}
-                className="px-4 py-2 border border-slate-200 text-slate-505 hover:text-slate-800 hover:bg-slate-50 rounded-xl text-[10px] font-black uppercase tracking-widest cursor-pointer flex items-center gap-2 transition-all"
-              >
-                <ArrowLeft className="w-4 h-4" /> Voltar
-              </button>
-              <button 
-                type="button"
-                onClick={() => {
-                  setEditingRentalId(selectedRental.id);
-                  setSelectedRentalId(null);
-                  setActiveTab("create");
-                }}
-                className="px-4 py-2 border border-blue-500 text-blue-600 hover:bg-blue-50 rounded-xl text-[10px] font-black uppercase tracking-widest cursor-pointer flex items-center gap-2 transition-all"
-              >
-                <Pencil className="w-3.5 h-3.5" /> Editar Parâmetros
-              </button>
-            </div>
-            
-            <div className="flex items-center gap-2">
-              <RentalStatusBadge status={selectedRental.statusFinanceiro} />
-            </div>
-          </div>
+      {/* RENTAL DETAIL VIEW (TELA 2 OTIMIZADA, LIMPA E INTUITIVA) */}
+      {selectedRental ? (() => {
+        const primeiroAluguel = selectedRental.legacyDoc.primeiroAluguel || selectedRental.valorAluguel || 0;
+        const valorFidelite = selectedRental.legacyDoc.valorFidelite || 0;
+        const porcentagemFidelite = selectedRental.legacyDoc.porcentagemFidelite ?? 40;
+        const totalDevidoEquipe = selectedRental.legacyDoc.valorRepasseCorretores || 0;
+        
+        const pagamentos = selectedRental.legacyDoc.pagamentosCorretores || [];
+        const totalPagoEquipe = pagamentos.reduce((acc, curr) => {
+          if (curr.tipo === "desconto" || curr.tipo === "desconto_adiantamento") return acc - curr.valor;
+          return acc + curr.valor;
+        }, 0);
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-2 space-y-6">
-              
-              {/* Refactored domain representation cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <CompetenceCard rental={selectedRental} isSelected />
-                <DistributionCard rental={selectedRental} />
+        const saldoPendenteEquipe = Math.max(0, totalDevidoEquipe - totalPagoEquipe);
+        const percentualDistribuido = totalDevidoEquipe > 0 
+          ? Math.min(100, Math.round((totalPagoEquipe / totalDevidoEquipe) * 100)) 
+          : 100;
+
+        return (
+          <div className="space-y-6 animate-fade-in select-none">
+            {/* Header com Navegação e Ações Rápidas */}
+            <div className="bg-white border border-slate-200/80 rounded-3xl p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex items-start md:items-center gap-4">
+                <button 
+                  onClick={() => { setSelectedRentalId(null); setEditingRentalId(null); }}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl text-xs font-bold transition-all cursor-pointer shrink-0"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  <span>Voltar</span>
+                </button>
+
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 shrink-0">
+                    <Building2 className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      <h2 className="text-lg md:text-xl font-extrabold text-slate-900 tracking-tight font-sans">
+                        {selectedRental.imovel}
+                      </h2>
+                      <span className="px-2.5 py-0.5 bg-slate-100 border border-slate-200 text-slate-600 text-[10px] font-extrabold rounded-lg uppercase tracking-wider">
+                        LOC-{selectedRental.id.slice(0, 5).toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 text-xs text-slate-500 mt-1 flex-wrap font-medium">
+                      <span>Inquilino: <strong className="text-slate-700 font-semibold">{selectedRental.inquilino}</strong></span>
+                      <span className="text-slate-300">•</span>
+                      <span className="flex items-center gap-1">
+                        <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                        <strong>{selectedRental.competencia.label}</strong>
+                      </span>
+                      {selectedRental.legacyDoc.vencimento && (
+                        <>
+                          <span className="text-slate-300">•</span>
+                          <span>Venc: <strong>{new Date(selectedRental.legacyDoc.vencimento + 'T00:00:00').toLocaleDateString('pt-BR')}</strong></span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
 
-              {/* Vertical timeline card */}
-              <RepasseTimeline rental={selectedRental} />
+              <div className="flex items-center gap-2.5 self-end md:self-auto flex-wrap">
+                <RentalStatusBadge status={selectedRental.statusFinanceiro} />
 
-              {/* Detail list splits */}
-              <div className="bg-white border border-slate-100 p-6 rounded-[30px] space-y-4 shadow-sm">
-                <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-                  <h3 className="text-xs font-black uppercase text-slate-800 tracking-widest">Execução da Distribuição Financeira</h3>
-                  <span className="text-[10px] font-bold text-slate-400">Restante para equipe: <strong>{formatCurrency(selectedRental.legacyDoc.valorRepasseCorretores)}</strong></span>
-                </div>
-                
-                {selectedRental.distribuicao.length === 0 ? (
-                  <p className="text-xs text-slate-400 italic">Sem integrantes associados no rateio da distribuição.</p>
+                <button 
+                  type="button"
+                  onClick={() => {
+                    setEditingRentalId(selectedRental.id);
+                    setSelectedRentalId(null);
+                    setActiveTab("create");
+                  }}
+                  className="flex items-center gap-1.5 px-3.5 py-2.5 border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-2xl text-xs font-bold transition-all cursor-pointer"
+                >
+                  <Pencil className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Editar Parâmetros</span>
+                </button>
+
+                {selectedRental.statusFinanceiro !== "concluida" ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setConfirmState({
+                        open: true,
+                        title: "Quitar Todos os Repasses",
+                        message: "Deseja quitar integralmente todos os repasses pendentes desta locação e encerrar a comissão?",
+                        confirmColor: "green",
+                        onConfirm: () => {
+                          setConfirmState(prev => ({ ...prev, open: false }));
+                          handleUpdateStatusFinanceiro("concluida");
+                        }
+                      });
+                    }}
+                    className="flex items-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-bold shadow-sm shadow-emerald-600/20 transition-all cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Quitar Todos</span>
+                  </button>
                 ) : (
-                  <div className="divide-y divide-slate-50">
-                    {selectedRental.distribuicao.map((rt, idx) => {
-                      const totalPagoCorretor = selectedRental.repasses
-                        ?.filter(p => p.corretorId === rt.corretorId)
-                        ?.reduce((sum, current) => {
-                          if (current.tipo === 'pagamento' || current.tipo === 'adiantamento') return sum + current.valor;
-                          return sum - current.valor;
-                        }, 0) || 0;
+                  <button
+                    type="button"
+                    onClick={() => handleUpdateStatusFinanceiro("repasses_pendentes")}
+                    className="flex items-center gap-1.5 px-3.5 py-2.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-2xl text-xs font-bold transition-all cursor-pointer"
+                  >
+                    <ArrowRightLeft className="w-3.5 h-3.5" />
+                    <span>Reabrir Repasses</span>
+                  </button>
+                )}
+              </div>
+            </div>
 
-                      const saldoRestante = Math.max(0, rt.valor - totalPagoCorretor);
-                      const isBrokerFullyPaid = totalPagoCorretor >= rt.valor;
+            {/* 4 KPIs Cards Resumo Executivo */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* 1º Aluguel */}
+              <div className="bg-white border border-slate-200/80 p-5 rounded-3xl shadow-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">1º Aluguel</span>
+                  <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                    <Home className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="mt-2">
+                  <div className="text-xl font-black text-slate-900 font-sans">
+                    {formatCurrency(primeiroAluguel)}
+                  </div>
+                  <p className="text-[11px] text-slate-400 font-medium mt-0.5">Base contratual integral</p>
+                </div>
+              </div>
 
-                      const isFidelity = rt.corretorNome.toLowerCase().includes("fidelité") || rt.corretorNome.toLowerCase().includes("fidelite");
-                      let avatarBg = "bg-slate-500 text-white";
-                      if (isFidelity) {
-                        avatarBg = "bg-emerald-600 text-white";
-                      } else if (rt.papel === "captador") {
-                        avatarBg = "bg-blue-650 text-white";
-                      } else if (rt.papel === "locacao") {
-                        avatarBg = "bg-purple-650 text-white";
-                      }
+              {/* Retenção Fidelité */}
+              <div className="bg-white border border-slate-200/80 p-5 rounded-3xl shadow-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                    Imobiliária ({porcentagemFidelite}%)
+                  </span>
+                  <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                    <Landmark className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="mt-2">
+                  <div className="text-xl font-black text-emerald-600 font-sans">
+                    {formatCurrency(valorFidelite)}
+                  </div>
+                  <p className="text-[11px] text-emerald-600/80 font-medium mt-0.5">Retido no Caixa Fidelité</p>
+                </div>
+              </div>
 
-                      return (
-                        <div key={idx} className="flex flex-col sm:flex-row sm:items-center justify-between py-4 gap-4">
-                          <div className="flex items-center gap-3">
-                            <div className={`w-8 h-8 rounded-full ${avatarBg} flex items-center justify-center text-xs font-bold`}>
-                              {rt.corretorNome.charAt(0).toUpperCase()}
-                            </div>
-                            <div>
-                              <p className="text-xs font-bold text-slate-800">{formatPersonName(rt.corretorNome)}</p>
-                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mt-0.5">
-                                {rt.papel === "locacao" ? "Locador" : rt.papel === "captador" ? "Captador" : "Auxiliar"} • {rt.porcentagem || 0}% de distribuição
-                              </span>
-                            </div>
+              {/* Repasses Equipe Devido */}
+              <div className="bg-white border border-slate-200/80 p-5 rounded-3xl shadow-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Equipe</span>
+                  <div className="w-8 h-8 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
+                    <Users className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="mt-2">
+                  <div className="text-xl font-black text-slate-900 font-sans">
+                    {formatCurrency(totalDevidoEquipe)}
+                  </div>
+                  <p className="text-[11px] text-slate-400 font-medium mt-0.5">
+                    {selectedRental.distribuicao.length} {selectedRental.distribuicao.length === 1 ? 'corretor' : 'corretores'} no rateio
+                  </p>
+                </div>
+              </div>
+
+              {/* Repasses Distribuídos / Progresso */}
+              <div className="bg-white border border-slate-200/80 p-5 rounded-3xl shadow-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Repasses Pagos</span>
+                  <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+                    <Wallet className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="mt-2">
+                  <div className="text-xl font-black text-slate-900 font-sans flex items-baseline gap-1.5">
+                    <span>{formatCurrency(totalPagoEquipe)}</span>
+                    <span className="text-xs font-bold text-slate-400">
+                      / {formatCurrency(totalDevidoEquipe)}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <div className="flex-1 bg-slate-100 rounded-full h-2 overflow-hidden">
+                      <div 
+                        className={`h-full rounded-full transition-all duration-500 ${percentualDistribuido === 100 ? 'bg-emerald-500' : 'bg-blue-600'}`}
+                        style={{ width: `${percentualDistribuido}%` }}
+                      />
+                    </div>
+                    <span className="text-[10px] font-extrabold text-slate-600">{percentualDistribuido}%</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Split Principal: Divisão & Ações de Repasse (Esquerda) + Extrato de Pagamentos (Direita) */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              
+              {/* Coluna Esquerda: Lista de Beneficiários e Registro Direto (7 cols) */}
+              <div className="lg:col-span-7 space-y-4">
+                <div className="bg-white border border-slate-200/80 rounded-3xl p-6 shadow-xs space-y-4">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                    <div>
+                      <h3 className="text-sm font-extrabold text-slate-900 tracking-tight font-sans">
+                        Divisão de Rateio & Pagamento de Repasses
+                      </h3>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        Valores por participante com atalho direto para registrar repasse
+                      </p>
+                    </div>
+                    <span className="text-xs font-extrabold text-slate-600 bg-slate-100 px-3 py-1 rounded-xl">
+                      Split 100%
+                    </span>
+                  </div>
+
+                  <div className="space-y-3 pt-1">
+                    {/* Item Imobiliária Fidelité */}
+                    <div className="p-4 rounded-2xl bg-emerald-50/40 border border-emerald-100/80 flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-2xl bg-emerald-600 text-white flex items-center justify-center font-black text-sm shadow-xs">
+                          F
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold text-slate-900">Fidelité Imobiliária</span>
+                            <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-extrabold rounded-md uppercase">
+                              Imobiliária
+                            </span>
                           </div>
-                          
-                          <div className="flex items-center gap-6 justify-between sm:justify-end text-right">
-                            <div>
-                              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Comprometido</span>
-                              <span className="text-xs font-bold text-slate-850">{formatCurrency(rt.valor)}</span>
-                            </div>
-                            <div>
-                              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Distribuído</span>
-                              <span className={`text-xs font-bold ${isBrokerFullyPaid ? "text-emerald-600" : "text-amber-600"}`}>
-                                {formatCurrency(totalPagoCorretor)}
-                              </span>
-                            </div>
-                            <div className="min-w-[120px]">
-                              {isBrokerFullyPaid ? (
-                                <span className="text-[8px] bg-emerald-50 text-emerald-600 font-extrabold tracking-widest uppercase px-3 py-2 rounded-xl border border-emerald-100 flex items-center gap-1 Justify-center">
-                                  <Check className="w-3.5 h-3.5" /> Concluído
+                          <span className="text-xs text-slate-500 block mt-0.5">
+                            Taxa de intermediação ({porcentagemFidelite}%)
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="text-right">
+                        <span className="text-sm font-black text-emerald-700 block">
+                          {formatCurrency(valorFidelite)}
+                        </span>
+                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-100/70 px-2 py-0.5 rounded-md inline-block mt-0.5">
+                          Retido no Caixa
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Itens de Corretores */}
+                    {selectedRental.distribuicao.length === 0 ? (
+                      <div className="p-6 text-center text-xs text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                        Nenhum corretor cadastrado no rateio desta locação.
+                      </div>
+                    ) : (
+                      selectedRental.distribuicao.map((rt, idx) => {
+                        const totalPagoCorretor = pagamentos
+                          ?.filter(p => p.corretorId === rt.corretorId)
+                          ?.reduce((sum, current) => {
+                            if (current.tipo === 'pagamento' || current.tipo === 'adiantamento') return sum + current.valor;
+                            return sum - current.valor;
+                          }, 0) || 0;
+
+                        const saldoRestante = Math.max(0, rt.valor - totalPagoCorretor);
+                        const isBrokerFullyPaid = totalPagoCorretor >= rt.valor - 0.01;
+
+                        const roleLabel = rt.papel === "locacao" ? "Locador" : rt.papel === "captador" ? "Captador" : "Auxiliar";
+                        const avatarBg = rt.papel === "locacao" 
+                          ? "bg-purple-600 text-white" 
+                          : "bg-blue-600 text-white";
+
+                        return (
+                          <div 
+                            key={idx} 
+                            className={`p-4 rounded-2xl border transition-all ${
+                              isBrokerFullyPaid 
+                                ? 'bg-slate-50/70 border-slate-200/80' 
+                                : 'bg-white border-slate-200 hover:border-blue-300 shadow-xs'
+                            } flex flex-col sm:flex-row sm:items-center justify-between gap-4`}
+                          >
+                            {/* Left: Avatar + Name + Role */}
+                            <div className="flex items-center gap-3 min-w-[180px]">
+                              <div className={`w-10 h-10 rounded-2xl ${avatarBg} flex items-center justify-center font-bold text-sm shadow-xs shrink-0`}>
+                                {rt.corretorNome.charAt(0).toUpperCase()}
+                              </div>
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm font-bold text-slate-900">{formatPersonName(rt.corretorNome)}</span>
+                                  <span className={`px-2 py-0.5 text-[10px] font-extrabold rounded-md uppercase ${
+                                    rt.papel === "locacao" ? "bg-purple-100 text-purple-800" : "bg-blue-100 text-blue-800"
+                                  }`}>
+                                    {roleLabel}
+                                  </span>
+                                </div>
+                                <span className="text-xs text-slate-500 block mt-0.5">
+                                  {rt.porcentagem || 0}% do rateio
                                 </span>
+                              </div>
+                            </div>
+
+                            {/* Middle: Numbers */}
+                            <div className="grid grid-cols-3 gap-2 text-left sm:text-right border-y sm:border-y-0 border-slate-100 py-2 sm:py-0">
+                              <div>
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Devido</span>
+                                <span className="text-xs font-extrabold text-slate-800">{formatCurrency(rt.valor)}</span>
+                              </div>
+                              <div>
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Pago</span>
+                                <span className={`text-xs font-extrabold ${totalPagoCorretor > 0 ? "text-emerald-600" : "text-slate-500"}`}>
+                                  {formatCurrency(totalPagoCorretor)}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Saldo</span>
+                                <span className={`text-xs font-extrabold ${saldoRestante > 0 ? "text-amber-600 font-black" : "text-slate-400"}`}>
+                                  {formatCurrency(saldoRestante)}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Right: Direct Pay Action */}
+                            <div className="flex items-center justify-end gap-2 shrink-0">
+                              {isBrokerFullyPaid ? (
+                                <div className="flex items-center gap-2">
+                                  <span className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-100 text-emerald-800 rounded-xl text-xs font-bold">
+                                    <Check className="w-3.5 h-3.5 stroke-[3]" />
+                                    <span>Quitado</span>
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenPayModal(rt, selectedRental)}
+                                    title="Lançar ajuste ou bônus adicional"
+                                    className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200/70 rounded-lg text-xs font-bold transition-all cursor-pointer"
+                                  >
+                                    <Plus className="w-4 h-4" />
+                                  </button>
+                                </div>
                               ) : (
-                                <button 
+                                <button
+                                  type="button"
                                   onClick={() => handleOpenPayModal(rt, selectedRental)}
-                                  className="w-full py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-[9px] font-black uppercase tracking-widest cursor-pointer transition-all flex items-center justify-center gap-1 px-3 shadow-md shadow-emerald-500/10"
+                                  className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs hover:shadow transition-all cursor-pointer"
                                 >
-                                  <DollarSign className="w-3.5 h-3.5" />
-                                  <span>Repassar ({formatCurrency(saldoRestante)})</span>
+                                  <DollarSign className="w-4 h-4 stroke-[2.5]" />
+                                  <span>Pagar {formatCurrency(saldoRestante)}</span>
                                 </button>
                               )}
                             </div>
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })
+                    )}
                   </div>
-                )}
+                </div>
               </div>
-            </div>
 
-            {/* Side Controller Card for Status Financeiro and Payments history */}
-            <div className="space-y-6">
-              {/* Status Flow Transition controller card */}
-              <div className="bg-slate-50 border border-slate-205 p-6 rounded-[30px] space-y-4">
-                <h3 className="text-xs font-black uppercase text-slate-800 tracking-widest border-b border-slate-200 pb-2">Controle da Comissão</h3>
+              {/* Coluna Direita: Extrato de Repasses Efetuados (5 cols) */}
+              <div className="lg:col-span-5 space-y-4">
+                <div className="bg-white border border-slate-200/80 rounded-3xl p-6 shadow-xs space-y-4">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                    <div>
+                      <h3 className="text-sm font-extrabold text-slate-900 tracking-tight font-sans">
+                        Extrato de Repasses
+                      </h3>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        Histórico de pagamentos efetuados
+                      </p>
+                    </div>
+                    <span className="px-2.5 py-1 bg-slate-100 text-slate-700 text-xs font-bold rounded-xl">
+                      {pagamentos.length} {pagamentos.length === 1 ? 'registro' : 'registros'}
+                    </span>
+                  </div>
 
-                <div className="space-y-3">
-                  {/* Transition actions */}
-                  {selectedRental.statusFinanceiro === "calculada" && (
-                    <button
-                      onClick={() => handleUpdateStatusFinanceiro("aguardando_pagamento")}
-                      className="w-full py-3 bg-slate-600 hover:bg-slate-700 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-slate-500/15"
-                    >
-                      <CheckCircle2 className="w-4 h-4" />
-                      <span>Definir como Aguardando Pagamento</span>
-                    </button>
-                  )}
-
-                  {selectedRental.statusFinanceiro === "aguardando_pagamento" && (
-                    <button
-                      onClick={() => handleUpdateStatusFinanceiro("em_distribuicao")}
-                      className="w-full py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-purple-500/15"
-                    >
-                      <ArrowRightLeft className="w-4 h-4" />
-                      <span>Liberar Distribuição</span>
-                    </button>
-                  )}
-
-                  {selectedRental.statusFinanceiro === "em_distribuicao" && (
-                    <button
-                      onClick={() => handleUpdateStatusFinanceiro("repasses_pendentes")}
-                      className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-orange-500/15"
-                    >
-                      <Wallet className="w-4 h-4" />
-                      <span>Iniciar Repasses</span>
-                    </button>
-                  )}
-
-                  {selectedRental.statusFinanceiro === "repasses_pendentes" && (
-                    <button
-                      onClick={() => {
-                        setConfirmState({
-                          open: true,
-                          title: "Finalizar Controle de Comissão",
-                          message: "Isso marcará a comissão como totalmente liquidada/concluída. Confirmar?",
-                          confirmColor: "green",
-                          onConfirm: () => {
-                            setConfirmState(prev => ({ ...prev, open: false }));
-                            handleUpdateStatusFinanceiro("concluida");
-                          }
-                        });
-                      }}
-                      className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/15"
-                    >
-                      <CheckCircle2 className="w-4 h-4" />
-                      <span>Finalizar Comissão</span>
-                    </button>
-                  )}
-
-                  {selectedRental.statusFinanceiro === "concluida" ? (
-                    <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-2xl text-center space-y-1.5 text-xs">
-                      <span className="text-xl">🎉</span>
-                      <p className="font-extrabold text-emerald-800 uppercase tracking-wide">Comissão Concluída</p>
-                      <p className="text-[10px] text-emerald-600 font-semibold leading-relaxed">Todos os repasses e divisões de comissão desta locação foram quitados.</p>
-                      <button
-                        onClick={() => handleUpdateStatusFinanceiro("repasses_pendentes")}
-                        className="text-[9px] text-slate-455 font-black uppercase tracking-wider block mx-auto pt-2 hover:underline"
-                      >
-                        Reabrir Repasses
-                      </button>
+                  {pagamentos.length === 0 ? (
+                    <div className="p-8 text-center bg-slate-50/70 rounded-2xl border border-dashed border-slate-200 space-y-2">
+                      <div className="w-10 h-10 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+                        <Banknote className="w-5 h-5" />
+                      </div>
+                      <p className="text-xs font-bold text-slate-700">Nenhum repasse efetuado ainda</p>
+                      <p className="text-[11px] text-slate-400 max-w-[240px] mx-auto">
+                        Utilize o botão verde <strong className="text-slate-600">Pagar</strong> ao lado para registrar o primeiro repasse desta locação.
+                      </p>
                     </div>
                   ) : (
-                    /* General rollback to calculated state */
-                    <button
-                      onClick={() => handleUpdateStatusFinanceiro("calculada")}
-                      className="w-full py-2 bg-slate-105 hover:bg-slate-205 border border-slate-200 text-slate-500 text-[9px] font-black uppercase tracking-widest rounded-xl transition-all"
-                    >
-                      Resetar para Calculada
-                    </button>
-                  )}
-                </div>
-              </div>
+                    <div className="space-y-3 max-h-[480px] overflow-y-auto pr-1">
+                      {pagamentos.map((pay, pIdx) => {
+                        const participant = selectedRental.distribuicao.find(rt => rt.corretorId === pay.corretorId);
+                        const roleLabel = participant 
+                          ? (participant.papel === "locacao" ? "Locador" : participant.papel === "captador" ? "Captador" : "Auxiliar")
+                          : "";
 
-              {/* History payments log to team */}
-              <div className="bg-slate-50 border border-slate-100 p-6 rounded-[30px] space-y-4">
-                <div className="flex items-center justify-between border-b pb-2">
-                  <h3 className="text-xs font-black uppercase text-slate-800 tracking-widest">Histórico de Repasses</h3>
-                </div>
-
-                {!selectedRental.legacyDoc.pagamentosCorretores || selectedRental.legacyDoc.pagamentosCorretores.length === 0 ? (
-                  <p className="text-xs text-slate-400 italic text-center py-12">Nenhum repasse ou pagamento registrado para a equipe.</p>
-                ) : (
-                  <div className="space-y-3 max-h-[350px] overflow-y-auto pr-1">
-                    {selectedRental.legacyDoc.pagamentosCorretores.map((pay, pIdx) => {
-                      const participant = selectedRental.distribuicao.find(rt => rt.corretorId === pay.corretorId);
-                      const papelLabel = participant 
-                        ? (participant.papel === "locacao" ? "Locador" : participant.papel === "captador" ? "Captador" : "Auxiliar")
-                        : "";
-
-                      return (
-                        <div key={pIdx} className="space-y-3">
-                          {pIdx > 0 && <div className="border-t border-slate-200/50 my-2" />}
-                          <div className="bg-white p-3 border border-slate-100 rounded-2xl shadow-sm space-y-1.5 text-xs">
-                            <div className="flex justify-between font-bold">
-                              <span className="text-slate-800 flex flex-col">
-                                <span className="flex items-center gap-1.5 font-bold">
-                                  <span className="text-emerald-500">✅</span>
-                                  <span>{formatPersonName(pay.corretorNome)}</span>
+                        return (
+                          <div key={pIdx} className="bg-slate-50/80 border border-slate-200/80 p-3.5 rounded-2xl space-y-2 hover:border-slate-300 transition-all">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <div className="w-7 h-7 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-xs">
+                                  ✓
+                                </div>
+                                <div>
+                                  <p className="text-xs font-bold text-slate-900">{formatPersonName(pay.corretorNome)}</p>
+                                  {roleLabel && (
+                                    <span className="text-[10px] text-slate-400 font-semibold">{roleLabel}</span>
+                                  )}
+                                </div>
+                              </div>
+                              
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-black text-emerald-600 font-sans">
+                                  {pay.tipo === "desconto" || pay.tipo === "desconto_adiantamento" ? "-" : ""}{formatCurrency(pay.valor)}
                                 </span>
-                                {papelLabel && (
-                                  <span className="text-[10px] text-slate-450 font-semibold mt-0.5 ml-5">{papelLabel}</span>
-                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setConfirmState({
+                                      open: true,
+                                      title: "Remover Repasse",
+                                      message: `Deseja estornar/excluir este lançamento de ${formatCurrency(pay.valor)} para ${pay.corretorNome}?`,
+                                      confirmColor: "red",
+                                      onConfirm: () => {
+                                        setConfirmState(prev => ({ ...prev, open: false }));
+                                        handleDeletePayment(pay.id);
+                                      }
+                                    });
+                                  }}
+                                  title="Excluir lançamento"
+                                  className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all cursor-pointer"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-between text-[10px] text-slate-500 font-medium pt-1 border-t border-slate-200/50">
+                              <span className="px-2 py-0.5 bg-slate-200/70 rounded-md font-semibold text-slate-700 uppercase tracking-wider text-[9px]">
+                                {pay.tipo === "pagamento" ? "Repasse" : pay.tipo === "adiantamento" ? "Adiantamento" : "Desconto"}
                               </span>
-                              <span className="text-emerald-600 font-black">{formatCurrency(pay.valor)}</span>
+                              <span>
+                                {pay.data ? new Date(pay.data + 'T00:00:00').toLocaleDateString('pt-BR') : '-'}
+                              </span>
                             </div>
-                            <div className="flex justify-between text-[9px] text-slate-400 uppercase tracking-widest font-bold">
-                              <span className="ml-5">{pay.tipo === "pagamento" ? "Repasse" : pay.tipo === "adiantamento" ? "Adiantamento" : "Desconto"}</span>
-                              <span>{pay.data}</span>
-                            </div>
+
                             {pay.observacao && (
-                              <p className="text-[10px] text-slate-500 italic border-t border-slate-50 pt-1 leading-relaxed ml-5">
+                              <p className="text-[11px] text-slate-600 bg-white p-2 rounded-xl border border-slate-200/60 leading-relaxed font-normal">
                                 {pay.observacao}
                               </p>
                             )}
-                            <p className="text-[8px] text-slate-400 text-right">Cadastrado por {pay.registradoPorNome}</p>
+
+                            {pay.registradoPorNome && (
+                              <span className="text-[9px] text-slate-400 block text-right">
+                                Registrado por {pay.registradoPorNome}
+                              </span>
+                            )}
                           </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
+
             </div>
           </div>
-        </div>
-      ) : activeTab === "create" ? (
+        );
+      })() : activeTab === "create" ? (
         /* RENTAL FORM SCREEN */
         <form onSubmit={handleSaveRental} className="bg-white border border-slate-100 rounded-[32px] p-8 shadow-xl space-y-6 animate-fade-in select-none">
           <div className="border-b border-slate-100 pb-4 shrink-0">
@@ -1790,92 +2029,168 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
         </div>
       )}
 
-      {/* MODAL DE REGISTRO REPASSE CORRETOR */}
+      {/* MODAL DE REGISTRO DE REPASSE (INTUITIVO E ELEGANTE) */}
       {isPayModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setIsPayModalOpen(false)} />
-          <div className="relative bg-white w-full max-w-md rounded-[32px] shadow-2xl p-8 space-y-6 animate-scale-up select-none text-left">
-            <h3 className="text-sm font-black uppercase text-slate-800 tracking-widest border-b border-light pb-2 flex items-center gap-1.5">
-              <span>💸</span> Registrar Repasse Financeiro
-            </h3>
-            
-            <div className="space-y-4">
-              <div>
-                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Corretor Contemplado</span>
-                <p className="text-xs font-bold text-slate-700 font-sans mt-0.5">{formatPersonName(payBrokerName)} ({payBrokerRole})</p>
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4 bg-slate-50 p-3 rounded-2xl border border-slate-100">
-                <div>
-                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Total Devido</span>
-                  <p className="text-xs font-black text-slate-800">{formatCurrency(payBrokerTotalDue)}</p>
+          <div 
+            className="absolute inset-0 bg-slate-900/50 backdrop-blur-xs transition-opacity" 
+            onClick={() => setIsPayModalOpen(false)} 
+          />
+          <div className="relative bg-white w-full max-w-lg rounded-3xl shadow-2xl p-6 md:p-8 space-y-6 animate-scale-up select-none text-left border border-slate-100">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100">
+                  <Banknote className="w-5 h-5" />
                 </div>
                 <div>
-                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Já Pago</span>
-                  <p className="text-xs font-black text-emerald-600">{formatCurrency(payBrokerAlreadyPaid)}</p>
+                  <h3 className="text-base font-extrabold text-slate-900 tracking-tight font-sans">
+                    Registrar Pagamento de Repasse
+                  </h3>
+                  <p className="text-xs text-slate-500 font-medium mt-0.5">
+                    Lançamento financeiro para a equipe
+                  </p>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setIsPayModalOpen(false)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-all cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              {/* Beneficiary summary card */}
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-blue-600 text-white flex items-center justify-center font-bold text-sm shadow-xs">
+                    {payBrokerName.charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-bold text-slate-900">{formatPersonName(payBrokerName)}</p>
+                      <span className="px-2 py-0.5 bg-blue-100 text-blue-800 text-[10px] font-extrabold rounded-md uppercase">
+                        {payBrokerRole === "locacao" ? "Locador" : payBrokerRole === "captador" ? "Captador" : "Auxiliar"}
+                      </span>
+                    </div>
+                    <span className="text-xs text-slate-500 block mt-0.5">
+                      Total rateio: <strong>{formatCurrency(payBrokerTotalDue)}</strong>
+                    </span>
+                  </div>
+                </div>
+
+                <div className="text-right">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Saldo a Pagar</span>
+                  <span className="text-sm font-black text-amber-600 font-sans">
+                    {formatCurrency(Math.max(0, payBrokerTotalDue - payBrokerAlreadyPaid))}
+                  </span>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Valor do Repasse (R$)</label>
-                  <input 
-                    type="number" 
-                    value={payValue || ""} 
-                    onChange={e => setPayValue(Number(e.target.value))} 
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-550/30"
-                  />
+              {/* Quick Fill Pills */}
+              {Math.max(0, payBrokerTotalDue - payBrokerAlreadyPaid) > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-bold text-slate-400">Atalho rápido:</span>
+                  <button
+                    type="button"
+                    onClick={() => setPayValue(Number((Math.max(0, payBrokerTotalDue - payBrokerAlreadyPaid)).toFixed(2)))}
+                    className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-bold rounded-lg transition-all cursor-pointer"
+                  >
+                    Quitar Saldo ({formatCurrency(Math.max(0, payBrokerTotalDue - payBrokerAlreadyPaid))})
+                  </button>
+                  {Math.max(0, payBrokerTotalDue - payBrokerAlreadyPaid) > 100 && (
+                    <button
+                      type="button"
+                      onClick={() => setPayValue(Number(((Math.max(0, payBrokerTotalDue - payBrokerAlreadyPaid)) / 2).toFixed(2)))}
+                      className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition-all cursor-pointer"
+                    >
+                      50% ({formatCurrency((Math.max(0, payBrokerTotalDue - payBrokerAlreadyPaid)) / 2)})
+                    </button>
+                  )}
                 </div>
+              )}
+
+              {/* Form fields */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Data do Pagamento</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Valor do Pagamento (R$) <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">R$</span>
+                    <input 
+                      type="number" 
+                      step="0.01"
+                      min="0.01"
+                      value={payValue || ""} 
+                      onChange={e => setPayValue(Number(e.target.value))} 
+                      placeholder="0,00"
+                      className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Data do Pagamento <span className="text-red-500">*</span>
+                  </label>
                   <input 
                     type="date" 
                     value={payDate} 
                     onChange={e => setPayDate(e.target.value)} 
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-550/30"
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all cursor-pointer"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Modalidade do Fluxo</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Tipo de Operação
+                </label>
                 <select
                   value={payType}
                   onChange={e => setPayType(e.target.value as any)}
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer"
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all cursor-pointer"
                 >
-                  <option value="pagamento">Pagamento de Repasse</option>
-                  <option value="adiantamento">Adiantamento de Rateio</option>
-                  <option value="desconto_adiantamento">Desconto de Adiantamento</option>
+                  <option value="pagamento">Pagamento de Repasse (Padrão)</option>
+                  <option value="adiantamento">Adiantamento de Comissão</option>
+                  <option value="desconto_adiantamento">Desconto / Compensação</option>
                 </select>
               </div>
 
               <div>
-                <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Anotações (Comprovante / Chave Pix / etc)</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Comprovante / Anotação PIX (Opcional)
+                </label>
                 <input 
                   type="text" 
                   value={payNotes} 
                   onChange={e => setPayNotes(e.target.value)} 
-                  placeholder="Ex: Identificação comprovante PIX Banco do Brasil" 
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2"
+                  placeholder="Ex: Chave PIX Nubank ou nº do comprovante" 
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all placeholder:text-slate-400"
                 />
               </div>
             </div>
  
-            <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+            {/* Modal Actions */}
+            <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
               <button 
                 type="button"
                 onClick={() => setIsPayModalOpen(false)}
-                className="px-5 py-2.5 border border-slate-200 text-slate-550 rounded-xl text-[10px] font-black uppercase tracking-widest cursor-pointer hover:bg-slate-50 transition-all"
+                className="px-5 py-2.5 border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-2xl text-xs font-bold transition-all cursor-pointer"
               >
                 Cancelar
               </button>
               <button 
                 type="button"
                 onClick={handleSavePayment}
-                className="px-6 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest cursor-pointer shadow-md shadow-emerald-500/10 transition-all font-bold"
+                disabled={!payValue || payValue <= 0}
+                className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-2xl text-xs font-bold shadow-sm shadow-emerald-600/20 transition-all cursor-pointer flex items-center gap-2"
               >
-                Confirmar Repasse
+                <Check className="w-4 h-4 stroke-[2.5]" />
+                <span>Confirmar Pagamento</span>
               </button>
             </div>
           </div>
