@@ -1555,7 +1555,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                 {rateios.length === 0 ? (
                   <p className="text-xs text-slate-400 font-bold text-center italic py-6">Insira os corretores responsáveis nos respectivos campos acima.</p>
                 ) : (
-                  <div className="space-y-2 max-h-[180px] overflow-y-auto">
+                  <div className="space-y-2.5">
                     {computedRateios.map((rt, idx) => {
                       return (
                         <div key={`${rt.corretorId}-${rt.papel}-${idx}`} className="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-xl shadow-sm text-xs select-none hover:bg-slate-50/50 transition-all">
