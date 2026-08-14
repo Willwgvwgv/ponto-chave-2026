@@ -426,6 +426,10 @@ const Login = () => {
         errorMessage += `Domínio não autorizado no Firebase!\n\nPor favor, vá no Console do Firebase (Authentication -> Configurações -> Domínios Autorizados) e adicione o seguinte domínio:\n\n👉  ${window.location.hostname}`;
       } else if (err.code === 'auth/popup-blocked') {
         errorMessage += "O pop-up de login foi bloqueado pelo seu navegador. Por favor, permita pop-ups para este site ou abra o aplicativo diretamente em uma nova aba.";
+      } else if (err.code === 'auth/popup-closed-by-user') {
+        errorMessage = "A janela de login com Google foi fechada antes de concluir a autenticação. Por favor, clique novamente no botão Google e selecione sua conta para entrar.";
+      } else if (err.code === 'auth/cancelled-popup-request') {
+        errorMessage = "Havia outra solicitação de login em andamento. Por favor, tente novamente.";
       } else if (err.code === 'auth/operation-not-allowed') {
         errorMessage += "O login com Google não está ativado no Firebase Console para o projeto. Ative-o em Authentication -> Sign-in method -> Google.";
       } else {

@@ -227,6 +227,9 @@ export const db = isDemoMode ? { _type: 'db_mock' } as any : (
 );
 export const storage = isDemoMode ? null as any : getStorage(app);
 export const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({
+  prompt: 'select_account'
+});
 
 export interface UploadDiagnostics {
   beforeUpload: (storageRef: any, blob: Blob) => Promise<void>;
