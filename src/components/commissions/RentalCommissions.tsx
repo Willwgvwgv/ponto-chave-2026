@@ -40,6 +40,7 @@ import { RentalStatusBadge, FinancialStatus } from "../rentals-finance/RentalSta
 import { CompetenceCard } from "../rentals-finance/CompetenceCard";
 import { DistributionCard } from "../rentals-finance/DistributionCard";
 import { RepasseTimeline } from "../rentals-finance/RepasseTimeline";
+import { formatPersonName } from "../../lib/utils";
 
 export const formatCurrency = (val: number) => {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(val);
@@ -286,7 +287,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
         }
         const pct = d.porcentagem || 0;
         if (pct > 0) {
-          parts.push(`${d.corretorNome} ${pct}%`);
+          parts.push(`${formatPersonName(d.corretorNome)} ${pct}%`);
         }
       });
     }
@@ -842,7 +843,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                               {rt.corretorNome.charAt(0).toUpperCase()}
                             </div>
                             <div>
-                              <p className="text-xs font-bold text-slate-800">{rt.corretorNome}</p>
+                              <p className="text-xs font-bold text-slate-800">{formatPersonName(rt.corretorNome)}</p>
                               <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mt-0.5">
                                 {rt.papel === "locacao" ? "Locador" : rt.papel === "captador" ? "Captador" : "Auxiliar"} • {rt.porcentagem || 0}% de distribuição
                               </span>
@@ -991,7 +992,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                               <span className="text-slate-800 flex flex-col">
                                 <span className="flex items-center gap-1.5 font-bold">
                                   <span className="text-emerald-500">✅</span>
-                                  <span>{pay.corretorNome}</span>
+                                  <span>{formatPersonName(pay.corretorNome)}</span>
                                 </span>
                                 {papelLabel && (
                                   <span className="text-[10px] text-slate-450 font-semibold mt-0.5 ml-5">{papelLabel}</span>
@@ -1163,7 +1164,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                     >
                       <option value="">Buscar locador...</option>
                       {team.filter(b => b.permRateioLocacao !== false || b.permissions?.includes("rateio_locacao") || b.id === (rateios.find(r => r.papel === "locador" || r.papel === "locacao")?.corretorId)).map(b => (
-                        <option key={b.id} value={b.id}>{b.name}</option>
+                        <option key={b.id} value={b.id}>{formatPersonName(b.name)}</option>
                       ))}
                     </select>
                   </div>
@@ -1178,7 +1179,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                       >
                         <option value="">Buscar captador...</option>
                         {team.filter(b => b.permRateioLocacao !== false || b.permissions?.includes("rateio_locacao") || b.id === selectedCaptadorId).map(b => (
-                          <option key={b.id} value={b.id}>{b.name}</option>
+                          <option key={b.id} value={b.id}>{formatPersonName(b.name)}</option>
                         ))}
                       </select>
                       <button
@@ -1236,7 +1237,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                       return (
                         <div key={`${rt.corretorId}-${rt.papel}-${idx}`} className="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-xl shadow-sm text-xs select-none hover:bg-slate-50/50 transition-all">
                           <div className="space-y-0.5">
-                            <p className="font-bold text-slate-800">{rt.corretorNome}</p>
+                            <p className="font-bold text-slate-800">{formatPersonName(rt.corretorNome)}</p>
                             <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-semibold uppercase tracking-wider">
                               <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold border ${
                                 rt.papel === "locador" || rt.papel === "locacao" ? "bg-amber-100 border-amber-300 text-amber-600" : "bg-emerald-100 border-emerald-300 text-emerald-600"
@@ -1354,7 +1355,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                   {activeCardFilter === "CARD1" ? "★ FILTRANDO" : "Primeiro Aluguel"}
                 </span>
                 <h4 className="text-xl font-extrabold text-slate-800 font-mono tracking-tight">{formatCurrency(card1Value)}</h4>
-                <p className="text-[9px] font-semibold text-slate-400 font-sans">Total das comissões</p>
+                <p className="text-[9px] font-semibold text-slate-400 font-sans">Total em 1º Aluguel</p>
               </div>
               <div className="p-3 bg-blue-100 text-blue-600 rounded-xl">
                 <Home className="w-5 h-5" />
@@ -1593,7 +1594,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                       <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-slate-455 font-bold pt-1 border-t border-slate-100/60">
                         <span>Primeiro Aluguel: <strong className="text-slate-700">{formatCurrency(r.legacyDoc.primeiroAluguel || r.valorAluguel || 0)}</strong></span>
                         <span className="text-slate-300">|</span>
-                        <span>Comissão Total: <strong className="text-indigo-650">{formatCurrency(r.legacyDoc.valorFidelite || 0)}</strong></span>
+                        <span>Comissão Fidelité: <strong className="text-indigo-650">{formatCurrency(r.legacyDoc.valorFidelite || 0)}</strong></span>
                         <span className="text-slate-300">|</span>
                         <span>Distribuído até agora: <strong className="text-emerald-600">{formatCurrency(r.repasses.reduce((acc, curr) => acc + (curr.tipo === "desconto" ? -curr.valor : curr.valor), 0))}</strong></span>
                       </div>
@@ -1648,7 +1649,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
             <div className="space-y-4">
               <div>
                 <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Corretor Contemplado</span>
-                <p className="text-xs font-bold text-slate-700 font-sans mt-0.5">{payBrokerName} ({payBrokerRole})</p>
+                <p className="text-xs font-bold text-slate-700 font-sans mt-0.5">{formatPersonName(payBrokerName)} ({payBrokerRole})</p>
               </div>
               
               <div className="grid grid-cols-2 gap-4 bg-slate-50 p-3 rounded-2xl border border-slate-100">

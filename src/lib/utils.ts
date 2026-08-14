@@ -133,4 +133,25 @@ export const sanitizeForFirestore = <T extends Record<string, any>>(data: T): Pa
   return recurse(data) as Partial<T>;
 };
 
+/**
+ * Formata nomes próprios para exibição (Title Case), preservando acentuação
+ * e tratando preposições em minúsculas (ex: "JOÃO CAMBOTA" -> "João Cambota").
+ */
+export const formatPersonName = (name: string | null | undefined): string => {
+  if (!name || typeof name !== "string") return "";
+  const lowercasePrepositions = new Set(["de", "da", "do", "das", "dos", "e"]);
+  return name
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word, index) => {
+      if (index > 0 && lowercasePrepositions.has(word)) {
+        return word;
+      }
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    })
+    .join(" ");
+};
+
 

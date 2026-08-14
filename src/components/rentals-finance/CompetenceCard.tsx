@@ -56,7 +56,7 @@ export const CompetenceCard: React.FC<CompetenceCardProps> = ({ rental, isSelect
 
         <div className="space-y-1">
           <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">
-            Comissão Total
+            Comissão Fidelité
           </span>
           <p className="text-xs font-bold text-indigo-650">
             {formatCurrency(rental.legacyDoc.valorFidelite || 0)}

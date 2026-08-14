@@ -1,6 +1,7 @@
 import React from "react";
 import { RentalFinancialViewModel } from "../../lib/legacyCommissionAdapter";
 import { DollarSign, Shield, Users } from "lucide-react";
+import { formatPersonName } from "../../lib/utils";
 
 interface DistributionCardProps {
   rental: RentalFinancialViewModel;
@@ -91,7 +92,7 @@ export const DistributionCard: React.FC<DistributionCardProps> = ({ rental }) =>
                       {initial}
                     </div>
                     <div>
-                      <span className="text-xs font-bold text-slate-800 block">{rt.corretorNome}</span>
+                      <span className="text-xs font-bold text-slate-800 block">{formatPersonName(rt.corretorNome)}</span>
                       <span className="text-[10px] text-slate-405 font-bold uppercase tracking-wider block">
                         {getRoleLabel(rt.papel)} • {rt.porcentagem || 0}% do rateio
                       </span>
