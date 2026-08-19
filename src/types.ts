@@ -527,4 +527,80 @@ export interface Despejo {
   updatedAt?: string;
 }
 
+export interface UnidadeApartamento {
+  id: string;
+  numero: string; // ex: "101", "202", "Casa 03"
+  bloco?: string;
+  moradorNome?: string;
+  moradorTelefone?: string;
+  moradorEmail?: string;
+  hidrometroNumero?: string;
+  fracaoIdeal?: number;
+  leituraAnteriorBase?: number;
+  observacao?: string;
+  status?: "ocupado" | "desocupado";
+}
+
+export interface EdificioHidrometro {
+  id: string;
+  nome: string;
+  imobiliaria: string; // Fidelité Imobiliária
+  endereco?: string;
+  cidade?: string;
+  concessionaria?: string; // Saneago, Sabesp, etc.
+  codigoLigacao?: string; // Matrícula da conta de água
+  unidades: UnidadeApartamento[];
+  tipoRateioPadrao?: "proporcional_consumo" | "tarifa_m3" | "igualitario_mais_consumo";
+  taxaMinimaFixa?: number;
+  taxaAreaComumFixa?: number;
+  createdAt?: any;
+  updatedAt?: any;
+}
+
+export interface LeituraUnidade {
+  unidadeId: string;
+  numeroUnidade: string;
+  bloco?: string;
+  moradorNome?: string;
+  moradorTelefone?: string;
+  hidrometroNumero?: string;
+  leituraAnterior: number;
+  leituraAtual: number;
+  consumoM3: number; // Atual - Anterior
+  valorConsumoM3: number; // R$
+  valorAreaComumRateio: number; // R$
+  valorTotalAPagar: number; // R$
+  fotoHidrometroUrl?: string;
+  fotoNome?: string;
+  dataLeitura?: string;
+  observacoes?: string;
+  statusLeitura: "pendente" | "concluida";
+}
+
+export interface FaturaHidrometro {
+  id: string;
+  edificioId: string;
+  edificioNome: string;
+  imobiliaria: string;
+  mesReferencia: string; // Ex: "03/2026" ou "2026-03"
+  mesAnoTexto: string; // Ex: "Março de 2026"
+  dataLeitura: string;
+  dataVencimento?: string;
+  valorTotalConta: number; // Valor R$ da fatura geral da concessionária
+  consumoTotalContaM3?: number; // Consumo m³ faturado na conta geral
+  tarifaM3Calculada: number; // R$ por m³ rateado
+  consumoTotalApartamentosM3: number; // Soma de todos os aptos
+  consumoDiferencaAreaComumM3: number; // Diferença fatura - aptos
+  valorDiferencaAreaComum: number; // R$ da área comum
+  ratearAreaComumIgualitariamente: boolean; // Se divide área comum igualmente entre aptos
+  leituras: LeituraUnidade[];
+  status: "rascunho" | "fechado" | "notificado";
+  fotoFaturaGeralUrl?: string;
+  observacoes?: string;
+  createdAt?: any;
+  updatedAt?: any;
+  criadoPorUid?: string;
+  criadoPorNome?: string;
+}
+
 

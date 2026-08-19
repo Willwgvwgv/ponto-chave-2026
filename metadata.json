@@ -1,7 +1,10 @@
 {
   "name": "Remix: Ponto Chave",
-  "description": "Sistema universal de gestão de fluxos imobiliários, contratos, checklists e operação de equipes em tempo real.",
+  "description": "Sistema universal de gestão de fluxos imobiliários, contratos, checklists, hidrômetros e rateio de água para Fidelité Imobiliária.",
   "requestFramePermissions": [
     "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
   ]
 }

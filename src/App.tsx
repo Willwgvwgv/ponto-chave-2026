@@ -72,7 +72,8 @@ import {
   Wallet,
   Sparkles,
   MessageCircle,
-  Monitor
+  Monitor,
+  Droplet
 } from "lucide-react";
 import { format, addDays, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, isToday, parseISO, isBefore, startOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -93,6 +94,7 @@ const ComissoesView = lazy(() => import('./components/ComissoesView').then(m => 
 const SimuladorView = lazy(() => import('./components/SimuladorView').then(m => ({ default: m.SimuladorView })));
 const FinanceiroView = lazy(() => import('./components/FinanceiroView').then(m => ({ default: m.FinanceiroView })));
 const PontoView = lazy(() => import('./components/ponto/PontoView').then(m => ({ default: m.PontoView })));
+const HidrometroView = lazy(() => import('./components/hidrometro/HidrometroView').then(m => ({ default: m.HidrometroView })));
 const PropostaBellaWhiteView = lazy(() => import('./components/PropostaBellaWhiteView').then(m => ({ default: m.PropostaBellaWhiteView })));
 import { PontoHeaderCapsule } from "./components/ponto/PontoHeaderCapsule";
 import { ConfirmModal } from './components/ui/ConfirmModal';
@@ -2953,7 +2955,7 @@ const getManualDataForTool = (name: string, url: string) => {
 
 function AppContent() {
   const { user, profile, isAdmin, companySettings } = useAuth();
-  const [activeTab, setActiveTab] = useState<"dashboard" | "calendar" | "processes" | "process_config" | "users" | "profile" | "settings" | "contratos" | "vistorias" | "comissoes" | "simulador" | "financeiro" | "ponto">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "calendar" | "processes" | "process_config" | "users" | "profile" | "settings" | "contratos" | "vistorias" | "comissoes" | "simulador" | "financeiro" | "ponto" | "hidrometro">("dashboard");
   const [contractsSubTab, setContractsSubTab] = useState<"vistorias" | "despejos" | "proposta_bella">("vistorias");
   const [isSidebarOpen, setIsSidebarOpen] = useState(() => window.innerWidth > 1024);
   const [viewingManualTool, setViewingManualTool] = useState<Tool | null>(null);
@@ -3687,6 +3689,8 @@ function AppContent() {
     }
 
     items.push({ id: "simulador" as const, label: "Simulador", icon: Calculator });
+
+    items.push({ id: "hidrometro" as const, label: "Hidrômetro", icon: Droplet });
 
     if (permPonto) {
       items.push({ id: "ponto" as const, label: "Ponto", icon: Clock });
@@ -4489,6 +4493,15 @@ function AppContent() {
             <SimuladorView 
               companySettings={companySettings} 
               currentUser={{ displayName: user?.displayName || undefined, email: user?.email || undefined }} 
+            />
+          </Suspense>
+        ) : activeTab === "hidrometro" ? (
+          <Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">Carregando rateio de água e hidrômetros...</div>}>
+            <HidrometroView 
+              isAdmin={isAdmin}
+              user={user}
+              profile={profile}
+              companySettings={companySettings}
             />
           </Suspense>
         ) : activeTab === "ponto" ? (
