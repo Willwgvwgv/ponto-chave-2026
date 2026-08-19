@@ -28,6 +28,28 @@ interface EdificiosGestaoProps {
   isAdmin: boolean;
 }
 
+// Helpers to prevent text overlapping and redundant 'Apto Apartamento' prefixes
+const formatUnitLabel = (numStr: string) => {
+  if (!numStr) return "Unidade";
+  const trimmed = numStr.trim();
+  if (/^(apto|apartamento|unidade|bloco|sala|loja)\b/i.test(trimmed)) {
+    return trimmed;
+  }
+  return `Apto ${trimmed}`;
+};
+
+const getShortUnitBadge = (numStr: string) => {
+  if (!numStr) return "#";
+  const cleaned = numStr.replace(/^(apartamento|apto|unidade|apt|unid|un)\s*/i, "").trim();
+  if (cleaned.length > 0 && cleaned.length <= 4) {
+    return cleaned;
+  }
+  if (cleaned.length > 4) {
+    return cleaned.substring(0, 4);
+  }
+  return numStr.substring(0, 3) || "#";
+};
+
 export const EdificiosGestao: React.FC<EdificiosGestaoProps> = ({
   edificios,
   onSaveEdificio,
@@ -460,14 +482,16 @@ export const EdificiosGestao: React.FC<EdificiosGestaoProps> = ({
                           {currentEdificio.unidades.map((unit, uIdx) => (
                             <tr key={unit.id || uIdx} className="hover:bg-slate-50/80 transition-colors">
                               <td className="py-3.5 px-4 font-black text-slate-900">
-                                <div className="flex items-center gap-2">
-                                  <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center font-black text-xs shrink-0">
-                                    {unit.numero}
+                                <div className="flex items-center gap-3">
+                                  <div className="min-w-[32px] h-8 px-2 rounded-xl bg-blue-50 border border-blue-100 text-blue-700 flex items-center justify-center font-black text-xs shrink-0 shadow-xs">
+                                    {getShortUnitBadge(unit.numero)}
                                   </div>
                                   <div>
-                                    <span>Apto {unit.numero}</span>
+                                    <span className="font-black text-slate-900 text-xs block leading-tight">
+                                      {formatUnitLabel(unit.numero)}
+                                    </span>
                                     {unit.bloco && (
-                                      <span className="text-[10px] text-slate-400 block font-normal">
+                                      <span className="text-[10px] text-slate-400 block font-normal mt-0.5">
                                         Bloco: {unit.bloco}
                                       </span>
                                     )}

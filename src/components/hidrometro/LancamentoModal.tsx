@@ -41,6 +41,77 @@ interface LancamentoModalProps {
   companySettings?: CompanySettings | null;
 }
 
+const formatUnitLabel = (numStr: string) => {
+  if (!numStr) return "Unidade";
+  const trimmed = numStr.trim();
+  if (/^(apto|apartamento|unidade|bloco|sala|loja)\b/i.test(trimmed)) {
+    return trimmed;
+  }
+  return `Apto ${trimmed}`;
+};
+
+const getShortUnitBadge = (numStr: string) => {
+  if (!numStr) return "#";
+  const cleaned = numStr.replace(/^(apartamento|apto|unidade|apt|unid|un)\s*/i, "").trim();
+  if (cleaned.length > 0 && cleaned.length <= 4) {
+    return cleaned;
+  }
+  if (cleaned.length > 4) {
+    return cleaned.substring(0, 4);
+  }
+  return numStr.substring(0, 3) || "#";
+};
+
+// Helper to generate initial readings from a building's units and previous invoices
+const buildInitialLeiturasForEdificio = (
+  edificio: EdificioHidrometro | null | undefined,
+  mesRef: string,
+  allInvoices: FaturaHidrometro[]
+): LeituraUnidade[] => {
+  if (!edificio || !edificio.unidades || edificio.unidades.length === 0) {
+    return [];
+  }
+
+  // Find the most recent previous invoice for this building
+  const previousInvoices = (allInvoices || [])
+    .filter((f) => f.edificioId === edificio.id && f.mesReferencia < mesRef)
+    .sort((a, b) => b.mesReferencia.localeCompare(a.mesReferencia));
+
+  const latestPreviousInvoice = previousInvoices[0] || null;
+
+  return edificio.unidades.map((unit) => {
+    let prevReading = 0;
+    if (latestPreviousInvoice && latestPreviousInvoice.leituras) {
+      const foundPrevUnit = latestPreviousInvoice.leituras.find(
+        (l) => l.unidadeId === unit.id || l.numeroUnidade === unit.numero
+      );
+      if (foundPrevUnit && Number(foundPrevUnit.leituraAtual) > 0) {
+        prevReading = Number(foundPrevUnit.leituraAtual);
+      } else {
+        prevReading = Number(unit.leituraAnteriorBase) || 0;
+      }
+    } else {
+      prevReading = Number(unit.leituraAnteriorBase) || 0;
+    }
+
+    return {
+      unidadeId: unit.id,
+      numeroUnidade: unit.numero,
+      bloco: unit.bloco || "",
+      moradorNome: unit.moradorNome || "",
+      moradorTelefone: unit.moradorTelefone || "",
+      hidrometroNumero: unit.hidrometroNumero || "",
+      leituraAnterior: prevReading,
+      leituraAtual: prevReading,
+      consumoM3: 0,
+      valorConsumoM3: 0,
+      valorAreaComumRateio: 0,
+      valorTotalAPagar: 0,
+      statusLeitura: "pendente"
+    };
+  });
+};
+
 // Client-side image compression to base64
 async function compressImageFile(file: File, maxWidth = 1280, quality = 0.75): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -89,9 +160,19 @@ export const LancamentoModal: React.FC<LancamentoModalProps> = ({
   currentUser,
   companySettings
 }) => {
+  // Current selected building ID with safe fallback
   const [selectedEdificioId, setSelectedEdificioId] = useState<string>(
     faturaParaEditar?.edificioId || (edificios.length > 0 ? edificios[0].id : "")
   );
+
+  // Computed valid building ID
+  const effectiveEdificioId = useMemo(() => {
+    if (faturaParaEditar) return faturaParaEditar.edificioId;
+    if (selectedEdificioId && edificios.some((e) => e.id === selectedEdificioId)) {
+      return selectedEdificioId;
+    }
+    return edificios.length > 0 ? edificios[0].id : "";
+  }, [faturaParaEditar, selectedEdificioId, edificios]);
 
   const [mesReferencia, setMesReferencia] = useState<string>(
     faturaParaEditar?.mesReferencia || new Date().toISOString().slice(0, 7) // YYYY-MM
@@ -129,8 +210,8 @@ export const LancamentoModal: React.FC<LancamentoModalProps> = ({
   const [uploadingUnidadeId, setUploadingUnidadeId] = useState<string | null>(null);
 
   const currentEdificio = useMemo(() => {
-    return edificios.find((e) => e.id === selectedEdificioId) || null;
-  }, [edificios, selectedEdificioId]);
+    return edificios.find((e) => e.id === effectiveEdificioId) || null;
+  }, [edificios, effectiveEdificioId]);
 
   // Months label helper
   const mesAnoTexto = useMemo(() => {
@@ -144,7 +225,7 @@ export const LancamentoModal: React.FC<LancamentoModalProps> = ({
     return `${monthNames[date.getMonth()]} de ${date.getFullYear()}`;
   }, [mesReferencia]);
 
-  // Initialize readings when building or edit item changes
+  // Initialize readings when modal opens or building/edit item changes
   useEffect(() => {
     if (!isOpen) return;
 
@@ -161,51 +242,29 @@ export const LancamentoModal: React.FC<LancamentoModalProps> = ({
       return;
     }
 
-    if (!currentEdificio) return;
+    if (!effectiveEdificioId) {
+      setLeituras([]);
+      return;
+    }
 
-    // Search for the most recent previous invoice for this building
-    const previousInvoices = faturasExistentes
-      .filter((f) => f.edificioId === currentEdificio.id && f.mesReferencia < mesReferencia)
-      .sort((a, b) => b.mesReferencia.localeCompare(a.mesReferencia));
+    // Keep state in sync
+    if (selectedEdificioId !== effectiveEdificioId) {
+      setSelectedEdificioId(effectiveEdificioId);
+    }
 
-    const latestPreviousInvoice = previousInvoices[0] || null;
+    const targetEdificio = edificios.find((e) => e.id === effectiveEdificioId);
+    if (!targetEdificio) {
+      setLeituras([]);
+      return;
+    }
 
-    // Create initial reading rows for all units of this building
-    const initialLeituras: LeituraUnidade[] = (currentEdificio.unidades || []).map((unit) => {
-      // Find what the previous reading was
-      let prevReading = 0;
-      if (latestPreviousInvoice) {
-        const foundPrevUnit = latestPreviousInvoice.leituras.find(
-          (l) => l.unidadeId === unit.id || l.numeroUnidade === unit.numero
-        );
-        if (foundPrevUnit && foundPrevUnit.leituraAtual > 0) {
-          prevReading = foundPrevUnit.leituraAtual;
-        } else {
-          prevReading = unit.leituraAnteriorBase || 0;
-        }
-      } else {
-        prevReading = unit.leituraAnteriorBase || 0;
-      }
-
-      return {
-        unidadeId: unit.id,
-        numeroUnidade: unit.numero,
-        bloco: unit.bloco || "",
-        moradorNome: unit.moradorNome || "",
-        moradorTelefone: unit.moradorTelefone || "",
-        hidrometroNumero: unit.hidrometroNumero || "",
-        leituraAnterior: prevReading,
-        leituraAtual: prevReading, // start with same as prev
-        consumoM3: 0,
-        valorConsumoM3: 0,
-        valorAreaComumRateio: 0,
-        valorTotalAPagar: 0,
-        statusLeitura: "pendente"
-      };
-    });
-
-    setLeituras(initialLeituras);
-  }, [isOpen, selectedEdificioId, mesReferencia, faturaParaEditar]);
+    const initialRows = buildInitialLeiturasForEdificio(
+      targetEdificio,
+      mesReferencia,
+      faturasExistentes
+    );
+    setLeituras(initialRows);
+  }, [isOpen, effectiveEdificioId, mesReferencia, faturaParaEditar, edificios, faturasExistentes]);
 
   // Recalculate consumption and financial values across all units
   const calculatedTotals = useMemo(() => {
@@ -474,8 +533,16 @@ export const LancamentoModal: React.FC<LancamentoModalProps> = ({
                 </label>
                 <select
                   required
-                  value={selectedEdificioId}
-                  onChange={(e) => setSelectedEdificioId(e.target.value)}
+                  value={effectiveEdificioId}
+                  onChange={(e) => {
+                    const newId = e.target.value;
+                    setSelectedEdificioId(newId);
+                    const targetEd = edificios.find((ed) => ed.id === newId);
+                    if (targetEd) {
+                      const newRows = buildInitialLeiturasForEdificio(targetEd, mesReferencia, faturasExistentes);
+                      setLeituras(newRows);
+                    }
+                  }}
                   disabled={!!faturaParaEditar}
                   className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:bg-slate-100"
                 >
@@ -650,15 +717,20 @@ export const LancamentoModal: React.FC<LancamentoModalProps> = ({
                             >
                               {/* Unit number */}
                               <td className="py-3 px-4 font-black text-slate-900">
-                                <div className="flex items-center gap-2">
-                                  <span className="w-8 h-8 rounded-xl bg-slate-100 text-slate-800 flex items-center justify-center font-black text-xs">
-                                    {leitura.numeroUnidade}
+                                <div className="flex items-center gap-2.5">
+                                  <span className="min-w-[32px] h-8 px-1.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-800 flex items-center justify-center font-black text-xs shrink-0 shadow-xs">
+                                    {getShortUnitBadge(leitura.numeroUnidade)}
                                   </span>
-                                  {leitura.bloco && (
-                                    <span className="text-[10px] text-slate-400 font-normal">
-                                      {leitura.bloco}
+                                  <div>
+                                    <span className="font-black text-slate-900 text-xs block leading-tight">
+                                      {formatUnitLabel(leitura.numeroUnidade)}
                                     </span>
-                                  )}
+                                    {leitura.bloco && (
+                                      <span className="text-[10px] text-slate-400 font-normal block mt-0.5">
+                                        Bloco: {leitura.bloco}
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
                               </td>
 

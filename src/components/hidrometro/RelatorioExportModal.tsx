@@ -32,6 +32,15 @@ interface RelatorioExportModalProps {
   companySettings?: CompanySettings | null;
 }
 
+const formatUnitLabel = (numStr: string) => {
+  if (!numStr) return "Unidade";
+  const trimmed = numStr.trim();
+  if (/^(apto|apartamento|unidade|bloco|sala|loja)\b/i.test(trimmed)) {
+    return trimmed;
+  }
+  return `Apto ${trimmed}`;
+};
+
 export const RelatorioExportModal: React.FC<RelatorioExportModalProps> = ({
   isOpen,
   onClose,
@@ -553,7 +562,7 @@ export const RelatorioExportModal: React.FC<RelatorioExportModalProps> = ({
                         <div className="p-2.5 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
                           <div>
                             <span className="font-black text-slate-900 text-xs block">
-                              Apto {l.numeroUnidade} {l.bloco ? `(${l.bloco})` : ""}
+                              {formatUnitLabel(l.numeroUnidade)} {l.bloco ? `(${l.bloco})` : ""}
                             </span>
                             <span className="text-[10px] text-slate-500 block truncate max-w-[140px]">
                               {l.moradorNome || "Morador"}

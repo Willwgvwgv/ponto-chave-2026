@@ -28,6 +28,15 @@ interface ComprovanteIndividualModalProps {
   companySettings?: CompanySettings | null;
 }
 
+const formatUnitLabel = (numStr: string) => {
+  if (!numStr) return "Unidade";
+  const trimmed = numStr.trim();
+  if (/^(apto|apartamento|unidade|bloco|sala|loja)\b/i.test(trimmed)) {
+    return trimmed;
+  }
+  return `Apto ${trimmed}`;
+};
+
 export const ComprovanteIndividualModal: React.FC<ComprovanteIndividualModalProps> = ({
   isOpen,
   onClose,
@@ -139,7 +148,7 @@ export const ComprovanteIndividualModal: React.FC<ComprovanteIndividualModalProp
               >
                 {fatura.leituras.map((l) => (
                   <option key={l.unidadeId} value={l.unidadeId}>
-                    Apto {l.numeroUnidade} {l.moradorNome ? `- ${l.moradorNome}` : ""}
+                    {formatUnitLabel(l.numeroUnidade)} {l.moradorNome ? `- ${l.moradorNome}` : ""}
                   </option>
                 ))}
               </select>
@@ -175,7 +184,7 @@ export const ComprovanteIndividualModal: React.FC<ComprovanteIndividualModalProp
 
                 <div className="text-right">
                   <span className="text-lg font-black text-blue-900 block">
-                    Apto {currentLeitura.numeroUnidade}
+                    {formatUnitLabel(currentLeitura.numeroUnidade)}
                   </span>
                   <span className="text-[11px] font-bold text-slate-500">
                     {fatura.mesAnoTexto || fatura.mesReferencia}
