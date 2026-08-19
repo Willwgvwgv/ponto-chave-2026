@@ -41,32 +41,38 @@ interface LancamentosTabProps {
   isAdmin?: boolean;
 }
 
-function getRecurrenceInstances(startDateStr: string, frequency: string, periodMonths: string) {
+function getRecurrenceInstances(startDateStr: string, frequency: string, periodMonths: string, customMonths?: number) {
   const dates: string[] = [];
   const baseDate = new Date(startDateStr + 'T12:00:00');
   
   let limitOccurrencesByMonths = 12;
-  if (periodMonths === '3') limitOccurrencesByMonths = 3;
-  else if (periodMonths === '6') limitOccurrencesByMonths = 6;
-  else if (periodMonths === '12') limitOccurrencesByMonths = 12;
-  else if (periodMonths === '24') limitOccurrencesByMonths = 24;
-  else if (periodMonths === 'SEM_FIM') limitOccurrencesByMonths = 36; // sensible limit
+  if (periodMonths === 'CUSTOM') {
+    const val = Number(customMonths);
+    limitOccurrencesByMonths = (!isNaN(val) && val > 0) ? Math.min(Math.max(1, Math.round(val)), 120) : 12;
+  } else if (periodMonths === 'SEM_FIM') {
+    limitOccurrencesByMonths = 36; // sensible limit for continuous
+  } else {
+    const parsed = parseInt(periodMonths, 10);
+    if (!isNaN(parsed) && parsed > 0) {
+      limitOccurrencesByMonths = parsed;
+    }
+  }
 
-  let targetCount = 12;
+  let targetCount = limitOccurrencesByMonths;
   if (frequency === 'SEMANAL') {
-    targetCount = Math.round(limitOccurrencesByMonths * 4.333);
+    targetCount = Math.max(1, Math.round(limitOccurrencesByMonths * 4.333));
   } else if (frequency === 'QUINZENAL') {
-    targetCount = limitOccurrencesByMonths * 2;
+    targetCount = Math.max(1, limitOccurrencesByMonths * 2);
   } else if (frequency === 'MENSAL') {
     targetCount = limitOccurrencesByMonths;
   } else if (frequency === 'BIMESTRAL') {
-    targetCount = Math.ceil(limitOccurrencesByMonths / 2);
+    targetCount = Math.max(1, Math.ceil(limitOccurrencesByMonths / 2));
   } else if (frequency === 'TRIMESTRAL') {
-    targetCount = Math.ceil(limitOccurrencesByMonths / 3);
+    targetCount = Math.max(1, Math.ceil(limitOccurrencesByMonths / 3));
   } else if (frequency === 'SEMESTRAL') {
-    targetCount = Math.ceil(limitOccurrencesByMonths / 6);
+    targetCount = Math.max(1, Math.ceil(limitOccurrencesByMonths / 6));
   } else if (frequency === 'ANUAL') {
-    targetCount = Math.ceil(limitOccurrencesByMonths / 12);
+    targetCount = Math.max(1, Math.ceil(limitOccurrencesByMonths / 12));
   }
 
   let current = new Date(baseDate);
@@ -292,6 +298,7 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
   const [isRecorrente, setIsRecorrente] = useState(false);
   const [frequencia, setFrequencia] = useState('MENSAL');
   const [repetirPor, setRepetirPor] = useState('12');
+  const [customMeses, setCustomMeses] = useState('5');
 
   // Modal para edição de lançamento
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -382,7 +389,7 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
     const isCard = account?.accountType === 'CREDITO';
 
     if (isRecorrente) {
-      const dates = getRecurrenceInstances(txDate, frequencia, repetirPor);
+      const dates = getRecurrenceInstances(txDate, frequencia, repetirPor, parseInt(customMeses, 10) || 12);
       const groupUuid = `rec_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
       
       const txs = dates.map(d => {
@@ -1429,16 +1436,71 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
                         <select
                           value={repetirPor}
                           onChange={(e) => setRepetirPor(e.target.value)}
-                          className="w-full px-3 py-2 bg-white border border-blue-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-xs font-bold text-slate-700 cursor-pointer"
+                          className="w-full px-3 py-2 bg-white border border-blue-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-xs font-bold text-slate-700 cursor-pointer shadow-sm"
                         >
+                          <option value="1">1 mês</option>
+                          <option value="2">2 meses</option>
                           <option value="3">3 meses</option>
+                          <option value="4">4 meses</option>
+                          <option value="5">5 meses</option>
                           <option value="6">6 meses</option>
-                          <option value="12">12 meses</option>
-                          <option value="24">24 meses</option>
-                          <option value="SEM_FIM">Sem fim</option>
+                          <option value="7">7 meses</option>
+                          <option value="8">8 meses</option>
+                          <option value="9">9 meses</option>
+                          <option value="10">10 meses</option>
+                          <option value="11">11 meses</option>
+                          <option value="12">12 meses (1 ano)</option>
+                          <option value="18">18 meses (1 ano e meio)</option>
+                          <option value="24">24 meses (2 anos)</option>
+                          <option value="36">36 meses (3 anos)</option>
+                          <option value="48">48 meses (4 anos)</option>
+                          <option value="60">60 meses (5 anos)</option>
+                          <option value="CUSTOM">🔢 Personalizado (digitar meses)...</option>
+                          <option value="SEM_FIM">♾️ Sem fim</option>
                         </select>
                       </div>
                     </div>
+
+                    {/* Campo para digitação livre quando 'CUSTOM' for selecionado */}
+                    {repetirPor === 'CUSTOM' && (
+                      <div className="p-3 bg-white rounded-xl border border-blue-200 shadow-sm animate-fadeIn">
+                        <label className="block text-[10px] font-black text-blue-900 uppercase tracking-widest mb-1.5">
+                          Quantidade de Meses Personalizada
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const val = Math.max(1, (parseInt(customMeses, 10) || 1) - 1);
+                              setCustomMeses(String(val));
+                            }}
+                            className="w-9 h-9 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-sm flex items-center justify-center cursor-pointer transition-all active:scale-90"
+                          >
+                            -
+                          </button>
+                          <input
+                            type="number"
+                            min="1"
+                            max="120"
+                            value={customMeses}
+                            onChange={(e) => setCustomMeses(e.target.value)}
+                            placeholder="Ex: 5"
+                            className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-center text-sm font-black text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                          />
+                          <span className="text-xs font-bold text-slate-500">meses</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const val = Math.min(120, (parseInt(customMeses, 10) || 1) + 1);
+                              setCustomMeses(String(val));
+                            }}
+                            className="w-9 h-9 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-sm flex items-center justify-center cursor-pointer transition-all active:scale-90"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Resumo dinâmico */}
                     <div className="pt-2 border-t border-blue-100/70">
@@ -1453,9 +1515,9 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
                             SEMESTRAL: 'semestralmente',
                             ANUAL: 'anualmente'
                           }[frequencia] || 'mensalmente')
-                        } — {getRecurrenceInstances(txDate, frequencia, repetirPor).length} ocorrências até {
+                        } — {getRecurrenceInstances(txDate, frequencia, repetirPor, parseInt(customMeses, 10) || 12).length} ocorrências até {
                           (() => {
-                            const dates = getRecurrenceInstances(txDate, frequencia, repetirPor);
+                            const dates = getRecurrenceInstances(txDate, frequencia, repetirPor, parseInt(customMeses, 10) || 12);
                             const lastDate = dates[dates.length - 1];
                             return lastDate ? new Date(lastDate + 'T12:00:00').toLocaleDateString('pt-BR') : '';
                           })()
