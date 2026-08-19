@@ -336,7 +336,7 @@ export const LancamentoModal: React.FC<LancamentoModalProps> = ({
 
     try {
       // Calculate final financial values for each unit before saving
-      const finalLeituras: LeituraUnidade[] = leituras.map((l) => {
+      let finalLeituras: LeituraUnidade[] = leituras.map((l) => {
         const consumo = Math.max(0, l.leituraAtual - l.leituraAnterior);
         const valorConsumo = consumo * calculatedTotals.tarifaM3;
         
@@ -360,6 +360,25 @@ export const LancamentoModal: React.FC<LancamentoModalProps> = ({
           statusLeitura: l.leituraAtual > 0 ? "concluida" : "pendente"
         };
       });
+
+      // Strict cent reconciliation so sum of all apartments equals exactly the total invoice down to R$ 0.00
+      if (finalLeituras.length > 0 && valorTotalConta > 0) {
+        const sumCalculated = finalLeituras.reduce((acc, l) => acc + l.valorTotalAPagar, 0);
+        const diffCents = Number((valorTotalConta - sumCalculated).toFixed(2));
+        if (diffCents !== 0 && Math.abs(diffCents) < 1.0) {
+          // Adjust on the unit with highest consumption (or first unit)
+          let targetIdx = 0;
+          let maxConsumo = -1;
+          finalLeituras.forEach((l, idx) => {
+            if (l.consumoM3 > maxConsumo) {
+              maxConsumo = l.consumoM3;
+              targetIdx = idx;
+            }
+          });
+          finalLeituras[targetIdx].valorTotalAPagar = Number((finalLeituras[targetIdx].valorTotalAPagar + diffCents).toFixed(2));
+          finalLeituras[targetIdx].valorConsumoM3 = Number((finalLeituras[targetIdx].valorConsumoM3 + diffCents).toFixed(2));
+        }
+      }
 
       const faturaPayload: FaturaHidrometro = {
         id: faturaParaEditar?.id || `fatura_hidro_${Date.now()}`,

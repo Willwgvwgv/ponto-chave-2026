@@ -373,35 +373,43 @@ export const HidrometroView: React.FC<HidrometroViewProps> = ({
   }, [faturas]);
 
   return (
-    <div className="space-y-8 animate-fadeIn">
-      {/* Top Banner & Title */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 p-6 sm:p-8 rounded-[32px] text-white shadow-xl shadow-blue-500/10">
-        <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-white shrink-0 shadow-inner">
-            <Droplet className="w-7 h-7 fill-white" />
+    <div className="space-y-6 animate-fadeIn">
+      {/* Clean Top Header */}
+      <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3.5">
+          <div className="w-11 h-11 rounded-2xl bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center font-bold shrink-0 shadow-sm">
+            <Droplet className="w-5 h-5 fill-blue-600" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-2xl font-black tracking-tight text-white uppercase">
-                Consumo & Rateio de Água
+              <h2 className="text-xl font-black tracking-tight text-slate-900 uppercase">
+                Hidrômetro & Rateio de Água
               </h2>
-              <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-white/20 backdrop-blur-md border border-white/20 text-white">
+              <span className="px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest bg-blue-50 text-blue-700 border border-blue-200">
                 Fidelité Imobiliária
               </span>
             </div>
-            <p className="text-xs text-blue-100 mt-1 max-w-xl leading-relaxed">
-              Lançamento das faturas de água, conferência de hidrômetros individuais com fotos comprobatórias, cálculo automático por apartamento e exportação de demonstrativos.
+            <p className="text-xs text-slate-500 mt-0.5">
+              Lançamento de faturas, medições individuais com fotos comprobatórias e demonstrativos oficiais por apartamento.
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
+          <button
+            onClick={() => setActiveSubTab("edificios")}
+            className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+          >
+            <Building2 className="w-4 h-4 text-slate-500" />
+            <span className="hidden sm:inline">Edifícios ({edificios.length})</span>
+          </button>
+
           <button
             onClick={() => {
               setFaturaParaEditar(null);
               setIsLancamentoModalOpen(true);
             }}
-            className="px-6 py-3.5 bg-white text-blue-700 hover:bg-blue-50 rounded-2xl text-xs font-black uppercase tracking-wider shadow-lg transition-all active:scale-95 flex items-center gap-2 cursor-pointer"
+            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-md shadow-blue-500/20 transition-all active:scale-95 flex items-center gap-2 cursor-pointer"
           >
             <Plus className="w-4 h-4 stroke-[3px]" />
             Lançar Medição de Água
@@ -806,6 +814,7 @@ export const HidrometroView: React.FC<HidrometroViewProps> = ({
         }}
         fatura={selectedFaturaParaRelatorio}
         onOpenFotoViewer={handleOpenFotoViewer}
+        faturasExistentes={faturas}
         companySettings={companySettings}
       />
 
