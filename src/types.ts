@@ -566,7 +566,8 @@ export interface LeituraUnidade {
   hidrometroNumero?: string;
   leituraAnterior: number;
   leituraAtual: number;
-  consumoM3: number; // Atual - Anterior
+  viradaHidrometro?: boolean; // Se o hidrômetro virou/zerou (ex: 9999,99 -> 0,00)
+  consumoM3: number; // Atual - Anterior (ou com virada)
   valorConsumoM3: number; // R$
   valorAreaComumRateio: number; // R$
   valorTotalAPagar: number; // R$

@@ -410,6 +410,11 @@ export const RelatorioExportModal: React.FC<RelatorioExportModalProps> = ({
                         </td>
                         <td className="py-2.5 px-3 text-center font-black text-blue-700 font-mono">
                           {l.consumoM3.toFixed(2)} m³
+                          {l.viradaHidrometro && (
+                            <span className="block text-[9px] font-bold text-emerald-700 uppercase tracking-tighter mt-0.5">
+                              (Virada 9999→0)
+                            </span>
+                          )}
                         </td>
                         <td className="py-2.5 px-3 text-right text-slate-700 font-mono">
                           R$ {l.valorConsumoM3.toFixed(2)}

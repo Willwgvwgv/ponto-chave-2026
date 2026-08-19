@@ -69,6 +69,9 @@ export const ComprovanteIndividualModal: React.FC<ComprovanteIndividualModalProp
     msg += `--------------------------------\n`;
     msg += `🔢 *Leitura Anterior:* ${currentLeitura.leituraAnterior.toFixed(2)} m³\n`;
     msg += `🔢 *Leitura Atual:* ${currentLeitura.leituraAtual.toFixed(2)} m³\n`;
+    if (currentLeitura.viradaHidrometro) {
+      msg += `🔄 *Obs:* Hidrômetro completou o ciclo (virada 9999 -> 0)\n`;
+    }
     msg += `💧 *Consumo no Mês:* ${currentLeitura.consumoM3.toFixed(2)} m³\n`;
     msg += `📊 *Tarifa por m³:* R$ ${fatura.tarifaM3Calculada.toFixed(2)}\n`;
     msg += `💵 *Valor do Consumo:* R$ ${currentLeitura.valorConsumoM3.toFixed(2)}\n`;

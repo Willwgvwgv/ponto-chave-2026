@@ -16,7 +16,8 @@ import {
   Sparkles,
   Layers,
   ArrowRight,
-  Info
+  Info,
+  RotateCcw
 } from "lucide-react";
 import { 
   FaturaHidrometro, 
@@ -60,6 +61,56 @@ const getShortUnitBadge = (numStr: string) => {
     return cleaned.substring(0, 4);
   }
   return numStr.substring(0, 3) || "#";
+};
+
+// Helper to calculate consumption supporting water meter rollover (9999.99 -> 0.00)
+export const calcConsumoUnidade = (
+  leituraAnterior: number,
+  leituraAtual: number,
+  viradaManual?: boolean
+): {
+  consumo: number;
+  isVirada: boolean;
+  isNegative: boolean;
+  formulaTexto?: string;
+} => {
+  const ant = Number(leituraAnterior) || 0;
+  const atu = Number(leituraAtual) || 0;
+
+  if (atu === 0 && ant === 0) {
+    return { consumo: 0, isVirada: false, isNegative: false };
+  }
+
+  // Normal case (current reading >= previous)
+  if (atu >= ant && !viradaManual) {
+    return {
+      consumo: Number((atu - ant).toFixed(3)),
+      isVirada: false,
+      isNegative: false
+    };
+  }
+
+  // Check rollover (virada do hidrômetro)
+  // Automatic rollover detection: if previous was high (>= 8000 or >= 80000) and current is lower, or explicitly flagged
+  const isAutoRollover = (ant >= 8000 && atu < 2500) || (ant >= 80000 && atu < 25000);
+  const isVirada = viradaManual !== undefined ? viradaManual : isAutoRollover;
+
+  if (isVirada) {
+    const dialMax = ant > 10000 ? 100000 : 10000;
+    const consumoVirada = Math.max(0, (dialMax - ant) + atu);
+    return {
+      consumo: Number(consumoVirada.toFixed(3)),
+      isVirada: true,
+      isNegative: false,
+      formulaTexto: `(${dialMax.toLocaleString("pt-BR")} - ${ant.toFixed(2)}) + ${atu.toFixed(2)} = ${consumoVirada.toFixed(2)} m³`
+    };
+  }
+
+  return {
+    consumo: 0,
+    isVirada: false,
+    isNegative: atu > 0 && atu < ant
+  };
 };
 
 // Helper to generate initial readings from a building's units and previous invoices
@@ -272,9 +323,9 @@ export const LancamentoModal: React.FC<LancamentoModalProps> = ({
     let unitsWithReadings = 0;
 
     leituras.forEach((l) => {
-      const consumo = Math.max(0, (Number(l.leituraAtual) || 0) - (Number(l.leituraAnterior) || 0));
+      const { consumo } = calcConsumoUnidade(l.leituraAnterior, l.leituraAtual, l.viradaHidrometro);
       totalConsumoApartamentos += consumo;
-      if (l.leituraAtual > 0 || l.consumoM3 > 0 || l.statusLeitura === "concluida") {
+      if (l.leituraAtual > 0 || consumo > 0 || l.statusLeitura === "concluida") {
         unitsWithReadings++;
       }
     });
@@ -319,12 +370,27 @@ export const LancamentoModal: React.FC<LancamentoModalProps> = ({
       item.leituraAtual = Number(val) || 0;
     }
 
-    const consumo = Math.max(0, item.leituraAtual - item.leituraAnterior);
+    const { consumo, isVirada } = calcConsumoUnidade(item.leituraAnterior, item.leituraAtual, item.viradaHidrometro);
     item.consumoM3 = Number(consumo.toFixed(3));
-    item.statusLeitura = item.leituraAtual > 0 ? "concluida" : "pendente";
+    item.viradaHidrometro = isVirada;
+    item.statusLeitura = (item.leituraAtual > 0 || consumo > 0) ? "concluida" : "pendente";
 
     updated[index] = item;
     setLeituras(updated);
+  };
+
+  // Toggle virada do hidrômetro manually for a unit
+  const handleToggleVirada = (index: number) => {
+    const updated = [...leituras];
+    const item = { ...updated[index] };
+    const currentVirada = item.viradaHidrometro;
+    const newVirada = currentVirada === undefined ? true : !currentVirada;
+    item.viradaHidrometro = newVirada;
+    const { consumo } = calcConsumoUnidade(item.leituraAnterior, item.leituraAtual, newVirada);
+    item.consumoM3 = Number(consumo.toFixed(3));
+    updated[index] = item;
+    setLeituras(updated);
+    toast.info(newVirada ? `Virada de hidrômetro ativada para o Apto ${item.numeroUnidade}!` : `Virada de hidrômetro desativada.`);
   };
 
   // Attach photo to single unit
@@ -396,7 +462,7 @@ export const LancamentoModal: React.FC<LancamentoModalProps> = ({
     try {
       // Calculate final financial values for each unit before saving
       let finalLeituras: LeituraUnidade[] = leituras.map((l) => {
-        const consumo = Math.max(0, l.leituraAtual - l.leituraAnterior);
+        const { consumo, isVirada } = calcConsumoUnidade(l.leituraAnterior, l.leituraAtual, l.viradaHidrometro);
         const valorConsumo = consumo * calculatedTotals.tarifaM3;
         
         let valorAreaComumRateio = 0;
@@ -412,11 +478,12 @@ export const LancamentoModal: React.FC<LancamentoModalProps> = ({
 
         return {
           ...l,
+          viradaHidrometro: isVirada,
           consumoM3: Number(consumo.toFixed(3)),
           valorConsumoM3: Number(valorConsumo.toFixed(2)),
           valorAreaComumRateio: Number(valorAreaComumRateio.toFixed(2)),
           valorTotalAPagar: Number(valorTotal.toFixed(2)),
-          statusLeitura: l.leituraAtual > 0 ? "concluida" : "pendente"
+          statusLeitura: (l.leituraAtual > 0 || consumo > 0) ? "concluida" : "pendente"
         };
       });
 
@@ -698,8 +765,11 @@ export const LancamentoModal: React.FC<LancamentoModalProps> = ({
                         </tr>
                       ) : (
                         leituras.map((leitura, idx) => {
-                          const consumo = Math.max(0, leitura.leituraAtual - leitura.leituraAnterior);
-                          const isNegative = leitura.leituraAtual > 0 && leitura.leituraAtual < leitura.leituraAnterior;
+                          const { consumo, isVirada, isNegative, formulaTexto } = calcConsumoUnidade(
+                            leitura.leituraAnterior,
+                            leitura.leituraAtual,
+                            leitura.viradaHidrometro
+                          );
                           const valorIndividual =
                             consumo * calculatedTotals.tarifaM3 +
                             (ratearAreaComumIgual ? calculatedTotals.valorAreaComumPerUnit : 0);
@@ -708,7 +778,9 @@ export const LancamentoModal: React.FC<LancamentoModalProps> = ({
                             <tr
                               key={leitura.unidadeId || idx}
                               className={`transition-colors ${
-                                isNegative
+                                isVirada
+                                  ? "bg-emerald-50/30 hover:bg-emerald-50/50"
+                                  : isNegative
                                   ? "bg-red-50/60 hover:bg-red-50"
                                   : leitura.leituraAtual > 0
                                   ? "bg-blue-50/20 hover:bg-blue-50/40"
@@ -767,27 +839,52 @@ export const LancamentoModal: React.FC<LancamentoModalProps> = ({
                                     handleUpdateUnitReading(idx, "leituraAtual", parseFloat(e.target.value) || 0)
                                   }
                                   className={`w-full px-2.5 py-1.5 border rounded-lg text-xs font-black focus:bg-white focus:outline-none focus:ring-2 ${
-                                    isNegative
+                                    isVirada
+                                      ? "border-emerald-500 bg-emerald-50/80 text-emerald-950 focus:ring-emerald-500 font-black"
+                                      : isNegative
                                       ? "border-red-400 bg-red-50 text-red-700 focus:ring-red-500"
                                       : "border-blue-300 bg-blue-50/50 text-blue-900 focus:ring-blue-500"
                                   }`}
                                 />
-                                {isNegative && (
-                                  <span className="text-[9px] font-bold text-red-600 flex items-center gap-0.5 mt-0.5">
-                                    <AlertTriangle className="w-3 h-3" /> Menor que anterior!
-                                  </span>
-                                )}
+                                {isVirada ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleVirada(idx)}
+                                    title={formulaTexto || "Cálculo considerando virada/zeramento de 9999 para 0"}
+                                    className="text-[9px] font-black text-emerald-700 bg-emerald-100/90 hover:bg-emerald-200 px-1.5 py-0.5 rounded flex items-center gap-1 mt-1 cursor-pointer transition-all border border-emerald-300"
+                                  >
+                                    <RotateCcw className="w-2.5 h-2.5 text-emerald-600 animate-spin-reverse" />
+                                    Virou (9999→0)
+                                  </button>
+                                ) : isNegative ? (
+                                  <div className="mt-1 space-y-1">
+                                    <span className="text-[9px] font-bold text-red-600 flex items-center gap-0.5 leading-none">
+                                      <AlertTriangle className="w-3 h-3 shrink-0" /> Menor que anterior!
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleToggleVirada(idx)}
+                                      className="text-[9px] font-black text-blue-700 bg-blue-100 hover:bg-blue-200 px-1.5 py-0.5 rounded flex items-center gap-1 cursor-pointer transition-all border border-blue-300"
+                                    >
+                                      <RotateCcw className="w-2.5 h-2.5" /> Zerou/Virou 9999?
+                                    </button>
+                                  </div>
+                                ) : null}
                               </td>
 
                               {/* Consumption */}
                               <td className="py-3 px-3 text-center">
                                 <span
-                                  className={`inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-black ${
-                                    consumo > 0
+                                  title={formulaTexto}
+                                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-black ${
+                                    isVirada
+                                      ? "bg-emerald-100 text-emerald-900 border border-emerald-200"
+                                      : consumo > 0
                                       ? "bg-blue-100 text-blue-800"
                                       : "bg-slate-100 text-slate-400"
                                   }`}
                                 >
+                                  {isVirada && <RotateCcw className="w-3 h-3 text-emerald-600 shrink-0" />}
                                   {consumo.toFixed(2)} m³
                                 </span>
                               </td>
