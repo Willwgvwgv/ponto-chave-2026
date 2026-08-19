@@ -17,11 +17,14 @@ import {
   History,
   Info,
   DollarSign,
-  Gauge
+  Gauge,
+  Loader2
 } from "lucide-react";
 import { FaturaHidrometro, CompanySettings } from "../../types";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
+import jsPDF from "jspdf";
+import html2canvas from "html2canvas";
 
 interface RelatorioExportModalProps {
   isOpen: boolean;
@@ -51,6 +54,7 @@ export const RelatorioExportModal: React.FC<RelatorioExportModalProps> = ({
 }) => {
   const [showFotos, setShowFotos] = useState(true);
   const [showHistorico, setShowHistorico] = useState(true);
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
   // Total apartments with photos
@@ -93,7 +97,63 @@ export const RelatorioExportModal: React.FC<RelatorioExportModalProps> = ({
 
   if (!isOpen || !fatura) return null;
 
-  // Print function
+  // Direct PDF generation (100% reliable, never blank, high definition)
+  const handleExportPDF = async () => {
+    if (!printRef.current) return;
+    setIsGeneratingPDF(true);
+    toast.info("Renderizando documento em alta resolução...");
+
+    try {
+      const element = printRef.current;
+
+      // Render high quality canvas
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: "#ffffff",
+        windowWidth: 1200
+      });
+
+      const imgData = canvas.toDataURL("image/png");
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4"
+      });
+
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      const imgWidth = pdfWidth;
+      const imgHeight = (canvas.height * pdfWidth) / canvas.width;
+
+      let heightLeft = imgHeight;
+      let position = 0;
+
+      // Add first page
+      pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight, undefined, "FAST");
+      heightLeft -= pdfHeight;
+
+      // Add subsequent pages if content exceeds A4 height
+      while (heightLeft > 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight, undefined, "FAST");
+        heightLeft -= pdfHeight;
+      }
+
+      const cleanBuildingName = fatura.edificioNome.replace(/[^a-zA-Z0-9_-]/g, "_");
+      pdf.save(`Demonstrativo_Agua_${cleanBuildingName}_${fatura.mesReferencia}.pdf`);
+      toast.success("PDF baixado com sucesso!");
+    } catch (error: any) {
+      console.error("Erro ao gerar PDF:", error);
+      toast.error("Erro ao exportar PDF: " + (error?.message || "Tente imprimir pelo navegador"));
+    } finally {
+      setIsGeneratingPDF(false);
+    }
+  };
+
+  // Browser Print function (uses designated print area)
   const handlePrint = () => {
     window.print();
   };
@@ -255,11 +315,31 @@ export const RelatorioExportModal: React.FC<RelatorioExportModalProps> = ({
               </button>
 
               <button
+                onClick={handleExportPDF}
+                disabled={isGeneratingPDF}
+                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-400 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-md shadow-emerald-500/20 transition-all flex items-center gap-1.5 cursor-pointer"
+                title="Gerar e baixar arquivo PDF completo diretamente"
+              >
+                {isGeneratingPDF ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Gerando...</span>
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Baixar PDF</span>
+                  </>
+                )}
+              </button>
+
+              <button
                 onClick={handlePrint}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-md shadow-blue-500/20 transition-all flex items-center gap-1.5 cursor-pointer"
+                className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-md shadow-blue-500/20 transition-all flex items-center gap-1.5 cursor-pointer"
+                title="Imprimir ou Salvar em PDF pelo navegador"
               >
                 <Printer className="w-3.5 h-3.5" />
-                <span>Imprimir / PDF</span>
+                <span className="hidden sm:inline">Imprimir</span>
               </button>
 
               <button
@@ -273,8 +353,9 @@ export const RelatorioExportModal: React.FC<RelatorioExportModalProps> = ({
 
           {/* Printable Document Body */}
           <div 
+            id="print-area"
             ref={printRef} 
-            className="flex-1 overflow-y-auto p-6 sm:p-10 space-y-8 custom-scrollbar print:overflow-visible print:p-6 print:m-0 print:space-y-6 text-slate-900 bg-white"
+            className="print-area flex-1 overflow-y-auto p-6 sm:p-10 space-y-8 custom-scrollbar print:overflow-visible print:p-6 print:m-0 print:space-y-6 text-slate-900 bg-white"
           >
             {/* 1. Official Header Fidelité Imobiliária */}
             <div className="border-b-2 border-slate-900 pb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">

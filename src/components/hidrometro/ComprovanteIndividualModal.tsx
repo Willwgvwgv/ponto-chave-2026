@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { 
   X, 
   Send, 
@@ -13,11 +13,15 @@ import {
   Eye, 
   Image as ImageIcon,
   MessageCircle,
-  Share2
+  Share2,
+  Download,
+  Loader2
 } from "lucide-react";
 import { FaturaHidrometro, LeituraUnidade, CompanySettings } from "../../types";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
+import jsPDF from "jspdf";
+import html2canvas from "html2canvas";
 
 interface ComprovanteIndividualModalProps {
   isOpen: boolean;
@@ -48,6 +52,8 @@ export const ComprovanteIndividualModal: React.FC<ComprovanteIndividualModalProp
   const [selectedUnidadeId, setSelectedUnidadeId] = useState<string>(
     initialUnidadeId || (fatura?.leituras?.[0]?.unidadeId || "")
   );
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+  const slipRef = useRef<HTMLDivElement>(null);
 
   if (!isOpen || !fatura) return null;
 
@@ -104,6 +110,42 @@ export const ComprovanteIndividualModal: React.FC<ComprovanteIndividualModalProp
       : `https://wa.me/?text=${text}`;
 
     window.open(url, "_blank");
+  };
+
+  const handleExportPDF = async () => {
+    if (!slipRef.current) return;
+    setIsGeneratingPDF(true);
+    toast.info("Gerando comprovante em PDF...");
+
+    try {
+      const element = slipRef.current;
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: "#ffffff"
+      });
+
+      const imgData = canvas.toDataURL("image/png");
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4"
+      });
+
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const imgWidth = pdfWidth - 20;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+      pdf.addImage(imgData, "PNG", 10, 15, imgWidth, imgHeight, undefined, "FAST");
+      pdf.save(`Comprovante_Agua_${currentLeitura.numeroUnidade}_${fatura.mesReferencia}.pdf`);
+      toast.success("Comprovante PDF baixado com sucesso!");
+    } catch (error: any) {
+      console.error("Erro ao gerar PDF:", error);
+      toast.error("Erro ao gerar PDF: " + (error?.message || "Tente imprimir pelo navegador"));
+    } finally {
+      setIsGeneratingPDF(false);
+    }
   };
 
   const handlePrintSlip = () => {
@@ -166,9 +208,13 @@ export const ComprovanteIndividualModal: React.FC<ComprovanteIndividualModalProp
           </div>
 
           {/* Content / Printable Slip */}
-          <div className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-6 custom-scrollbar">
+          <div className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-6 custom-scrollbar print:overflow-visible print:p-0">
             {/* Canhoto / Card Individual */}
-            <div className="p-6 bg-gradient-to-br from-white to-blue-50/30 rounded-3xl border-2 border-blue-100 shadow-sm space-y-6">
+            <div 
+              id="print-area"
+              ref={slipRef}
+              className="print-area p-6 bg-gradient-to-br from-white to-blue-50/30 rounded-3xl border-2 border-blue-100 shadow-sm space-y-6 print:border-none print:shadow-none print:bg-white print:p-4"
+            >
               {/* Slip Header */}
               <div className="flex items-center justify-between border-b border-blue-100 pb-4">
                 <div>
@@ -298,30 +344,43 @@ export const ComprovanteIndividualModal: React.FC<ComprovanteIndividualModalProp
               )}
             </div>
 
-            {/* Actions for WhatsApp / Print */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 print:hidden">
+            {/* Actions for WhatsApp / Print / PDF */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 print:hidden">
               <button
                 onClick={handleCopyWhatsApp}
-                className="px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer"
+                className="px-3 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
               >
-                <Copy className="w-4 h-4" />
-                Copiar Mensagem
+                <Copy className="w-4 h-4 text-slate-500" />
+                <span>Copiar Msg</span>
               </button>
 
               <button
                 onClick={handleSendWhatsApp}
-                className="px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-2xl text-xs font-black uppercase tracking-wider shadow-lg shadow-green-600/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                className="px-3 py-3 bg-green-600 hover:bg-green-700 text-white rounded-2xl text-xs font-black uppercase tracking-wider shadow-md shadow-green-600/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <Send className="w-4 h-4" />
-                Enviar WhatsApp
+                <span>WhatsApp</span>
+              </button>
+
+              <button
+                onClick={handleExportPDF}
+                disabled={isGeneratingPDF}
+                className="px-3 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white rounded-2xl text-xs font-black uppercase tracking-wider shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                {isGeneratingPDF ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Download className="w-4 h-4" />
+                )}
+                <span>Baixar PDF</span>
               </button>
 
               <button
                 onClick={handlePrintSlip}
-                className="px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-xs font-black uppercase tracking-wider shadow-lg shadow-blue-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                className="px-3 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-xs font-black uppercase tracking-wider shadow-md shadow-blue-500/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <Printer className="w-4 h-4" />
-                Imprimir Canhoto
+                <span>Imprimir</span>
               </button>
             </div>
           </div>
