@@ -24,7 +24,7 @@ import { FaturaHidrometro, CompanySettings } from "../../types";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import jsPDF from "jspdf";
-import html2canvas from "html2canvas";
+import html2canvas from "html2canvas-pro";
 
 interface RelatorioExportModalProps {
   isOpen: boolean;

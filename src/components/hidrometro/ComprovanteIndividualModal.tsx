@@ -21,7 +21,7 @@ import { FaturaHidrometro, LeituraUnidade, CompanySettings } from "../../types";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import jsPDF from "jspdf";
-import html2canvas from "html2canvas";
+import html2canvas from "html2canvas-pro";
 
 interface ComprovanteIndividualModalProps {
   isOpen: boolean;
@@ -31,6 +31,9 @@ interface ComprovanteIndividualModalProps {
   onOpenFotoViewer: (url: string, titulo: string, subtitulo: string) => void;
   companySettings?: CompanySettings | null;
 }
+
+const formatBRL = (val: number) => 
+  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(val || 0);
 
 const formatUnitLabel = (numStr: string) => {
   if (!numStr) return "Unidade";
@@ -149,7 +152,66 @@ export const ComprovanteIndividualModal: React.FC<ComprovanteIndividualModalProp
   };
 
   const handlePrintSlip = () => {
-    window.print();
+    if (!slipRef.current) {
+      window.print();
+      return;
+    }
+
+    const printContent = slipRef.current.innerHTML;
+    const printWindow = window.open("", "_blank", "width=850,height=900");
+
+    if (!printWindow) {
+      window.print();
+      return;
+    }
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8">
+        <title>Comprovante de Água - ${formatUnitLabel(currentLeitura.numeroUnidade)} - ${fatura.edificioNome}</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+        <script src="https://cdn.tailwindcss.com"></script>
+        <style>
+          @page {
+            size: A4 portrait;
+            margin: 10mm 10mm 10mm 10mm;
+          }
+          body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #ffffff;
+            color: #0f172a;
+            margin: 0;
+            padding: 12px;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          img {
+            max-width: 100%;
+            height: auto;
+          }
+        </style>
+      </head>
+      <body class="bg-white text-slate-900">
+        <div class="max-w-2xl mx-auto">
+          ${printContent}
+        </div>
+        <script>
+          window.onload = function() {
+            setTimeout(function() {
+              window.focus();
+              window.print();
+            }, 300);
+          };
+        </script>
+      </body>
+      </html>
+    `);
+
+    printWindow.document.close();
   };
 
   return (
