@@ -438,6 +438,7 @@ export interface FinancialTransaction {
   isTransfer?: boolean;
   transferAccountId?: string;
   transferGroupId?: string;
+  splitGroupId?: string;
 }
 
 export interface DREEntry {

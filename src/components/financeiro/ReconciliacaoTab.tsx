@@ -13,7 +13,9 @@ import {
   Plus,
   Pencil,
   Search,
-  RefreshCw
+  RefreshCw,
+  Scissors,
+  Trash2
 } from 'lucide-react';
 import { BankAccount, FinancialCategory, FinancialTransaction } from '../../types';
 import { parseBankStatement, ParsedOFXTransaction, parseLedgerBalance, LedgerBalance } from './ofxParser';
@@ -26,6 +28,13 @@ export interface AutoParsedOFXTransaction extends ParsedOFXTransaction {
   isAutoCategorized?: boolean;
   originalDescription?: string;
   autoCategorizedSource?: 'historico' | 'regra';
+}
+
+export interface SplitPartItem {
+  id: string;
+  description: string;
+  categoryId: string;
+  amount: number | '';
 }
 
 function getCardStatementMonth(dateStr: string, closingDay: number): string {
@@ -157,8 +166,9 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
   // Para criação rápida de transação nova se não houver match
   const [activeNewTx, setActiveNewTx] = useState<AutoParsedOFXTransaction | null>(null);
   const [selectedCatId, setSelectedCatId] = useState('');
-  const [reconcileType, setReconcileType] = useState<'NORMAL' | 'TRANSFERENCIA'>('NORMAL');
+  const [reconcileType, setReconcileType] = useState<'NORMAL' | 'TRANSFERENCIA' | 'DIVIDIR'>('NORMAL');
   const [recTfCounterpartId, setRecTfCounterpartId] = useState('');
+  const [splitParts, setSplitParts] = useState<SplitPartItem[]>([]);
 
   // Edição inline de transação durante importação
   const [editingTxId, setEditingTxId] = useState<string | null>(null);
@@ -166,10 +176,11 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
   const [tempDate, setTempDate] = useState('');
   const [tempAmount, setTempAmount] = useState<number>(0);
 
-  // Estados para busca manual
+  // Estados para busca manual e seleção múltipla
   const [searchQueries, setSearchQueries] = useState<Record<string, string>>({});
   const [showSearchForFitId, setShowSearchForFitId] = useState<Record<string, boolean>>({});
   const [activeSearchFitId, setActiveSearchFitId] = useState<string | null>(null);
+  const [selectedCandidatesByFitId, setSelectedCandidatesByFitId] = useState<Record<string, Record<string, number>>>({});
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -417,6 +428,124 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
     toast.success("Transação atualizada localmente!");
   };
 
+  const handleOpenSplitModal = (item: AutoParsedOFXTransaction) => {
+    const target = Math.abs(item.amount);
+    const half = Math.round((target / 2) * 100) / 100;
+    const rest = Math.round((target - half) * 100) / 100;
+
+    setSplitParts([
+      {
+        id: `part_${Date.now()}_1`,
+        description: item.description,
+        categoryId: item.suggestedCategoryId || '',
+        amount: half
+      },
+      {
+        id: `part_${Date.now()}_2`,
+        description: item.description,
+        categoryId: '',
+        amount: rest
+      }
+    ]);
+    setReconcileType('DIVIDIR');
+    setActiveNewTx(item);
+  };
+
+  const handleAddSplitPart = () => {
+    setSplitParts(prev => [
+      ...prev,
+      {
+        id: `part_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        description: activeNewTx?.description || '',
+        categoryId: '',
+        amount: ''
+      }
+    ]);
+  };
+
+  const handleRemoveSplitPart = (id: string) => {
+    if (splitParts.length <= 2) return;
+    setSplitParts(prev => prev.filter(p => p.id !== id));
+  };
+
+  const handleUpdateSplitPart = (id: string, updates: Partial<SplitPartItem>) => {
+    setSplitParts(prev => prev.map(p => (p.id === id ? { ...p, ...updates } : p)));
+  };
+
+  // Multi-seleção de candidatos para vincular
+  const handleToggleCandidate = (fitId: string, candidate: FinancialTransaction) => {
+    setSelectedCandidatesByFitId(prev => {
+      const currentMap = prev[fitId] || {};
+      const nextMap = { ...currentMap };
+      if (nextMap[candidate.id] !== undefined) {
+        delete nextMap[candidate.id];
+      } else {
+        nextMap[candidate.id] = Math.abs(candidate.amount);
+      }
+      return { ...prev, [fitId]: nextMap };
+    });
+  };
+
+  const handleUpdateCandidateAmount = (fitId: string, txId: string, amount: number) => {
+    setSelectedCandidatesByFitId(prev => {
+      const currentMap = prev[fitId] || {};
+      return {
+        ...prev,
+        [fitId]: {
+          ...currentMap,
+          [txId]: amount
+        }
+      };
+    });
+  };
+
+  const handleConciliationMatchMultiple = (imported: ParsedOFXTransaction) => {
+    const selectedMap = selectedCandidatesByFitId[imported.fitId] || {};
+    const selectedIds = Object.keys(selectedMap);
+    if (selectedIds.length === 0) {
+      toast.error("Selecione pelo menos um lançamento pendente para vincular.");
+      return;
+    }
+
+    const sumSelected = selectedIds.reduce((acc, id) => acc + (Number(selectedMap[id]) || 0), 0);
+    const targetAmount = Math.abs(imported.amount);
+    if (Math.abs(targetAmount - sumSelected) > 0.012) {
+      toast.error(`A soma dos lançamentos selecionados (${formatCurrency(sumSelected)}) deve conferir com o extrato (${formatCurrency(targetAmount)}).`);
+      return;
+    }
+
+    const updatesToApply: { id: string, updates: Partial<FinancialTransaction> }[] = [];
+
+    selectedIds.forEach(txId => {
+      const candidate = transactions.find(t => t.id === txId);
+      const customAmount = selectedMap[txId];
+      const hasAmountChanged = candidate && Math.abs(candidate.amount) !== Math.abs(customAmount);
+
+      const updates: Partial<FinancialTransaction> = {
+        status: 'CONCILIADO',
+        fitId: imported.fitId,
+        reconciledAt: new Date().toISOString()
+      };
+
+      if (hasAmountChanged && customAmount > 0) {
+        updates.amount = candidate?.type === 'DESPESA' ? -Math.abs(customAmount) : Math.abs(customAmount);
+      }
+
+      updatesToApply.push({ id: txId, updates });
+    });
+
+    onUpdateTransactions(updatesToApply);
+    setConciliatedIds(prev => [...prev, imported.fitId]);
+    setShowSearchForFitId(prev => ({ ...prev, [imported.fitId]: false }));
+    setSearchQueries(prev => ({ ...prev, [imported.fitId]: '' }));
+    setSelectedCandidatesByFitId(prev => {
+      const next = { ...prev };
+      delete next[imported.fitId];
+      return next;
+    });
+    toast.success(`${updatesToApply.length} lançamento(s) vinculado(s) e conciliado(s) com sucesso!`);
+  };
+
   const handleConciliationMatch = (imported: ParsedOFXTransaction, matched: FinancialTransaction) => {
     // Vincula o ID do extrato ao lançamento do sistema e muda status para CONCILIADO
     onUpdateTransactions([{
@@ -469,6 +598,64 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
   };
 
   const handleCreateAndConciliate = (imported: AutoParsedOFXTransaction) => {
+    if (reconcileType === 'DIVIDIR') {
+      const totalSplit = splitParts.reduce((acc, p) => acc + (typeof p.amount === 'number' ? p.amount : (parseFloat(p.amount) || 0)), 0);
+      const targetAmount = Math.abs(imported.amount);
+      const diff = targetAmount - totalSplit;
+
+      if (Math.abs(diff) > 0.012) {
+        toast.error(`A soma das partes (${formatCurrency(totalSplit)}) deve ser igual ao valor do extrato (${formatCurrency(targetAmount)}).`);
+        return;
+      }
+
+      if (splitParts.length < 2) {
+        toast.error("O rateio deve conter pelo menos 2 divisões.");
+        return;
+      }
+
+      const invalidPart = splitParts.find(p => !p.description.trim() || !p.categoryId || Number(p.amount) <= 0);
+      if (invalidPart) {
+        toast.error("Preencha descrição, categoria e valor maior que zero para todas as partes.");
+        return;
+      }
+
+      const splitGroupId = `split_rec_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const account = accounts.find(a => a.id === selectedAccountId);
+      const isCard = account?.accountType === 'CREDITO';
+      const cardStatus = isCard ? getInitialCreditCardStatus(imported.date, account?.closingDay || 10) : undefined;
+      const cardMonth = isCard ? getCardStatementMonth(imported.date, account?.closingDay || 10) : undefined;
+      const totalParts = splitParts.length;
+
+      const newTransactions = splitParts.map((p, idx) => {
+        const category = categories.find(c => c.id === p.categoryId);
+        return {
+          accountId: selectedAccountId,
+          date: imported.date,
+          description: p.description.trim(),
+          amount: Math.abs(Number(p.amount)),
+          type: isCard ? 'DESPESA' : (imported.type === 'CREDIT' ? 'RECEITA' : 'DESPESA') as ('RECEITA' | 'DESPESA'),
+          categoryId: p.categoryId || undefined,
+          categoryName: category ? category.name : undefined,
+          status: 'CONCILIADO' as const,
+          origin: 'IMPORTADO' as const,
+          fitId: imported.fitId,
+          originalDescription: imported.originalDescription || imported.description || undefined,
+          notes: `FITID: ${imported.fitId} · Parte ${idx + 1}/${totalParts} de lançamento dividido.`,
+          splitGroupId: splitGroupId,
+          creditCardStatus: cardStatus,
+          creditCardMonth: cardMonth
+        };
+      });
+
+      onAddTransactions(newTransactions);
+      setConciliatedIds(prev => [...prev, imported.fitId]);
+      setActiveNewTx(null);
+      setSplitParts([]);
+      setReconcileType('NORMAL');
+      toast.success(`Lançamento dividido em ${totalParts} partes e conciliado com sucesso!`);
+      return;
+    }
+
     if (reconcileType === 'TRANSFERENCIA') {
       if (!recTfCounterpartId || recTfCounterpartId === selectedAccountId) {
         toast.error("Por favor, selecione uma conta contrapartida válida e diferente da atual.");
@@ -924,12 +1111,22 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                             {/* Criar novo lançamento */}
                             <button
                               onClick={() => {
+                                setReconcileType('NORMAL');
                                 setActiveNewTx(item);
                                 setSelectedCatId(item.suggestedCategoryId || '');
                               }}
                               className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-[10px] font-bold uppercase tracking-wide transition-all cursor-pointer"
                             >
                               <Plus className="w-3 h-3" /> Criar lançamento
+                            </button>
+
+                            {/* Dividir Lançamento (Rateio) */}
+                            <button
+                              onClick={() => handleOpenSplitModal(item)}
+                              className="flex items-center gap-1.5 px-3 py-1.5 text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-xl text-[10px] font-bold uppercase tracking-wide transition-all cursor-pointer"
+                              title="Dividir este lançamento em múltiplas partes e categorias"
+                            >
+                              <Scissors className="w-3 h-3 text-purple-600" /> Dividir lançamento
                             </button>
 
                             {/* Ignorar — empurrado para a direita */}
@@ -942,14 +1139,23 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                             </button>
                           </div>
 
-                          {/* Busca integrada — expande dentro do card quando isSearchOpen */}
+                          {/* Busca integrada com seleção múltipla */}
                           {isSearchOpen && (
-                            <div className="mt-3 bg-slate-50 rounded-2xl p-3 border border-slate-200 space-y-2 animate-fadeIn">
+                            <div className="mt-3 bg-slate-50 rounded-2xl p-3.5 border border-slate-200 space-y-3 animate-fadeIn text-left">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[10px] font-black uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                                  <Search className="w-3.5 h-3.5 text-blue-500" /> Vincular a Lançamentos Existentes
+                                </span>
+                                <span className="text-[10px] text-slate-400 font-bold">
+                                  Meta: <span className="font-mono text-slate-700 font-black">{formatCurrency(item.amount)}</span>
+                                </span>
+                              </div>
+
                               <div className="relative">
                                 <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                                 <input
                                   type="text"
-                                  placeholder="Buscar por descrição, valor ou data..."
+                                  placeholder="Buscar por descrição, valor, data ou categoria..."
                                   value={query}
                                   onChange={(e) => setSearchQueries(prev => ({ ...prev, [item.fitId]: e.target.value }))}
                                   onFocus={() => setActiveSearchFitId(item.fitId)}
@@ -966,52 +1172,151 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                                 )}
                               </div>
 
-                              {activeSearchFitId === item.fitId && query && (
-                                <div className="bg-white border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100 max-h-48 overflow-y-auto w-full text-left">
-                                  {filterResults(query, item.type).length === 0 ? (
-                                    <p className="p-4 text-[10px] font-bold text-slate-400 text-center uppercase tracking-wider">
-                                      Nenhum lançamento pendente correspondente encontrado
-                                    </p>
-                                  ) : (
-                                    filterResults(query, item.type).map(candidate => (
-                                      <button
+                              {/* Resultados da busca / lista de candidatos com checkbox e ajuste inline */}
+                              <div className="bg-white border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100 max-h-56 overflow-y-auto w-full text-left">
+                                {(() => {
+                                  const results = query ? filterResults(query, item.type) : searchCandidates.filter(t => (item.type === 'CREDIT' ? t.type === 'RECEITA' : t.type === 'DESPESA')).slice(0, 15);
+                                  const selectedMap = selectedCandidatesByFitId[item.fitId] || {};
+
+                                  if (results.length === 0) {
+                                    return (
+                                      <p className="p-4 text-[10px] font-bold text-slate-400 text-center uppercase tracking-wider">
+                                        {query ? 'Nenhum lançamento pendente correspondente encontrado' : 'Nenhum lançamento pendente nesta conta'}
+                                      </p>
+                                    );
+                                  }
+
+                                  return results.map(candidate => {
+                                    const isSelected = selectedMap[candidate.id] !== undefined;
+                                    const currentAmount = isSelected ? selectedMap[candidate.id] : Math.abs(candidate.amount);
+
+                                    return (
+                                      <div
                                         key={candidate.id}
-                                        onClick={() => {
-                                          handleConciliationMatch(item, candidate);
-                                          setSearchQueries(prev => ({ ...prev, [item.fitId]: '' }));
-                                          setShowSearchForFitId(prev => ({ ...prev, [item.fitId]: false }));
-                                          setActiveSearchFitId(null);
-                                        }}
-                                        className="w-full text-left px-4 py-3 hover:bg-slate-50 flex items-center justify-between text-xs transition-colors cursor-pointer"
+                                        onClick={() => handleToggleCandidate(item.fitId, candidate)}
+                                        className={`w-full text-left px-3.5 py-2.5 flex items-center justify-between text-xs transition-colors cursor-pointer select-none ${
+                                          isSelected ? 'bg-blue-50/70' : 'hover:bg-slate-50'
+                                        }`}
                                       >
-                                        <div className="space-y-0.5 min-w-0 mr-4">
-                                          <div className="font-extrabold text-slate-800 flex items-center gap-1.5 truncate">
-                                            {candidate.description}
-                                            {candidate.recurrenceGroupId != null && (
-                                              <span className="bg-blue-50 text-blue-600 font-extrabold text-[8px] uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0 border border-blue-100">
-                                                RECORRENTE
-                                              </span>
-                                            )}
-                                          </div>
-                                          <div className="text-[10px] text-slate-400 font-semibold flex items-center gap-1.5">
-                                            <span className="font-mono">{new Date(candidate.date + 'T00:00:00').toLocaleDateString('pt-BR')}</span>
-                                            <span className="text-slate-300">•</span>
-                                            <span>{candidate.categoryName || 'Sem Categoria'}</span>
+                                        <div className="flex items-center gap-3 min-w-0 mr-3">
+                                          <input
+                                            type="checkbox"
+                                            checked={isSelected}
+                                            onChange={() => {}}
+                                            className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 pointer-events-none"
+                                          />
+                                          <div className="space-y-0.5 min-w-0">
+                                            <div className="font-extrabold text-slate-800 flex items-center gap-1.5 truncate">
+                                              {candidate.description}
+                                              {candidate.recurrenceGroupId != null && (
+                                                <span className="bg-blue-50 text-blue-600 font-extrabold text-[8px] uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0 border border-blue-100">
+                                                  RECORRENTE
+                                                </span>
+                                              )}
+                                            </div>
+                                            <div className="text-[10px] text-slate-400 font-semibold flex items-center gap-1.5">
+                                              <span className="font-mono">{new Date(candidate.date + 'T00:00:00').toLocaleDateString('pt-BR')}</span>
+                                              <span className="text-slate-300">•</span>
+                                              <span>{candidate.categoryName || 'Sem Categoria'}</span>
+                                            </div>
                                           </div>
                                         </div>
-                                        <div className="font-mono font-black text-slate-900 shrink-0 text-right">
-                                          {formatCurrency(candidate.amount)}
+
+                                        {/* Valor / Edição inline se selecionado */}
+                                        <div className="shrink-0 text-right" onClick={(e) => e.stopPropagation()}>
+                                          {isSelected ? (
+                                            <div className="flex items-center gap-1 bg-white border border-blue-300 rounded-lg px-2 py-1 shadow-xs">
+                                              <span className="text-[10px] font-bold text-slate-400 select-none">R$</span>
+                                              <input
+                                                type="number"
+                                                step="0.01"
+                                                value={currentAmount}
+                                                onChange={(e) => handleUpdateCandidateAmount(item.fitId, candidate.id, parseFloat(e.target.value) || 0)}
+                                                className="w-20 text-xs font-mono font-black text-slate-900 focus:outline-none text-right"
+                                              />
+                                            </div>
+                                          ) : (
+                                            <div className="font-mono font-black text-slate-900">
+                                              {formatCurrency(candidate.amount)}
+                                            </div>
+                                          )}
                                         </div>
+                                      </div>
+                                    );
+                                  });
+                                })()}
+                              </div>
+
+                              {/* Rodapé fixo do vinculador com conferência de saldo */}
+                              {(() => {
+                                const selectedMap = selectedCandidatesByFitId[item.fitId] || {};
+                                const selectedIds = Object.keys(selectedMap);
+                                const selectedCount = selectedIds.length;
+                                const sumSelected = selectedIds.reduce((acc, id) => acc + (Number(selectedMap[id]) || 0), 0);
+                                const targetAmount = Math.abs(item.amount);
+                                const diff = targetAmount - sumSelected;
+                                const isValidMatch = selectedCount > 0 && Math.abs(diff) <= 0.012;
+
+                                return (
+                                  <div className="space-y-2 pt-2 border-t border-slate-200">
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-white p-3 rounded-xl border border-slate-200">
+                                      <div>
+                                        <div className="text-[11px] font-black text-slate-700">
+                                          Selecionados: <span className="text-blue-600">{selectedCount}</span> · Total: <span className="font-mono font-black text-slate-900">{formatCurrency(sumSelected)}</span>
+                                        </div>
+                                        <div className="text-[10px] font-semibold text-slate-500">
+                                          Valor do extrato: <span className="font-mono font-bold">{formatCurrency(targetAmount)}</span>
+                                        </div>
+                                      </div>
+
+                                      <div className="shrink-0">
+                                        {selectedCount === 0 ? (
+                                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">
+                                            Nenhum selecionado
+                                          </span>
+                                        ) : isValidMatch ? (
+                                          <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg">
+                                            <CheckCircle2 className="w-3.5 h-3.5" /> Total confere
+                                          </span>
+                                        ) : (
+                                          <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-rose-700 bg-rose-50 border border-rose-200 px-2.5 py-1 rounded-lg">
+                                            <AlertCircle className="w-3.5 h-3.5" /> {diff > 0 ? `Faltam ${formatCurrency(Math.abs(diff))}` : `Excedeu ${formatCurrency(Math.abs(diff))}`}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    <div className="flex items-center justify-end gap-2 pt-1">
+                                      <button
+                                        onClick={() => {
+                                          setShowSearchForFitId(prev => ({ ...prev, [item.fitId]: false }));
+                                          setSearchQueries(prev => ({ ...prev, [item.fitId]: '' }));
+                                        }}
+                                        className="px-3.5 py-2 text-slate-500 hover:text-slate-700 hover:bg-slate-200/60 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer"
+                                      >
+                                        Cancelar
                                       </button>
-                                    ))
-                                  )}
-                                </div>
-                              )}
+                                      <button
+                                        onClick={() => handleConciliationMatchMultiple(item)}
+                                        disabled={!isValidMatch}
+                                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:pointer-events-none text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+                                      >
+                                        <Check className="w-3.5 h-3.5" /> Confirmar Vínculo {selectedCount > 0 ? `(${selectedCount})` : ''}
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })()}
                             </div>
                           )}
                         </div>
                       );
                     }
+
+                    const ledgerTxsForFitId = transactions.filter(
+                      t => t.accountId === selectedAccountId && t.fitId === item.fitId
+                    );
+                    const isSplitTransaction = ledgerTxsForFitId.length > 1;
 
                     return (
                       <div 
@@ -1032,9 +1337,15 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                               </span>
 
                               {duplicate ? (
-                                <span className="inline-flex items-center gap-1 bg-slate-200 text-slate-600 font-extrabold px-2 py-0.5 rounded text-[8px] uppercase tracking-wider">
-                                  JÁ IMPORTADO
-                                </span>
+                                isSplitTransaction ? (
+                                  <span className="inline-flex items-center gap-1 bg-purple-100 text-purple-800 border border-purple-200 font-extrabold px-2 py-0.5 rounded text-[8px] uppercase tracking-wider">
+                                    <Scissors className="w-2.5 h-2.5 text-purple-700" /> DIVIDIDO EM {ledgerTxsForFitId.length} LANÇAMENTOS
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 bg-slate-200 text-slate-600 font-extrabold px-2 py-0.5 rounded text-[8px] uppercase tracking-wider">
+                                    JÁ IMPORTADO
+                                  </span>
+                                )
                               ) : (
                                 <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-700 font-extrabold px-2 py-0.5 rounded text-[8px] uppercase tracking-wider">
                                   MATCH ENCONTRADO
@@ -1074,14 +1385,36 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                           {/* Seção de Ações e Correspondências */}
                           <div className="shrink-0 flex items-stretch md:items-center justify-end gap-2 text-right">
                             {duplicate ? (
-                              <div className="bg-slate-100 border border-slate-200/80 rounded-2xl p-3 text-left w-full md:w-80">
-                                <span className="text-[8px] font-black uppercase tracking-wider text-slate-500 block">
-                                  Dispositivo de Segurança contra Duplicata
-                                </span>
-                                <span className="text-[10px] text-slate-500 font-semibold block leading-tight mt-1">
-                                  Lançamento com mesmo FITID ou hash de dados já existe no sistema para esta mesma conta bancária.
-                                </span>
-                              </div>
+                              isSplitTransaction ? (
+                                <div className="bg-purple-50/70 border border-purple-200/80 rounded-2xl p-3.5 space-y-2 text-left w-full md:w-80">
+                                  <div className="flex items-center justify-between text-[9px] font-black uppercase tracking-wider text-purple-700 border-b border-purple-200/60 pb-1.5">
+                                    <span>Partes da Divisão</span>
+                                    <span>Total: {formatCurrency(ledgerTxsForFitId.reduce((acc, t) => acc + Math.abs(t.amount), 0))}</span>
+                                  </div>
+                                  <div className="space-y-1.5 max-h-36 overflow-y-auto">
+                                    {ledgerTxsForFitId.map((partTx, idx) => (
+                                      <div key={partTx.id || idx} className="flex items-center justify-between text-xs bg-white/90 p-2 rounded-xl border border-purple-100 shadow-2xs">
+                                        <div className="min-w-0 pr-2">
+                                          <p className="font-bold text-slate-800 truncate text-[11px]">{partTx.description}</p>
+                                          <p className="text-[9px] text-purple-700 font-semibold">{partTx.categoryName || 'Sem Categoria'}</p>
+                                        </div>
+                                        <span className="font-mono font-black text-slate-900 shrink-0 text-xs">
+                                          {formatCurrency(partTx.amount)}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="bg-slate-100 border border-slate-200/80 rounded-2xl p-3 text-left w-full md:w-80">
+                                  <span className="text-[8px] font-black uppercase tracking-wider text-slate-500 block">
+                                    Dispositivo de Segurança contra Duplicata
+                                  </span>
+                                  <span className="text-[10px] text-slate-500 font-semibold block leading-tight mt-1">
+                                    Lançamento com mesmo FITID ou hash de dados já existe no sistema para esta mesma conta bancária.
+                                  </span>
+                                </div>
+                              )
                             ) : (
                               /* 2. Visual de cada transação com match automático */
                               <div className="bg-emerald-55 bg-emerald-50 text-emerald-600 rounded-2xl p-4 text-left w-full md:w-[410px] space-y-3">
@@ -1145,16 +1478,26 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
             className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-fadeIn"
             onClick={() => setActiveNewTx(null)}
           />
-          <div className="relative bg-white w-full max-w-md rounded-[28px] shadow-2xl border border-slate-100 animate-fadeIn flex flex-col max-h-[92vh] overflow-hidden">
+          <div className={`relative bg-white w-full ${reconcileType === 'DIVIDIR' ? 'max-w-lg' : 'max-w-md'} rounded-[28px] shadow-2xl border border-slate-100 animate-fadeIn flex flex-col max-h-[92vh] overflow-hidden transition-all`}>
             
             {/* Header */}
             <div className="px-6 pt-6 pb-4 border-b border-slate-100 flex items-start justify-between">
               <div>
                 <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight flex items-center gap-2">
-                  <Plus className="w-4 h-4 text-emerald-500" /> Criar Lançamento Reconciliado
+                  {reconcileType === 'DIVIDIR' ? (
+                    <>
+                      <Scissors className="w-4 h-4 text-purple-600" /> Dividir Lançamento Reconciliado
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-4 h-4 text-emerald-500" /> Criar Lançamento Reconciliado
+                    </>
+                  )}
                 </h3>
                 <p className="text-[10px] text-slate-400 uppercase font-black tracking-wider mt-0.5">
-                  Selecione se é um lançamento normal ou transferência interna
+                  {reconcileType === 'DIVIDIR'
+                    ? 'Divida o valor em múltiplos lançamentos com categorias distintas'
+                    : 'Selecione se é um lançamento normal ou transferência interna'}
                 </p>
               </div>
               <button
@@ -1200,11 +1543,11 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                   <Tag className="w-4 h-4 text-purple-500" />
                   <span className="text-[11px] font-black text-slate-800 uppercase tracking-wider">Tipo de Lançamento</span>
                 </div>
-                <div className="flex bg-white border border-slate-200 p-1 rounded-xl">
+                <div className="flex bg-white border border-slate-200 p-1 rounded-xl gap-1">
                   <button
                     type="button"
                     onClick={() => setReconcileType('NORMAL')}
-                    className={`flex-1 py-2.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all ${
+                    className={`flex-1 py-2.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all cursor-pointer ${
                       reconcileType === 'NORMAL'
                         ? 'bg-emerald-500 text-white shadow-sm'
                         : 'text-slate-400 hover:text-slate-600'
@@ -1219,7 +1562,7 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                       const firstCounterpart = accounts.find(a => a.id !== selectedAccountId);
                       if (firstCounterpart) setRecTfCounterpartId(firstCounterpart.id);
                     }}
-                    className={`flex-1 py-2.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all ${
+                    className={`flex-1 py-2.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all cursor-pointer ${
                       reconcileType === 'TRANSFERENCIA'
                         ? 'bg-blue-500 text-white shadow-sm'
                         : 'text-slate-400 hover:text-slate-600'
@@ -1227,12 +1570,187 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                   >
                     Transferência
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (splitParts.length < 2 && activeNewTx) {
+                        const target = Math.abs(activeNewTx.amount);
+                        const half = Math.round((target / 2) * 100) / 100;
+                        const rest = Math.round((target - half) * 100) / 100;
+                        setSplitParts([
+                          {
+                            id: `part_${Date.now()}_1`,
+                            description: activeNewTx.description,
+                            categoryId: activeNewTx.suggestedCategoryId || '',
+                            amount: half
+                          },
+                          {
+                            id: `part_${Date.now()}_2`,
+                            description: activeNewTx.description,
+                            categoryId: '',
+                            amount: rest
+                          }
+                        ]);
+                      }
+                      setReconcileType('DIVIDIR');
+                    }}
+                    className={`flex-1 py-2.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                      reconcileType === 'DIVIDIR'
+                        ? 'bg-purple-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-slate-600'
+                    }`}
+                  >
+                    Dividir
+                  </button>
                 </div>
               </div>
 
-              {/* Card 3 — Categoria ou Conta Contrapartida */}
+              {/* Card 3 — Categoria, Conta Contrapartida ou Divisão (Rateio) */}
               <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 space-y-3">
-                {reconcileType === 'NORMAL' ? (
+                {reconcileType === 'DIVIDIR' ? (
+                  <>
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-2">
+                        <Scissors className="w-4 h-4 text-purple-600" />
+                        <span className="text-[11px] font-black text-slate-800 uppercase tracking-wider">Divisão do Lançamento (Rateio)</span>
+                      </div>
+                      <span className="text-[10px] font-black text-purple-700 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-lg uppercase tracking-wider">
+                        {splitParts.length} partes
+                      </span>
+                    </div>
+
+                    <div className="space-y-3">
+                      {splitParts.map((part, idx) => (
+                        <div key={part.id} className="bg-white rounded-2xl p-3.5 border border-slate-200/80 space-y-2.5 shadow-2xs text-left">
+                          <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
+                            <span className="text-[10px] font-black text-purple-700 uppercase tracking-wider">
+                              Parte {idx + 1}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveSplitPart(part.id)}
+                              disabled={splitParts.length <= 2}
+                              className="text-slate-400 hover:text-rose-500 disabled:opacity-20 disabled:hover:text-slate-400 transition-colors p-1 cursor-pointer"
+                              title={splitParts.length <= 2 ? "Mínimo de 2 partes necessárias" : "Remover esta parte"}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+
+                          {/* Descrição da parte */}
+                          <div>
+                            <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">
+                              Descrição da Parte
+                            </label>
+                            <input
+                              type="text"
+                              value={part.description}
+                              onChange={(e) => handleUpdateSplitPart(part.id, { description: e.target.value })}
+                              placeholder="Ex: Pagamento Fornecedor A"
+                              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+                              required
+                            />
+                          </div>
+
+                          {/* Grid Categoria e Valor */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <div>
+                              <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">
+                                Categoria
+                              </label>
+                              <select
+                                value={part.categoryId}
+                                onChange={(e) => handleUpdateSplitPart(part.id, { categoryId: e.target.value })}
+                                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-500/20 cursor-pointer"
+                                required
+                              >
+                                <option value="">Selecione a Categoria...</option>
+                                {Object.keys(groupedCats.items).map((groupName) => {
+                                  const groupItems = groupedCats.items[groupName] || [];
+                                  return (
+                                    <optgroup key={groupName} label={groupName.toUpperCase()}>
+                                      {groupItems.map(c => (
+                                        <option key={c.id} value={c.id}>
+                                          {c.name}
+                                        </option>
+                                      ))}
+                                    </optgroup>
+                                  );
+                                })}
+                              </select>
+                            </div>
+
+                            <div>
+                              <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">
+                                Valor (R$)
+                              </label>
+                              <div className="relative">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[11px] font-black text-slate-400 select-none">R$</span>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={part.amount}
+                                  onChange={(e) => handleUpdateSplitPart(part.id, { amount: e.target.value === '' ? '' : parseFloat(e.target.value) || 0 })}
+                                  placeholder="0,00"
+                                  className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-500/20 text-right"
+                                  required
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+
+                      {/* Botão Adicionar Divisão */}
+                      <button
+                        type="button"
+                        onClick={handleAddSplitPart}
+                        className="w-full py-2.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 border-dashed rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> Adicionar divisão
+                      </button>
+
+                      {/* Resumo de Conferência de Valor */}
+                      {(() => {
+                        const totalSplit = splitParts.reduce((acc, p) => acc + (typeof p.amount === 'number' ? p.amount : (parseFloat(p.amount) || 0)), 0);
+                        const targetAmount = Math.abs(activeNewTx.amount);
+                        const diff = targetAmount - totalSplit;
+                        const isSplitValid = Math.abs(diff) <= 0.012;
+
+                        return (
+                          <div className={`p-3.5 rounded-2xl border transition-all ${
+                            isSplitValid 
+                              ? 'bg-emerald-50/80 border-emerald-200 text-emerald-800' 
+                              : 'bg-rose-50/80 border-rose-200 text-rose-800'
+                          }`}>
+                            <div className="flex items-center justify-between text-xs font-bold">
+                              <span>Total das partes:</span>
+                              <span className="font-mono font-black text-sm">{formatCurrency(totalSplit)}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-[11px] text-slate-500 font-semibold mt-1">
+                              <span>Valor do extrato:</span>
+                              <span className="font-mono">{formatCurrency(targetAmount)}</span>
+                            </div>
+                            <div className="pt-2 mt-2 border-t border-current/10 flex items-center justify-between text-xs font-black">
+                              {isSplitValid ? (
+                                <span className="flex items-center gap-1 text-emerald-700">
+                                  <CheckCircle2 className="w-4 h-4" /> Total confere com o extrato
+                                </span>
+                              ) : (
+                                <span className="flex items-center gap-1 text-rose-700">
+                                  <AlertCircle className="w-4 h-4" /> 
+                                  {diff > 0 
+                                    ? `Faltam ${formatCurrency(Math.abs(diff))} para fechar` 
+                                    : `Excedeu ${formatCurrency(Math.abs(diff))} do extrato`}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </>
+                ) : reconcileType === 'NORMAL' ? (
                   <>
                     <div className="flex items-center gap-2 mb-1">
                       <Tag className="w-4 h-4 text-amber-500" />
@@ -1312,22 +1830,37 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
             </div>
 
             {/* Footer com botões */}
-            <div className="px-6 pb-6 pt-4 border-t border-slate-100 flex flex-col gap-3">
-              <button
-                onClick={() => handleCreateAndConciliate(activeNewTx)}
-                disabled={reconcileType === 'NORMAL' ? !selectedCatId : !recTfCounterpartId}
-                className="w-full py-3.5 bg-emerald-600 text-white rounded-2xl font-black uppercase tracking-widest text-xs shadow-lg shadow-emerald-500/20 hover:bg-emerald-700 transition-all hover:scale-[1.01] active:scale-95 disabled:opacity-40 disabled:scale-100 cursor-pointer"
-              >
-                Confirmar e Registrar
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveNewTx(null)}
-                className="w-full py-3.5 bg-slate-100 text-slate-600 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-slate-200 transition-all cursor-pointer"
-              >
-                Voltar
-              </button>
-            </div>
+            {(() => {
+              const isSplitValid = reconcileType === 'DIVIDIR' && 
+                splitParts.length >= 2 &&
+                splitParts.every(p => p.description.trim().length > 0 && !!p.categoryId && Number(p.amount) > 0) &&
+                Math.abs(Math.abs(activeNewTx.amount) - splitParts.reduce((acc, p) => acc + (Number(p.amount) || 0), 0)) <= 0.012;
+
+              const isDisabled = reconcileType === 'NORMAL' 
+                ? !selectedCatId 
+                : reconcileType === 'TRANSFERENCIA' 
+                  ? !recTfCounterpartId 
+                  : !isSplitValid;
+
+              return (
+                <div className="px-6 pb-6 pt-4 border-t border-slate-100 flex flex-col gap-3">
+                  <button
+                    onClick={() => handleCreateAndConciliate(activeNewTx)}
+                    disabled={isDisabled}
+                    className="w-full py-3.5 bg-emerald-600 text-white rounded-2xl font-black uppercase tracking-widest text-xs shadow-lg shadow-emerald-500/20 hover:bg-emerald-700 transition-all hover:scale-[1.01] active:scale-95 disabled:opacity-40 disabled:scale-100 cursor-pointer"
+                  >
+                    {reconcileType === 'DIVIDIR' ? `Confirmar Divisão (${splitParts.length} partes)` : 'Confirmar e Registrar'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveNewTx(null)}
+                    className="w-full py-3.5 bg-slate-100 text-slate-600 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-slate-200 transition-all cursor-pointer"
+                  >
+                    Voltar
+                  </button>
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}
