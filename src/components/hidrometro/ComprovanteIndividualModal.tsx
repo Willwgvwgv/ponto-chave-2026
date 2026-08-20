@@ -279,18 +279,12 @@ export const ComprovanteIndividualModal: React.FC<ComprovanteIndividualModalProp
             >
               {/* Slip Header */}
               <div className="flex items-center justify-between border-b border-blue-100 pb-4">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="w-6 h-6 rounded-lg bg-blue-600 text-white font-black text-xs flex items-center justify-center">
-                      F
-                    </span>
-                    <span className="font-black text-slate-900 text-sm uppercase tracking-wider">
-                      Fidelité Imobiliária
-                    </span>
-                  </div>
-                  <p className="text-[10px] text-blue-600 font-bold uppercase tracking-widest mt-0.5">
-                    Demonstrativo de Consumo de Água
-                  </p>
+                <div className="flex items-center">
+                  <img 
+                    src="/logo-fidelite.svg" 
+                    alt="Fidelité Negócios Imobiliários" 
+                    className="h-10 sm:h-12 w-auto object-contain"
+                  />
                 </div>
 
                 <div className="text-right">

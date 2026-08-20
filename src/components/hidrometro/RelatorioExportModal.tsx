@@ -103,7 +103,7 @@ export const RelatorioExportModal: React.FC<RelatorioExportModalProps> = ({
 
   if (!isOpen || !fatura) return null;
 
-  // Direct PDF generation (100% reliable, never blank, high definition)
+  // Direct PDF generation (100% reliable, multi-page, high definition)
   const handleExportPDF = async () => {
     if (!printRef.current) return;
     setIsGeneratingPDF(true);
@@ -112,7 +112,15 @@ export const RelatorioExportModal: React.FC<RelatorioExportModalProps> = ({
     try {
       const element = printRef.current;
       const originalScrollTop = element.scrollTop;
+      const originalOverflow = element.style.overflow;
+      const originalHeight = element.style.height;
+      const originalMaxHeight = element.style.maxHeight;
+
+      // Expand container so html2canvas captures entire content, not just viewport
       element.scrollTop = 0;
+      element.style.overflow = "visible";
+      element.style.height = "auto";
+      element.style.maxHeight = "none";
 
       // Render high quality canvas
       const canvas = await html2canvas(element, {
@@ -123,9 +131,16 @@ export const RelatorioExportModal: React.FC<RelatorioExportModalProps> = ({
         backgroundColor: "#ffffff",
         scrollX: 0,
         scrollY: 0,
-        windowWidth: 1200
+        width: element.scrollWidth,
+        height: element.scrollHeight,
+        windowWidth: element.scrollWidth,
+        windowHeight: element.scrollHeight
       });
 
+      // Restore container styles
+      element.style.overflow = originalOverflow;
+      element.style.height = originalHeight;
+      element.style.maxHeight = originalMaxHeight;
       element.scrollTop = originalScrollTop;
 
       const imgData = canvas.toDataURL("image/png");
@@ -140,19 +155,14 @@ export const RelatorioExportModal: React.FC<RelatorioExportModalProps> = ({
       const imgWidth = pdfWidth;
       const imgHeight = (canvas.height * pdfWidth) / canvas.width;
 
-      let heightLeft = imgHeight;
-      let position = 0;
+      const totalPages = Math.ceil(imgHeight / pdfHeight);
 
-      // Add first page
-      pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight, undefined, "FAST");
-      heightLeft -= pdfHeight;
-
-      // Add subsequent pages if content exceeds A4 height
-      while (heightLeft > 0) {
-        position = -(imgHeight - heightLeft);
-        pdf.addPage();
+      for (let i = 0; i < totalPages; i++) {
+        if (i > 0) {
+          pdf.addPage();
+        }
+        const position = -(i * pdfHeight);
         pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight, undefined, "FAST");
-        heightLeft -= pdfHeight;
       }
 
       const cleanBuildingName = fatura.edificioNome.replace(/[^a-zA-Z0-9_-]/g, "_");
@@ -447,43 +457,21 @@ export const RelatorioExportModal: React.FC<RelatorioExportModalProps> = ({
             ref={printRef} 
             className="print-area flex-1 overflow-y-auto p-6 sm:p-10 space-y-8 custom-scrollbar print:overflow-visible print:p-6 print:m-0 print:space-y-6 text-slate-900 bg-white"
           >
-            {/* 1. Official Header Fidelité Imobiliária */}
-            <div className="border-b-2 border-slate-900 pb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-              <div className="flex items-center gap-3.5">
-                <div className="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center font-black text-xl shadow-md">
-                  F
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight uppercase">
-                      FIDELITÉ IMOBILIÁRIA
-                    </h1>
-                    <span className="px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200">
-                      Gestão de Condomínios
-                    </span>
-                  </div>
-                  <p className="text-[11px] uppercase font-bold tracking-widest text-slate-500 mt-0.5">
-                    Demonstrativo Oficial de Medição & Rateio de Água Individualizada
-                  </p>
-                </div>
+            {/* 1. Official Header with Fidelité Logo */}
+            <div className="border-b-2 border-slate-900/80 pb-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-center">
+                <img 
+                  src="/logo-fidelite.svg" 
+                  alt="Fidelité Negócios Imobiliários" 
+                  className="h-16 sm:h-20 w-auto object-contain"
+                />
               </div>
 
-              <div className="text-left sm:text-right text-xs text-slate-600 space-y-0.5 bg-slate-50 sm:bg-transparent p-3 sm:p-0 rounded-2xl border sm:border-0 border-slate-200 w-full sm:w-auto">
-                <p><strong>Data da Medição:</strong> {new Date(fatura.dataLeitura + "T12:00:00").toLocaleDateString("pt-BR")}</p>
-                <p><strong>Mês de Referência:</strong> <span className="font-bold text-blue-700">{fatura.mesAnoTexto || fatura.mesReferencia}</span></p>
-                <p><strong>Total de Unidades:</strong> {fatura.leituras?.length || 0} apartamentos</p>
-              </div>
-            </div>
-
-            {/* Building & Billing Identification */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50 p-4 sm:p-5 rounded-2xl border border-slate-200 text-xs">
-              <div className="space-y-1">
-                <p><span className="font-bold text-slate-500 uppercase text-[10px] tracking-wider block">Condomínio / Edifício:</span> <strong className="text-slate-900 text-sm">{fatura.edificioNome}</strong></p>
-                <p><span className="font-bold text-slate-500 uppercase text-[10px] tracking-wider block">Administradora Responsável:</span> Fidelité Imobiliária</p>
-              </div>
-              <div className="space-y-1 sm:text-right">
-                <p><span className="font-bold text-slate-500 uppercase text-[10px] tracking-wider block">Critério de Cálculo:</span> Rateio Fidedigno ao Consumo Medido nos Hidrômetros</p>
-                <p><span className="font-bold text-slate-500 uppercase text-[10px] tracking-wider block">Status do Demonstrativo:</span> <span className="font-bold text-emerald-700 uppercase">{fatura.status === "fechado" ? "Fechado / Aprovado" : "Conferido & Auditado"}</span></p>
+              <div className="text-left sm:text-right text-xs text-slate-700 space-y-1 bg-slate-50 sm:bg-transparent p-3 sm:p-0 rounded-2xl border sm:border-0 border-slate-200 w-full sm:w-auto">
+                <p><span className="text-slate-500 font-medium">Condomínio / Edifício:</span> <strong className="text-slate-900 text-sm">{fatura.edificioNome}</strong></p>
+                <p><span className="text-slate-500 font-medium">Mês de Referência:</span> <strong className="text-blue-700">{fatura.mesAnoTexto || fatura.mesReferencia}</strong></p>
+                <p><span className="text-slate-500 font-medium">Data da Medição:</span> <strong>{new Date(fatura.dataLeitura + "T12:00:00").toLocaleDateString("pt-BR")}</strong></p>
+                <p><span className="text-slate-500 font-medium">Total de Unidades:</span> <strong>{fatura.leituras?.length || 0} apartamentos</strong></p>
               </div>
             </div>
 
