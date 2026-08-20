@@ -27,6 +27,7 @@ import { BankAccount, FinancialCategory, FinancialTransaction } from '../../type
 import { db, doc, deleteDoc } from '../../firebase';
 import { toast } from 'sonner';
 import { ConfirmModal } from '../ui/ConfirmModal';
+import { CurrencyInput } from '../ui/CurrencyInput';
 
 interface LancamentosTabProps {
   accounts: BankAccount[];
@@ -293,6 +294,108 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
   const [txDate, setTxDate] = useState(new Date().toISOString().split('T')[0]);
   const [txDesc, setTxDesc] = useState('');
   const [txNotes, setTxNotes] = useState('');
+
+  // Autocomplete de Descrição no Lançar Movimentação
+  const [isDescDropdownOpen, setIsDescDropdownOpen] = useState(false);
+  const [descHighlightedIndex, setDescHighlightedIndex] = useState(-1);
+
+  const normalizeDesc = (str: string) => {
+    if (!str) return '';
+    return str
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim();
+  };
+
+  // Sugestões inteligentes baseadas no histórico real de transactions
+  const descriptionSuggestions = useMemo(() => {
+    const query = normalizeDesc(txDesc);
+    if (query.length < 2) return [];
+
+    const map = new Map<string, {
+      original: string;
+      count: number;
+      categoryIds: Map<string, number>;
+      typeCount: { RECEITA: number; DESPESA: number };
+      lastDate: string;
+    }>();
+
+    for (const t of transactions) {
+      if (!t.description) continue;
+      const cleanDesc = t.description.trim();
+      if (!cleanDesc) continue;
+      const norm = normalizeDesc(cleanDesc);
+
+      if (norm.includes(query)) {
+        const existing = map.get(norm);
+        if (!existing) {
+          const catMap = new Map<string, number>();
+          if (t.categoryId) catMap.set(t.categoryId, 1);
+          map.set(norm, {
+            original: cleanDesc,
+            count: 1,
+            categoryIds: catMap,
+            typeCount: {
+              RECEITA: t.type === 'RECEITA' ? 1 : 0,
+              DESPESA: t.type === 'DESPESA' ? 1 : 0
+            },
+            lastDate: t.date || ''
+          });
+        } else {
+          existing.count += 1;
+          if (t.categoryId) {
+            existing.categoryIds.set(t.categoryId, (existing.categoryIds.get(t.categoryId) || 0) + 1);
+          }
+          if (t.type === 'RECEITA') existing.typeCount.RECEITA += 1;
+          if (t.type === 'DESPESA') existing.typeCount.DESPESA += 1;
+          if (t.date && t.date > existing.lastDate) {
+            existing.lastDate = t.date;
+          }
+        }
+      }
+    }
+
+    // Retorna ordenado por contagem de uso e depois data mais recente
+    return Array.from(map.values())
+      .map(item => {
+        // Encontrar categoria predominante
+        let topCatId = '';
+        let maxCatCount = 0;
+        item.categoryIds.forEach((cnt, catId) => {
+          if (cnt > maxCatCount) {
+            maxCatCount = cnt;
+            topCatId = catId;
+          }
+        });
+        const predominantType: 'RECEITA' | 'DESPESA' = item.typeCount.RECEITA >= item.typeCount.DESPESA ? 'RECEITA' : 'DESPESA';
+        return {
+          original: item.original,
+          count: item.count,
+          topCatId,
+          predominantType,
+          lastDate: item.lastDate
+        };
+      })
+      .sort((a, b) => b.count - a.count || b.lastDate.localeCompare(a.lastDate))
+      .slice(0, 6);
+  }, [transactions, txDesc]);
+
+  const handleSelectDescSuggestion = (suggestion: { original: string; topCatId: string; predominantType: 'RECEITA' | 'DESPESA' }) => {
+    setTxDesc(suggestion.original);
+    if (suggestion.topCatId) {
+      const cat = categories.find(c => c.id === suggestion.topCatId);
+      if (cat) {
+        setTxCategoryId(cat.id);
+        const account = accounts.find(a => a.id === txAccountId);
+        if (account?.accountType !== 'CREDITO' && cat.type) {
+          setTxType(cat.type);
+        }
+      }
+    }
+    setIsDescDropdownOpen(false);
+    setDescHighlightedIndex(-1);
+  };
 
   // Estados de Recorrência
   const [isRecorrente, setIsRecorrente] = useState(false);
@@ -1306,13 +1409,11 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 animate-fadeIn">Valor</label>
-                    <input
-                      type="number"
-                      step="0.01"
+                    <CurrencyInput
+                      value={txAmount === '' ? '' : parseFloat(txAmount) || 0}
+                      onChange={(val) => setTxAmount(val === 0 ? '' : String(val))}
                       placeholder="R$ 0,00"
-                      value={txAmount}
-                      onChange={(e) => setTxAmount(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm font-black"
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm font-black text-slate-900"
                       required
                     />
                   </div>
@@ -1331,7 +1432,7 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Conta Origem/Destivo</label>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Conta Origem/Destino</label>
                     <select
                       value={txAccountId}
                       onChange={(e) => {
@@ -1367,16 +1468,99 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Descrição</label>
+                {/* Campo Descrição com Autocomplete Inteligente */}
+                <div className="relative">
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 flex items-center justify-between">
+                    <span>Descrição</span>
+                    {descriptionSuggestions.length > 0 && isDescDropdownOpen && (
+                      <span className="text-[9px] font-bold text-blue-500 lowercase">
+                        {descriptionSuggestions.length} sugestões (↑↓ navega, Enter escolhe)
+                      </span>
+                    )}
+                  </label>
                   <input
                     type="text"
                     placeholder="Ex: Pagamento IPTU filial ou Honorários"
                     value={txDesc}
-                    onChange={(e) => setTxDesc(e.target.value)}
+                    onChange={(e) => {
+                      setTxDesc(e.target.value);
+                      setIsDescDropdownOpen(true);
+                      setDescHighlightedIndex(-1);
+                    }}
+                    onFocus={() => {
+                      if (txDesc.trim().length >= 2) {
+                        setIsDescDropdownOpen(true);
+                      }
+                    }}
+                    onBlur={() => {
+                      // Delay para permitir o clique nas opções
+                      setTimeout(() => setIsDescDropdownOpen(false), 200);
+                    }}
+                    onKeyDown={(e) => {
+                      if (!isDescDropdownOpen || descriptionSuggestions.length === 0) return;
+
+                      if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        setDescHighlightedIndex(prev => (prev < descriptionSuggestions.length - 1 ? prev + 1 : 0));
+                      } else if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        setDescHighlightedIndex(prev => (prev > 0 ? prev - 1 : descriptionSuggestions.length - 1));
+                      } else if (e.key === 'Enter') {
+                        if (descHighlightedIndex >= 0 && descHighlightedIndex < descriptionSuggestions.length) {
+                          e.preventDefault();
+                          handleSelectDescSuggestion(descriptionSuggestions[descHighlightedIndex]);
+                        }
+                      } else if (e.key === 'Escape') {
+                        setIsDescDropdownOpen(false);
+                      }
+                    }}
                     className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm font-semibold"
                     required
                   />
+
+                  {/* Dropdown de Sugestões do Histórico */}
+                  {isDescDropdownOpen && descriptionSuggestions.length > 0 && (
+                    <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-2xl shadow-xl divide-y divide-slate-100 z-50 overflow-hidden max-h-56 overflow-y-auto animate-fadeIn">
+                      <div className="px-3.5 py-1.5 bg-slate-50 border-b border-slate-100 flex items-center justify-between text-[9px] font-black uppercase tracking-wider text-slate-400">
+                        <span>Histórico de Lançamentos</span>
+                        <span>Frequência</span>
+                      </div>
+                      {descriptionSuggestions.map((suggestion, idx) => {
+                        const isHighlighted = idx === descHighlightedIndex;
+                        const cat = categories.find(c => c.id === suggestion.topCatId);
+
+                        return (
+                          <div
+                            key={`${suggestion.original}_${idx}`}
+                            onMouseDown={(e) => {
+                              // onMouseDown dispara antes do onBlur
+                              e.preventDefault();
+                              handleSelectDescSuggestion(suggestion);
+                            }}
+                            onMouseEnter={() => setDescHighlightedIndex(idx)}
+                            className={`px-3.5 py-2.5 flex items-center justify-between gap-2 text-xs transition-colors cursor-pointer ${
+                              isHighlighted ? 'bg-blue-50/80 text-blue-900' : 'hover:bg-slate-50 text-slate-800'
+                            }`}
+                          >
+                            <div className="min-w-0 pr-2">
+                              <p className="font-bold truncate">{suggestion.original}</p>
+                              {cat && (
+                                <p className="text-[10px] text-slate-400 font-semibold flex items-center gap-1.5 mt-0.5">
+                                  <Tag className="w-3 h-3 text-slate-400 shrink-0" />
+                                  <span className="truncate">{cat.name}</span>
+                                </p>
+                              )}
+                            </div>
+                            <div className="shrink-0 text-right">
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-mono font-black bg-slate-100 text-slate-600">
+                                {suggestion.count}x
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -1565,13 +1749,11 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
               <div className="flex-1 overflow-y-auto px-8 py-6 space-y-4">
                 <div>
                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Valor da Transferência</label>
-                  <input
-                    type="number"
-                    step="0.01"
+                  <CurrencyInput
+                    value={tfAmount === '' ? '' : parseFloat(tfAmount) || 0}
+                    onChange={(val) => setTfAmount(val === 0 ? '' : String(val))}
                     placeholder="R$ 0,00"
-                    value={tfAmount}
-                    onChange={(e) => setTfAmount(e.target.value)}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm font-black"
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm font-black text-slate-900"
                     required
                   />
                 </div>
@@ -1741,13 +1923,11 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 animate-fadeIn">Valor</label>
-                        <input
-                          type="number"
-                          step="0.01"
+                        <CurrencyInput
+                          value={editAmount === '' ? '' : parseFloat(editAmount) || 0}
+                          onChange={(val) => setEditAmount(val === 0 ? '' : String(val))}
                           placeholder="R$ 0,00"
-                          value={editAmount}
-                          onChange={(e) => setEditAmount(e.target.value)}
-                          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm font-black"
+                          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm font-black text-slate-900"
                           required
                         />
                       </div>
@@ -1820,13 +2000,11 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 animate-fadeIn">Valor</label>
-                        <input
-                          type="number"
-                          step="0.01"
+                        <CurrencyInput
+                          value={editAmount === '' ? '' : parseFloat(editAmount) || 0}
+                          onChange={(val) => setEditAmount(val === 0 ? '' : String(val))}
                           placeholder="R$ 0,00"
-                          value={editAmount}
-                          onChange={(e) => setEditAmount(e.target.value)}
-                          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm font-black"
+                          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm font-black text-slate-900"
                           required
                         />
                       </div>

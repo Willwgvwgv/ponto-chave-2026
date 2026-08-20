@@ -21,6 +21,7 @@ import { BankAccount, FinancialCategory, FinancialTransaction } from '../../type
 import { parseBankStatement, ParsedOFXTransaction, parseLedgerBalance, LedgerBalance } from './ofxParser';
 import { db, doc, updateDoc, isDemoMode } from '../../firebase';
 import { toast } from 'sonner';
+import { CurrencyInput } from '../ui/CurrencyInput';
 
 export interface AutoParsedOFXTransaction extends ParsedOFXTransaction {
   suggestedCategoryId?: string;
@@ -981,11 +982,11 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                               <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 text-left">Valor</label>
                               <div className="relative">
                                 <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400 select-none">R$</span>
-                                <input
-                                  type="number"
-                                  step="0.01"
+                                <CurrencyInput
                                   value={tempAmount}
-                                  onChange={(e) => setTempAmount(parseFloat(e.target.value) || 0)}
+                                  onChange={(val) => setTempAmount(val)}
+                                  showPrefix={false}
+                                  placeholder="0,00"
                                   className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-black text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                                 />
                               </div>
@@ -1227,12 +1228,12 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                                           {isSelected ? (
                                             <div className="flex items-center gap-1 bg-white border border-blue-300 rounded-lg px-2 py-1 shadow-xs">
                                               <span className="text-[10px] font-bold text-slate-400 select-none">R$</span>
-                                              <input
-                                                type="number"
-                                                step="0.01"
+                                              <CurrencyInput
                                                 value={currentAmount}
-                                                onChange={(e) => handleUpdateCandidateAmount(item.fitId, candidate.id, parseFloat(e.target.value) || 0)}
-                                                className="w-20 text-xs font-mono font-black text-slate-900 focus:outline-none text-right"
+                                                onChange={(val) => handleUpdateCandidateAmount(item.fitId, candidate.id, val)}
+                                                showPrefix={false}
+                                                placeholder="0,00"
+                                                className="w-20 text-xs font-mono font-black text-slate-900 focus:outline-none text-right bg-transparent"
                                               />
                                             </div>
                                           ) : (
@@ -1686,11 +1687,10 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                               </label>
                               <div className="relative">
                                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[11px] font-black text-slate-400 select-none">R$</span>
-                                <input
-                                  type="number"
-                                  step="0.01"
+                                <CurrencyInput
                                   value={part.amount}
-                                  onChange={(e) => handleUpdateSplitPart(part.id, { amount: e.target.value === '' ? '' : parseFloat(e.target.value) || 0 })}
+                                  onChange={(val) => handleUpdateSplitPart(part.id, { amount: val })}
+                                  showPrefix={false}
                                   placeholder="0,00"
                                   className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-500/20 text-right"
                                   required
