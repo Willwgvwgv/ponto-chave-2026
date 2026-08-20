@@ -15,7 +15,11 @@ import {
   Search,
   RefreshCw,
   Scissors,
-  Trash2
+  Trash2,
+  ArrowRight,
+  ArrowLeftRight,
+  ArrowUpRight,
+  ArrowDownRight
 } from 'lucide-react';
 import { BankAccount, FinancialCategory, FinancialTransaction } from '../../types';
 import { parseBankStatement, ParsedOFXTransaction, parseLedgerBalance, LedgerBalance } from './ofxParser';
@@ -1476,100 +1480,126 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
       {activeNewTx && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div
-            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-fadeIn"
+            className="absolute inset-0 bg-slate-900/50 backdrop-blur-xs animate-fadeIn"
             onClick={() => setActiveNewTx(null)}
           />
-          <div className={`relative bg-white w-full ${reconcileType === 'DIVIDIR' ? 'max-w-lg' : 'max-w-md'} rounded-[28px] shadow-2xl border border-slate-100 animate-fadeIn flex flex-col max-h-[92vh] overflow-hidden transition-all`}>
+          <div className={`relative bg-white w-full ${reconcileType === 'DIVIDIR' || reconcileType === 'TRANSFERENCIA' ? 'max-w-lg' : 'max-w-md'} rounded-[28px] shadow-2xl border border-slate-100 animate-fadeIn flex flex-col max-h-[92vh] overflow-hidden transition-all`}>
             
             {/* Header */}
-            <div className="px-6 pt-6 pb-4 border-b border-slate-100 flex items-start justify-between">
+            <div className="px-6 pt-5 pb-4 border-b border-slate-100 flex items-start justify-between bg-slate-50/50">
               <div>
                 <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight flex items-center gap-2">
                   {reconcileType === 'DIVIDIR' ? (
                     <>
-                      <Scissors className="w-4 h-4 text-purple-600" /> Dividir Lançamento Reconciliado
+                      <Scissors className="w-4 h-4 text-purple-600" /> Dividir Lançamento (Rateio)
+                    </>
+                  ) : reconcileType === 'TRANSFERENCIA' ? (
+                    <>
+                      <ArrowLeftRight className="w-4 h-4 text-blue-600" /> Transferência Entre Contas
                     </>
                   ) : (
                     <>
-                      <Plus className="w-4 h-4 text-emerald-500" /> Criar Lançamento Reconciliado
+                      <Plus className="w-4 h-4 text-emerald-600" /> Criar Lançamento Reconciliado
                     </>
                   )}
                 </h3>
                 <p className="text-[10px] text-slate-400 uppercase font-black tracking-wider mt-0.5">
                   {reconcileType === 'DIVIDIR'
-                    ? 'Divida o valor em múltiplos lançamentos com categorias distintas'
-                    : 'Selecione se é um lançamento normal ou transferência interna'}
+                    ? 'Distribua o valor do extrato entre múltiplos lançamentos e categorias'
+                    : reconcileType === 'TRANSFERENCIA'
+                      ? 'Transfira valores entre contas com conciliação automática nas duas pontas'
+                      : 'Selecione a categoria para criar e conciliar imediatamente'}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setActiveNewTx(null)}
-                className="p-1.5 hover:bg-slate-100 rounded-full transition-all cursor-pointer ml-4 shrink-0"
+                className="p-1.5 hover:bg-slate-200/60 rounded-full transition-all cursor-pointer ml-4 shrink-0 text-slate-400 hover:text-slate-600"
               >
-                <X className="w-4 h-4 text-slate-400" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
             {/* Scrollable body */}
             <div className="px-6 py-5 overflow-y-auto flex-1 space-y-4">
 
-              {/* Card 1 — Dados da transação */}
-              <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 space-y-2">
-                <div className="flex items-center gap-2 mb-1">
-                  <FileText className="w-4 h-4 text-blue-500" />
-                  <span className="text-[11px] font-black text-slate-800 uppercase tracking-wider">Dados do Extrato</span>
+              {/* Card 1 — Dados do Extrato (Fonte da Verdade) */}
+              <div className="bg-slate-900 text-white rounded-2xl p-4 border border-slate-800 shadow-md space-y-3 relative overflow-hidden">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-3.5 h-3.5 text-blue-400" />
+                    <span className="text-[10px] font-black text-slate-300 uppercase tracking-wider">
+                      Dados do Extrato Bancário
+                    </span>
+                  </div>
+                  {activeNewTx.amount < 0 ? (
+                    <span className="px-2 py-0.5 rounded-md bg-rose-500/20 text-rose-300 border border-rose-500/30 text-[9px] font-black uppercase tracking-wider flex items-center gap-1">
+                      <ArrowDownRight className="w-3 h-3 text-rose-400" /> Saída / Débito
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[9px] font-black uppercase tracking-wider flex items-center gap-1">
+                      <ArrowUpRight className="w-3 h-3 text-emerald-400" /> Entrada / Crédito
+                    </span>
+                  )}
                 </div>
-                <div className="space-y-1 text-xs text-slate-600">
-                  <p><span className="font-black text-slate-500 uppercase text-[10px] tracking-wide">Descrição:</span><br />
-                    <span className="font-semibold text-slate-800 leading-snug block mt-0.5">{activeNewTx.description}</span>
+
+                <div>
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-0.5">Descrição</span>
+                  <p className="font-bold text-white text-xs leading-snug break-words">
+                    {activeNewTx.description}
                   </p>
-                  <div className="flex gap-6 pt-1">
-                    <div>
-                      <span className="font-black text-slate-500 uppercase text-[10px] tracking-wide">Valor</span>
-                      <p className="font-mono font-black text-slate-900 text-sm">{formatCurrency(activeNewTx.amount)}</p>
-                    </div>
-                    <div>
-                      <span className="font-black text-slate-500 uppercase text-[10px] tracking-wide">Data</span>
-                      <p className="font-mono font-semibold text-slate-700 text-sm">
-                        {new Date(activeNewTx.date + 'T00:00:00').toLocaleDateString('pt-BR')}
-                      </p>
-                    </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 pt-2.5 border-t border-slate-800">
+                  <div>
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Valor</span>
+                    <p className={`font-mono text-sm font-black ${activeNewTx.amount < 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                      {formatCurrency(activeNewTx.amount)}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Data</span>
+                    <p className="font-mono text-xs font-bold text-slate-200 mt-0.5">
+                      {new Date(activeNewTx.date + 'T00:00:00').toLocaleDateString('pt-BR')}
+                    </p>
                   </div>
                 </div>
               </div>
 
-              {/* Card 2 — Tipo de lançamento (toggle) */}
-              <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 space-y-3">
-                <div className="flex items-center gap-2 mb-1">
-                  <Tag className="w-4 h-4 text-purple-500" />
-                  <span className="text-[11px] font-black text-slate-800 uppercase tracking-wider">Tipo de Lançamento</span>
+              {/* Card 2 — Tipo de lançamento (toggle com ícones) */}
+              <div className="bg-slate-50 rounded-2xl p-3.5 border border-slate-200/80 space-y-2">
+                <div className="flex items-center gap-2">
+                  <Tag className="w-3.5 h-3.5 text-slate-500" />
+                  <span className="text-[10px] font-black text-slate-700 uppercase tracking-wider">Tipo de Conciliação</span>
                 </div>
-                <div className="flex bg-white border border-slate-200 p-1 rounded-xl gap-1">
+                <div className="grid grid-cols-3 bg-white border border-slate-200 p-1 rounded-xl gap-1 shadow-2xs">
                   <button
                     type="button"
                     onClick={() => setReconcileType('NORMAL')}
-                    className={`flex-1 py-2.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                    className={`py-2 px-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                       reconcileType === 'NORMAL'
-                        ? 'bg-emerald-500 text-white shadow-sm'
-                        : 'text-slate-400 hover:text-slate-600'
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
                     }`}
                   >
-                    Lançamento
+                    <Tag className="w-3 h-3 shrink-0" />
+                    <span className="truncate">Lançamento</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => {
                       setReconcileType('TRANSFERENCIA');
                       const firstCounterpart = accounts.find(a => a.id !== selectedAccountId);
-                      if (firstCounterpart) setRecTfCounterpartId(firstCounterpart.id);
+                      if (firstCounterpart && !recTfCounterpartId) setRecTfCounterpartId(firstCounterpart.id);
                     }}
-                    className={`flex-1 py-2.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                    className={`py-2 px-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                       reconcileType === 'TRANSFERENCIA'
-                        ? 'bg-blue-500 text-white shadow-sm'
-                        : 'text-slate-400 hover:text-slate-600'
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
                     }`}
                   >
-                    Transferência
+                    <ArrowLeftRight className="w-3 h-3 shrink-0" />
+                    <span className="truncate">Transferência</span>
                   </button>
                   <button
                     type="button"
@@ -1595,19 +1625,20 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                       }
                       setReconcileType('DIVIDIR');
                     }}
-                    className={`flex-1 py-2.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                    className={`py-2 px-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                       reconcileType === 'DIVIDIR'
                         ? 'bg-purple-600 text-white shadow-sm'
-                        : 'text-slate-400 hover:text-slate-600'
+                        : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
                     }`}
                   >
-                    Dividir
+                    <Scissors className="w-3 h-3 shrink-0" />
+                    <span className="truncate">Dividir</span>
                   </button>
                 </div>
               </div>
 
-              {/* Card 3 — Categoria, Conta Contrapartida ou Divisão (Rateio) */}
-              <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 space-y-3">
+              {/* Card 3 — Categoria, Transferência com Fluxo de Contas ou Rateio */}
+              <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200/80 space-y-3">
                 {reconcileType === 'DIVIDIR' ? (
                   <>
                     <div className="flex items-center justify-between mb-1">
@@ -1615,7 +1646,7 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                         <Scissors className="w-4 h-4 text-purple-600" />
                         <span className="text-[11px] font-black text-slate-800 uppercase tracking-wider">Divisão do Lançamento (Rateio)</span>
                       </div>
-                      <span className="text-[10px] font-black text-purple-700 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-lg uppercase tracking-wider">
+                      <span className="text-[9px] font-black text-purple-700 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-lg uppercase tracking-wider">
                         {splitParts.length} partes
                       </span>
                     </div>
@@ -1667,23 +1698,23 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                               >
                                 <option value="">Selecione a Categoria...</option>
                                 {Object.keys(groupedCats.items).map((groupName) => {
-                                  const groupItems = groupedCats.items[groupName] || [];
-                                  return (
-                                    <optgroup key={groupName} label={groupName.toUpperCase()}>
-                                      {groupItems.map(c => (
-                                        <option key={c.id} value={c.id}>
-                                          {c.name}
-                                        </option>
-                                      ))}
-                                    </optgroup>
-                                  );
-                                })}
+                                   const groupItems = groupedCats.items[groupName] || [];
+                                   return (
+                                     <optgroup key={groupName} label={groupName.toUpperCase()}>
+                                       {groupItems.map(c => (
+                                         <option key={c.id} value={c.id}>
+                                           {c.name}
+                                         </option>
+                                       ))}
+                                     </optgroup>
+                                   );
+                                 })}
                               </select>
                             </div>
 
                             <div>
                               <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">
-                                Valor (R$)
+                                Valor
                               </label>
                               <div className="relative">
                                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[11px] font-black text-slate-400 select-none">R$</span>
@@ -1753,7 +1784,7 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                 ) : reconcileType === 'NORMAL' ? (
                   <>
                     <div className="flex items-center gap-2 mb-1">
-                      <Tag className="w-4 h-4 text-amber-500" />
+                      <Tag className="w-4 h-4 text-emerald-600" />
                       <span className="text-[11px] font-black text-slate-800 uppercase tracking-wider">Categoria Financeira</span>
                     </div>
                     <div>
@@ -1800,31 +1831,142 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                     </div>
                   </>
                 ) : (
-                  <>
-                    <div className="flex items-center gap-2 mb-1">
-                      <RefreshCw className="w-4 h-4 text-blue-500" />
-                      <span className="text-[11px] font-black text-slate-800 uppercase tracking-wider">Conta Contrapartida</span>
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">
-                        Destino / Origem da Transferência
-                      </label>
-                      <select
-                        value={recTfCounterpartId}
-                        onChange={(e) => setRecTfCounterpartId(e.target.value)}
-                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-xs font-bold text-slate-700 cursor-pointer"
-                        required
-                      >
-                        <option value="">Selecione a Conta Contrapartida...</option>
-                        {accounts.filter(a => a.id !== selectedAccountId).map(a => (
-                          <option key={a.id} value={a.id}>{a.name}</option>
-                        ))}
-                      </select>
-                      <p className="mt-2 text-[9px] text-slate-400 font-bold uppercase tracking-wide leading-relaxed">
-                        O sistema criará o lançamento de entrada e saída correspondente e pré-conciliará nas duas contas automaticamente.
-                      </p>
-                    </div>
-                  </>
+                  /* Modo TRANSFERÊNCIA — Fluxo com as Duas Contas e Seta */
+                  (() => {
+                    const isExit = activeNewTx.amount < 0;
+                    const currentAccount = accounts.find(a => a.id === selectedAccountId);
+                    const otherAccounts = accounts.filter(a => a.id !== selectedAccountId);
+
+                    // Card da Conta Atual (Extrato Conciliado)
+                    const renderCurrentAccountCard = (role: 'ORIGEM' | 'DESTINO') => (
+                      <div className={`rounded-xl p-3 border flex flex-col justify-between min-h-[92px] ${
+                        role === 'ORIGEM'
+                          ? 'bg-rose-50/70 border-rose-200/90 text-rose-950'
+                          : 'bg-emerald-50/70 border-emerald-200/90 text-emerald-950'
+                      }`}>
+                        <div>
+                          <div className="flex items-center justify-between gap-1 mb-1">
+                            <span className={`text-[9px] font-black uppercase tracking-wider flex items-center gap-1 ${
+                              role === 'ORIGEM' ? 'text-rose-700' : 'text-emerald-700'
+                            }`}>
+                              {role === 'ORIGEM' ? (
+                                <><ArrowDownRight className="w-3 h-3 text-rose-600 shrink-0" /> CONTA DE SAÍDA</>
+                              ) : (
+                                <><ArrowUpRight className="w-3 h-3 text-emerald-600 shrink-0" /> CONTA DE DESTINO</>
+                              )}
+                            </span>
+                            <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-white text-slate-600 border border-slate-200 shadow-2xs">
+                              Atual
+                            </span>
+                          </div>
+                          <p className="font-black text-slate-900 text-xs truncate" title={currentAccount?.name || 'Conta Atual'}>
+                            {currentAccount?.name || 'Conta Atual'}
+                          </p>
+                        </div>
+                        <div className="pt-1.5 mt-1 border-t border-black/5 flex items-center justify-between">
+                          <span className="text-[9px] font-bold text-slate-500 uppercase">Impacto:</span>
+                          <span className={`text-xs font-mono font-black ${
+                            role === 'ORIGEM' ? 'text-rose-600' : 'text-emerald-600'
+                          }`}>
+                            {role === 'ORIGEM' ? '-' : '+'} {formatCurrency(Math.abs(activeNewTx.amount))}
+                          </span>
+                        </div>
+                      </div>
+                    );
+
+                    // Card da Conta Contrapartida (Select)
+                    const renderCounterpartSelectCard = (role: 'ORIGEM' | 'DESTINO') => (
+                      <div className={`rounded-xl p-3 border flex flex-col justify-between min-h-[92px] ${
+                        role === 'ORIGEM'
+                          ? 'bg-slate-50 border-slate-200'
+                          : 'bg-emerald-50/40 border-emerald-200/80'
+                      }`}>
+                        <div>
+                          <div className="flex items-center justify-between gap-1 mb-1">
+                            <span className={`text-[9px] font-black uppercase tracking-wider flex items-center gap-1 ${
+                              role === 'ORIGEM' ? 'text-rose-600' : 'text-emerald-600'
+                            }`}>
+                              {role === 'ORIGEM' ? (
+                                <><ArrowDownRight className="w-3 h-3 text-rose-600 shrink-0" /> CONTA DE ORIGEM</>
+                              ) : (
+                                <><ArrowUpRight className="w-3 h-3 text-emerald-600 shrink-0" /> CONTA DE DESTINO</>
+                              )}
+                            </span>
+                            <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                              Contrapartida
+                            </span>
+                          </div>
+                          <select
+                            value={recTfCounterpartId}
+                            onChange={(e) => setRecTfCounterpartId(e.target.value)}
+                            className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer shadow-2xs"
+                            required
+                          >
+                            <option value="">Selecione a conta...</option>
+                            {otherAccounts.map(a => (
+                              <option key={a.id} value={a.id}>{a.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="pt-1.5 mt-1 border-t border-black/5 flex items-center justify-between">
+                          <span className="text-[9px] font-bold text-slate-500 uppercase">Impacto:</span>
+                          <span className={`text-xs font-mono font-black ${
+                            role === 'ORIGEM' ? 'text-rose-600' : 'text-emerald-600'
+                          }`}>
+                            {role === 'ORIGEM' ? '-' : '+'} {formatCurrency(Math.abs(activeNewTx.amount))}
+                          </span>
+                        </div>
+                      </div>
+                    );
+
+                    return (
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <ArrowLeftRight className="w-4 h-4 text-blue-600" />
+                            <span className="text-[11px] font-black text-slate-800 uppercase tracking-wider">
+                              Sentido da Transferência
+                            </span>
+                          </div>
+                          <span className="text-[9px] font-black text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-md uppercase tracking-wider">
+                            2 Lançamentos
+                          </span>
+                        </div>
+
+                        {/* Grid das duas contas com seta indicativa */}
+                        <div className="grid grid-cols-1 sm:grid-cols-[1fr,auto,1fr] items-center gap-2 p-3 bg-white border border-slate-200 rounded-2xl shadow-2xs">
+                          {isExit ? (
+                            <>
+                              {renderCurrentAccountCard('ORIGEM')}
+                              <div className="flex sm:flex-col items-center justify-center py-1 sm:py-0">
+                                <div className="w-7 h-7 rounded-full bg-blue-50 border border-blue-200 flex items-center justify-center shadow-xs">
+                                  <ArrowRight className="w-3.5 h-3.5 text-blue-600 rotate-90 sm:rotate-0" />
+                                </div>
+                              </div>
+                              {renderCounterpartSelectCard('DESTINO')}
+                            </>
+                          ) : (
+                            <>
+                              {renderCounterpartSelectCard('ORIGEM')}
+                              <div className="flex sm:flex-col items-center justify-center py-1 sm:py-0">
+                                <div className="w-7 h-7 rounded-full bg-blue-50 border border-blue-200 flex items-center justify-center shadow-xs">
+                                  <ArrowRight className="w-3.5 h-3.5 text-blue-600 rotate-90 sm:rotate-0" />
+                                </div>
+                              </div>
+                              {renderCurrentAccountCard('DESTINO')}
+                            </>
+                          )}
+                        </div>
+
+                        <div className="p-2.5 bg-blue-50/60 border border-blue-100 rounded-xl flex items-start gap-2 text-[10px] text-blue-900 font-semibold leading-relaxed">
+                          <Info className="w-3.5 h-3.5 text-blue-600 shrink-0 mt-0.5" />
+                          <span>
+                            O sistema criará o lançamento de entrada e saída correspondente e pré-conciliará nas duas contas automaticamente.
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })()
                 )}
               </div>
             </div>
@@ -1843,18 +1985,22 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                   : !isSplitValid;
 
               return (
-                <div className="px-6 pb-6 pt-4 border-t border-slate-100 flex flex-col gap-3">
+                <div className="px-6 pb-5 pt-3.5 border-t border-slate-100 flex flex-col gap-2.5 bg-slate-50/30">
                   <button
                     onClick={() => handleCreateAndConciliate(activeNewTx)}
                     disabled={isDisabled}
                     className="w-full py-3.5 bg-emerald-600 text-white rounded-2xl font-black uppercase tracking-widest text-xs shadow-lg shadow-emerald-500/20 hover:bg-emerald-700 transition-all hover:scale-[1.01] active:scale-95 disabled:opacity-40 disabled:scale-100 cursor-pointer"
                   >
-                    {reconcileType === 'DIVIDIR' ? `Confirmar Divisão (${splitParts.length} partes)` : 'Confirmar e Registrar'}
+                    {reconcileType === 'DIVIDIR' 
+                      ? `Confirmar Divisão (${splitParts.length} partes)` 
+                      : reconcileType === 'TRANSFERENCIA'
+                        ? 'Confirmar Transferência'
+                        : 'Confirmar e Registrar'}
                   </button>
                   <button
                     type="button"
                     onClick={() => setActiveNewTx(null)}
-                    className="w-full py-3.5 bg-slate-100 text-slate-600 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-slate-200 transition-all cursor-pointer"
+                    className="w-full py-2.5 bg-slate-100 text-slate-600 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-slate-200 transition-all cursor-pointer"
                   >
                     Voltar
                   </button>
