@@ -7,7 +7,11 @@ import {
   HelpCircle, 
   TrendingUp, 
   FileSpreadsheet,
-  FileText
+  FileText,
+  Printer,
+  AlertTriangle,
+  CheckCircle2,
+  Info
 } from 'lucide-react';
 import { FinancialCategory, FinancialTransaction } from '../../types';
 import { toast } from 'sonner';
@@ -20,13 +24,29 @@ interface DRETabProps {
 export const DRETab: React.FC<DRETabProps> = ({ categories, transactions }) => {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
 
-  const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', ' Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+  const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+
+  // Mapas para resolução rápida de categoria por ID e por Nome
+  const { catById, catByName } = useMemo(() => {
+    const byId = new Map<string, FinancialCategory>();
+    const byName = new Map<string, FinancialCategory>();
+    categories.forEach(c => {
+      if (c.id) byId.set(c.id, c);
+      if (c.nome) byName.set(c.nome.trim().toLowerCase(), c);
+      if (c.name) byName.set(c.name.trim().toLowerCase(), c);
+    });
+    return { catById: byId, catByName: byName };
+  }, [categories]);
 
   // Matrix para DRE: categoriaId -> [janeiroVal, fevereiroVal, ...]
-  const dreMatrix = useMemo(() => {
+  // e cálculo de lançamentos não classificados
+  const { dreMatrix, uncategorizedTxs, uncategorizedReceitas, uncategorizedDespesas } = useMemo(() => {
     const matrix: Record<string, number[]> = {};
+    const unReceitas = new Array(12).fill(0);
+    const unDespesas = new Array(12).fill(0);
+    const unTxs: FinancialTransaction[] = [];
 
-    // Inicializa as categorias
+    // Inicializa todas as categorias
     categories.forEach(c => {
       matrix[c.id] = new Array(12).fill(0);
     });
@@ -37,14 +57,37 @@ export const DRETab: React.FC<DRETabProps> = ({ categories, transactions }) => {
       const tDate = new Date(t.date + 'T00:00:00');
       if (tDate.getFullYear() === selectedYear) {
         const monthIndex = tDate.getMonth();
-        if (t.categoryId && matrix[t.categoryId]) {
-          matrix[t.categoryId][monthIndex] += Math.abs(t.amount);
+        if (monthIndex < 0 || monthIndex >= 12) return;
+
+        // Tenta encontrar a categoria por ID ou por Nome
+        let matchedCat: FinancialCategory | undefined;
+        if (t.categoryId && catById.has(t.categoryId)) {
+          matchedCat = catById.get(t.categoryId);
+        } else if (t.categoryName && catByName.has(t.categoryName.trim().toLowerCase())) {
+          matchedCat = catByName.get(t.categoryName.trim().toLowerCase());
+        }
+
+        if (matchedCat && matrix[matchedCat.id]) {
+          matrix[matchedCat.id][monthIndex] += Math.abs(t.amount);
+        } else {
+          // Lançamento sem categoria mapeada no DRE
+          unTxs.push(t);
+          if (t.type === 'RECEITA') {
+            unReceitas[monthIndex] += Math.abs(t.amount);
+          } else if (t.type === 'DESPESA') {
+            unDespesas[monthIndex] += Math.abs(t.amount);
+          }
         }
       }
     });
 
-    return matrix;
-  }, [categories, transactions, selectedYear]);
+    return { 
+      dreMatrix: matrix, 
+      uncategorizedTxs: unTxs, 
+      uncategorizedReceitas: unReceitas, 
+      uncategorizedDespesas: unDespesas 
+    };
+  }, [categories, transactions, selectedYear, catById, catByName]);
 
   // Calculations for Locacoes Entradas (Faturamento de Locações)
   const monthlyLocacoesEntrada = useMemo(() => {
@@ -304,9 +347,12 @@ export const DRETab: React.FC<DRETabProps> = ({ categories, transactions }) => {
     printWindow.document.close();
   };
 
+  const totalUncategorizedDespesas = calculateSum(uncategorizedDespesas);
+  const totalUncategorizedReceitas = calculateSum(uncategorizedReceitas);
+
   return (
     <div className="space-y-6 font-sans">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-md font-black text-slate-900 tracking-tight uppercase">DRE Gerencial Imobiliário</h2>
           <p className="text-[11px] text-slate-500 uppercase tracking-wide font-medium mt-0.5">Demonstração de resultados operacional focado na separação de carteira de locação e custos de caixa.</p>
@@ -316,7 +362,7 @@ export const DRETab: React.FC<DRETabProps> = ({ categories, transactions }) => {
             onClick={handleExportPDF}
             className="flex items-center gap-1.5 px-3 py-2 bg-slate-50 border border-slate-200 text-slate-700 hover:bg-slate-100 rounded-xl font-bold text-xs transition-colors cursor-pointer"
           >
-            <PrinterIcon className="w-4 h-4 text-slate-500" />
+            <Printer className="w-4 h-4 text-slate-500" />
             Imprimir Relatório
           </button>
           
@@ -327,9 +373,75 @@ export const DRETab: React.FC<DRETabProps> = ({ categories, transactions }) => {
           >
             <option value={new Date().getFullYear()}>{new Date().getFullYear()}</option>
             <option value={new Date().getFullYear() - 1}>{new Date().getFullYear() - 1}</option>
+            <option value={new Date().getFullYear() + 1}>{new Date().getFullYear() + 1}</option>
           </select>
         </div>
       </div>
+
+      {/* Cards de Resumo Executivo / Auditoria DRE */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="p-4 bg-white rounded-2xl border border-slate-200 shadow-xs">
+          <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Faturamento Bruto Locações</span>
+          <span className="text-lg font-black text-teal-700 mt-1 block">
+            {formatCurrencyValue(calculateSum(monthlyLocacoesEntrada))}
+          </span>
+          <span className="text-[10px] font-bold text-slate-500 mt-1 block">Líquido: {formatCurrencyValue(calculateSum(monthlyLocacoesLiquido))}</span>
+        </div>
+
+        <div className="p-4 bg-white rounded-2xl border border-slate-200 shadow-xs">
+          <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Receitas Operacionais Caixa</span>
+          <span className="text-lg font-black text-blue-700 mt-1 block">
+            {formatCurrencyValue(calculateSum(monthlyCaixaEntras))}
+          </span>
+          <span className="text-[10px] font-bold text-slate-500 mt-1 block">Comissões e Honorários</span>
+        </div>
+
+        <div className="p-4 bg-white rounded-2xl border border-slate-200 shadow-xs">
+          <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Despesas Operacionais Totais</span>
+          <span className="text-lg font-black text-rose-600 mt-1 block">
+            {formatCurrencyValue(calculateSum(monthlyDespesasFixas) + calculateSum(monthlyDespesasVariaveis))}
+          </span>
+          <span className="text-[10px] font-bold text-slate-500 mt-1 block">
+            Fixas: {formatCurrencyValue(calculateSum(monthlyDespesasFixas))} | Var: {formatCurrencyValue(calculateSum(monthlyDespesasVariaveis))}
+          </span>
+        </div>
+
+        <div className={`p-4 rounded-2xl border shadow-xs ${
+          calculateSum(monthlyResultadoLiquido) >= 0 
+            ? 'bg-emerald-50/50 border-emerald-200' 
+            : 'bg-rose-50/50 border-rose-200'
+        }`}>
+          <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider block">Lucro Líquido Acumulado</span>
+          <span className={`text-lg font-black mt-1 block ${
+            calculateSum(monthlyResultadoLiquido) >= 0 ? 'text-emerald-700' : 'text-rose-700'
+          }`}>
+            {formatCurrencyValue(calculateSum(monthlyResultadoLiquido))}
+          </span>
+          <span className="text-[10px] font-bold text-slate-600 mt-1 block">Exercício {selectedYear}</span>
+        </div>
+      </div>
+
+      {/* Banner de Auditoria de Conciliação se houver lançamentos sem categoria */}
+      {uncategorizedTxs.length > 0 ? (
+        <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-3 text-amber-900 animate-fadeIn">
+          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+          <div className="text-xs space-y-1">
+            <p className="font-extrabold uppercase tracking-wide">
+              Atenção: Existem {uncategorizedTxs.length} lançamento(s) sem categoria associada no exercício de {selectedYear}
+            </p>
+            <p className="font-medium text-amber-800">
+              Esses lançamentos somam <strong>{formatCurrencyValue(totalUncategorizedDespesas)}</strong> em despesas e <strong>{formatCurrencyValue(totalUncategorizedReceitas)}</strong> em receitas. Para que eles componham as rubricas específicas do DRE, acesse a aba <strong>Lançamentos</strong> e atribua a respectiva categoria.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between text-xs text-slate-700">
+          <div className="flex items-center gap-2 font-bold text-emerald-700">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>100% dos lançamentos do exercício {selectedYear} estão categorizados e conciliados com as rubricas do DRE.</span>
+          </div>
+        </div>
+      )}
 
       <div className="bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden animate-fadeIn">
         <div className="overflow-x-auto">
@@ -547,21 +659,3 @@ export const DRETab: React.FC<DRETabProps> = ({ categories, transactions }) => {
     </div>
   );
 };
-
-// Simple inline micro icon for printer replacement
-const PrinterIcon = (props: React.SVGProps<SVGSVGElement>) => (
-  <svg 
-    viewBox="0 0 24 24" 
-    width="24" 
-    height="24" 
-    stroke="currentColor" 
-    strokeWidth="2" 
-    fill="none" 
-    strokeLinecap="round" 
-    strokeLinejoin="round" 
-    {...props}
-  >
-    <path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
-    <rect x="6" y="14" width="12" height="8" />
-  </svg>
-);

@@ -30,57 +30,90 @@ select, option, optgroup, input, button, textarea {
 }
 
 @media print {
+  @page {
+    size: A4 portrait;
+    margin: 8mm 8mm 12mm 8mm;
+  }
+
   html, body {
     background-color: #ffffff !important;
     background: #ffffff !important;
     color: #0f172a !important;
     overflow: visible !important;
     height: auto !important;
+    min-height: 100% !important;
+    width: 100% !important;
     margin: 0 !important;
     padding: 0 !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
 
-  /* Hide everything on page by default during print */
-  body * {
-    visibility: hidden;
+  /* Reset all fixed/absolute modal wrappers to let print area flow naturally */
+  .fixed.inset-0,
+  div[class*="fixed"],
+  div[class*="overflow-y-auto"],
+  div[class*="overflow-hidden"],
+  div[class*="max-h-"] {
+    position: static !important;
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    transform: none !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
   }
 
-  /* Show only the designated print area and all its children */
+  /* Hide background overlays, navigation, headers and buttons */
+  header, nav, aside, .print\:hidden, [class*="backdrop-blur"] {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  /* Target printable areas */
   #print-area,
+  .print-area {
+    display: block !important;
+    visibility: visible !important;
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    box-shadow: none !important;
+    border: none !important;
+    overflow: visible !important;
+    color: #0f172a !important;
+  }
+
   #print-area *,
-  .print-area,
   .print-area * {
     visibility: visible !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
 
-  #print-area,
-  .print-area {
-    position: absolute !important;
-    left: 0 !important;
-    top: 0 !important;
+  /* Avoid splitting table rows and cards across page breaks */
+  table {
+    page-break-inside: auto !important;
+    break-inside: auto !important;
     width: 100% !important;
-    max-width: 100% !important;
-    margin: 0 !important;
-    padding: 20px !important;
-    background: #ffffff !important;
-    box-shadow: none !important;
-    border: none !important;
-    overflow: visible !important;
   }
 
-  /* Ensure tables and cards avoid awkward page breaks */
-  table, tr, td, th, .print-card, .photo-card {
+  tr, td, th {
     page-break-inside: avoid !important;
     break-inside: avoid !important;
   }
 
-  /* Force hide anything explicitly marked with print:hidden */
-  .print\:hidden {
-    display: none !important;
-    visibility: hidden !important;
+  .print-card, 
+  .photo-card, 
+  [class*="break-inside-avoid"] {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
   }
 }

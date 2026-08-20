@@ -228,7 +228,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
     const currentYear = new Date().getFullYear();
 
-    const data = months.map((m, idx) => ({
+    const data = months.map((m) => ({
       name: m,
       Receitas: 0,
       Despesas: 0
@@ -239,15 +239,22 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       const tDate = new Date(t.date + 'T00:00:00');
       if (tDate.getFullYear() === currentYear) {
         const monthIndex = tDate.getMonth();
-        if (t.type === 'RECEITA') {
-          data[monthIndex].Receitas += Math.abs(t.amount);
-        } else if (t.type === 'DESPESA') {
-          data[monthIndex].Despesas += Math.abs(t.amount);
+        if (monthIndex >= 0 && monthIndex < 12) {
+          if (t.type === 'RECEITA') {
+            data[monthIndex].Receitas += Math.abs(t.amount);
+          } else if (t.type === 'DESPESA') {
+            data[monthIndex].Despesas += Math.abs(t.amount);
+          }
         }
       }
     });
 
-    return data;
+    // Arredondamento para 2 casas decimais para evitar dízimas de ponto flutuante
+    return data.map(d => ({
+      ...d,
+      Receitas: Math.round(d.Receitas * 100) / 100,
+      Despesas: Math.round(d.Despesas * 100) / 100
+    }));
   }, [transactions]);
 
   // Category Distribution
@@ -955,7 +962,11 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   <YAxis tick={{ fontSize: 10, fill: '#64748B' }} axisLine={false} tickLine={false} tickFormatter={(v) => `R$${v}`} />
                   <Tooltip 
                     cursor={{ fill: 'rgba(226, 232, 240, 0.4)' }}
-                    contentStyle={{ border: 'none', borderRadius: '16px', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.05)', fontSize: '12px' }} 
+                    contentStyle={{ border: 'none', borderRadius: '16px', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.08)', fontSize: '12px', padding: '10px 14px' }}
+                    formatter={(value: any, name: any) => [
+                      new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value) || 0),
+                      name === 'Receitas' ? 'Receitas' : 'Despesas'
+                    ]}
                   />
                   <Bar dataKey="Receitas" fill="#10B981" radius={[4, 4, 0, 0]} />
                   <Bar dataKey="Despesas" fill="#EF4444" radius={[4, 4, 0, 0]} />

@@ -44,6 +44,12 @@ const formatUnitLabel = (numStr: string) => {
   return `Apto ${trimmed}`;
 };
 
+const formatBRL = (val: number) => 
+  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(val || 0);
+
+const formatM3 = (val: number, decimals = 2) => 
+  `${(val || 0).toLocaleString("pt-BR", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })} m³`;
+
 export const RelatorioExportModal: React.FC<RelatorioExportModalProps> = ({
   isOpen,
   onClose,
@@ -101,19 +107,26 @@ export const RelatorioExportModal: React.FC<RelatorioExportModalProps> = ({
   const handleExportPDF = async () => {
     if (!printRef.current) return;
     setIsGeneratingPDF(true);
-    toast.info("Renderizando documento em alta resolução...");
+    toast.info("Processando documento para PDF em alta resolução...");
 
     try {
       const element = printRef.current;
+      const originalScrollTop = element.scrollTop;
+      element.scrollTop = 0;
 
       // Render high quality canvas
       const canvas = await html2canvas(element, {
         scale: 2,
         useCORS: true,
+        allowTaint: true,
         logging: false,
         backgroundColor: "#ffffff",
+        scrollX: 0,
+        scrollY: 0,
         windowWidth: 1200
       });
+
+      element.scrollTop = originalScrollTop;
 
       const imgData = canvas.toDataURL("image/png");
       const pdf = new jsPDF({
@@ -136,7 +149,7 @@ export const RelatorioExportModal: React.FC<RelatorioExportModalProps> = ({
 
       // Add subsequent pages if content exceeds A4 height
       while (heightLeft > 0) {
-        position = heightLeft - imgHeight;
+        position = -(imgHeight - heightLeft);
         pdf.addPage();
         pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight, undefined, "FAST");
         heightLeft -= pdfHeight;
@@ -147,15 +160,92 @@ export const RelatorioExportModal: React.FC<RelatorioExportModalProps> = ({
       toast.success("PDF baixado com sucesso!");
     } catch (error: any) {
       console.error("Erro ao gerar PDF:", error);
-      toast.error("Erro ao exportar PDF: " + (error?.message || "Tente imprimir pelo navegador"));
+      toast.error("Erro ao exportar PDF: " + (error?.message || "Tente imprimir pelo botão Imprimir"));
     } finally {
       setIsGeneratingPDF(false);
     }
   };
 
-  // Browser Print function (uses designated print area)
+  // Dedicated Browser Print function (Opens isolated printable document to guarantee zero blank pages)
   const handlePrint = () => {
-    window.print();
+    if (!printRef.current) {
+      window.print();
+      return;
+    }
+
+    const printContent = printRef.current.innerHTML;
+    const printWindow = window.open("", "_blank", "width=1100,height=900");
+
+    if (!printWindow) {
+      window.print();
+      return;
+    }
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8">
+        <title>Demonstrativo de Água - ${fatura.edificioNome} (${fatura.mesAnoTexto || fatura.mesReferencia})</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+        <script src="https://cdn.tailwindcss.com"></script>
+        <style>
+          @page {
+            size: A4 portrait;
+            margin: 8mm 8mm 12mm 8mm;
+          }
+          body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #ffffff;
+            color: #0f172a;
+            margin: 0;
+            padding: 8px;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          table {
+            page-break-inside: auto;
+            border-collapse: collapse;
+            width: 100%;
+          }
+          tr, td, th {
+            page-break-inside: avoid;
+            break-inside: avoid;
+          }
+          .break-inside-avoid {
+            page-break-inside: avoid;
+            break-inside: avoid;
+          }
+          img {
+            max-width: 100%;
+            height: auto;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          @media print {
+            .no-print, .print\\:hidden { display: none !important; }
+          }
+        </style>
+      </head>
+      <body class="bg-white text-slate-900">
+        <div class="max-w-5xl mx-auto space-y-6">
+          ${printContent}
+        </div>
+        <script>
+          window.onload = function() {
+            setTimeout(function() {
+              window.focus();
+              window.print();
+            }, 400);
+          };
+        </script>
+      </body>
+      </html>
+    `);
+
+    printWindow.document.close();
   };
 
   // CSV Export
@@ -404,7 +494,7 @@ export const RelatorioExportModal: React.FC<RelatorioExportModalProps> = ({
                   Valor Total da Fatura
                 </span>
                 <span className="text-lg sm:text-xl font-black text-slate-900 mt-1 block">
-                  R$ {fatura.valorTotalConta.toFixed(2)}
+                  {formatBRL(fatura.valorTotalConta)}
                 </span>
                 <span className="text-[10px] text-slate-500 font-medium">Conta da Concessionária</span>
               </div>
@@ -414,7 +504,7 @@ export const RelatorioExportModal: React.FC<RelatorioExportModalProps> = ({
                   Consumo Total Medido
                 </span>
                 <span className="text-lg sm:text-xl font-black text-blue-700 mt-1 block font-mono">
-                  {fatura.consumoTotalApartamentosM3.toFixed(2)} m³
+                  {formatM3(fatura.consumoTotalApartamentosM3)}
                 </span>
                 <span className="text-[10px] text-blue-600 font-medium">Soma dos Hidrômetros</span>
               </div>
@@ -424,7 +514,7 @@ export const RelatorioExportModal: React.FC<RelatorioExportModalProps> = ({
                   Tarifa Rateada / m³
                 </span>
                 <span className="text-lg sm:text-xl font-black text-slate-900 mt-1 block font-mono">
-                  R$ {fatura.tarifaM3Calculada.toFixed(2)}
+                  {formatBRL(fatura.tarifaM3Calculada)}
                 </span>
                 <span className="text-[10px] text-slate-500 font-medium">Valor por m³ apurado</span>
               </div>
@@ -433,11 +523,11 @@ export const RelatorioExportModal: React.FC<RelatorioExportModalProps> = ({
                 <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">
                   Área Comum / Diferença
                 </span>
-                <span className="text-lg sm:text-xl font-black text-slate-900 mt-1 block">
-                  {fatura.valorDiferencaAreaComum > 0 ? `R$ ${fatura.valorDiferencaAreaComum.toFixed(2)}` : "R$ 0,00"}
+                <span className="text-lg sm:text-xl font-black text-slate-900 mt-1 block font-mono">
+                  {fatura.valorDiferencaAreaComum > 0 ? formatBRL(fatura.valorDiferencaAreaComum) : "R$ 0,00"}
                 </span>
                 <span className="text-[10px] text-slate-500 font-medium">
-                  {fatura.consumoDiferencaAreaComumM3 > 0 ? `${fatura.consumoDiferencaAreaComumM3.toFixed(2)} m³ rateado` : "Sem diferença"}
+                  {fatura.consumoDiferencaAreaComumM3 > 0 ? `${formatM3(fatura.consumoDiferencaAreaComumM3)} rateado` : "Sem diferença"}
                 </span>
               </div>
             </div>
@@ -484,13 +574,13 @@ export const RelatorioExportModal: React.FC<RelatorioExportModalProps> = ({
                           {l.hidrometroNumero || "-"}
                         </td>
                         <td className="py-2.5 px-3 text-right font-mono text-slate-500">
-                          {l.leituraAnterior.toFixed(1)}
+                          {l.leituraAnterior.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
                         </td>
                         <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">
-                          {l.leituraAtual.toFixed(1)}
+                          {l.leituraAtual.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
                         </td>
                         <td className="py-2.5 px-3 text-center font-black text-blue-700 font-mono">
-                          {l.consumoM3.toFixed(2)} m³
+                          {formatM3(l.consumoM3)}
                           {l.viradaHidrometro && (
                             <span className="block text-[9px] font-bold text-emerald-700 uppercase tracking-tighter mt-0.5">
                               (Virada 9999→0)
@@ -498,15 +588,15 @@ export const RelatorioExportModal: React.FC<RelatorioExportModalProps> = ({
                           )}
                         </td>
                         <td className="py-2.5 px-3 text-right text-slate-700 font-mono">
-                          R$ {l.valorConsumoM3.toFixed(2)}
+                          {formatBRL(l.valorConsumoM3)}
                         </td>
                         {fatura.valorDiferencaAreaComum > 0 && (
                           <td className="py-2.5 px-3 text-right text-slate-500 font-mono">
-                            R$ {l.valorAreaComumRateio.toFixed(2)}
+                            {formatBRL(l.valorAreaComumRateio)}
                           </td>
                         )}
                         <td className="py-2.5 px-3 text-right font-black text-slate-900 font-mono text-sm bg-slate-50/50">
-                          R$ {l.valorTotalAPagar.toFixed(2)}
+                          {formatBRL(l.valorTotalAPagar)}
                         </td>
                       </tr>
                     ))}
@@ -518,18 +608,18 @@ export const RelatorioExportModal: React.FC<RelatorioExportModalProps> = ({
                       </td>
                       <td colSpan={2} className="py-3 px-3"></td>
                       <td className="py-3 px-3 text-center text-blue-700 text-xs font-mono">
-                        {fatura.consumoTotalApartamentosM3.toFixed(2)} m³
+                        {formatM3(fatura.consumoTotalApartamentosM3)}
                       </td>
                       <td className="py-3 px-3 text-right font-mono">
-                        R$ {fatura.leituras.reduce((acc, l) => acc + l.valorConsumoM3, 0).toFixed(2)}
+                        {formatBRL(fatura.leituras.reduce((acc, l) => acc + l.valorConsumoM3, 0))}
                       </td>
                       {fatura.valorDiferencaAreaComum > 0 && (
                         <td className="py-3 px-3 text-right text-slate-700 font-mono">
-                          R$ {fatura.valorDiferencaAreaComum.toFixed(2)}
+                          {formatBRL(fatura.valorDiferencaAreaComum)}
                         </td>
                       )}
                       <td className="py-3 px-3 text-right text-slate-900 text-sm font-mono bg-slate-200/50">
-                        R$ {fatura.valorTotalConta.toFixed(2)}
+                        {formatBRL(fatura.valorTotalConta)}
                       </td>
                     </tr>
                   </tfoot>
@@ -592,8 +682,8 @@ export const RelatorioExportModal: React.FC<RelatorioExportModalProps> = ({
                                 >
                                   {record ? (
                                     <div>
-                                      <span className="block">{record.consumoM3.toFixed(1)} m³</span>
-                                      <span className="text-[10px] text-slate-400 block font-normal">R$ {record.valorTotal.toFixed(2)}</span>
+                                      <span className="block">{formatM3(record.consumoM3, 1)}</span>
+                                      <span className="text-[10px] text-slate-400 block font-normal">{formatBRL(record.valorTotal)}</span>
                                     </div>
                                   ) : (
                                     <span className="text-slate-300">-</span>
@@ -602,7 +692,7 @@ export const RelatorioExportModal: React.FC<RelatorioExportModalProps> = ({
                               );
                             })}
                             <td className="py-2 px-3 text-right font-mono font-bold text-slate-800">
-                              {avgConsumo.toFixed(2)} m³
+                              {formatM3(avgConsumo)}
                             </td>
                           </tr>
                         );
@@ -670,7 +760,7 @@ export const RelatorioExportModal: React.FC<RelatorioExportModalProps> = ({
                             onOpenFotoViewer(
                               l.fotoHidrometroUrl!,
                               `Comprovante Hidrômetro - Apto ${l.numeroUnidade}`,
-                              `${fatura.edificioNome} • Leitura Registrada: ${l.leituraAtual} m³`
+                              `${fatura.edificioNome} • Leitura Registrada: ${l.leituraAtual.toLocaleString('pt-BR')} m³`
                             )
                           }
                           className="h-48 bg-slate-100 relative group cursor-pointer overflow-hidden flex items-center justify-center"
@@ -694,9 +784,9 @@ export const RelatorioExportModal: React.FC<RelatorioExportModalProps> = ({
                               Leitura Atual
                             </span>
                             <span className="font-black text-blue-700 font-mono text-sm block">
-                              {l.leituraAtual} m³
+                              {l.leituraAtual.toLocaleString('pt-BR')} m³
                             </span>
-                            <span className="text-[9px] text-slate-500">Consumo: {l.consumoM3} m³</span>
+                            <span className="text-[9px] text-slate-500">Consumo: {formatM3(l.consumoM3)}</span>
                           </div>
 
                           <div className="text-right">
@@ -704,7 +794,7 @@ export const RelatorioExportModal: React.FC<RelatorioExportModalProps> = ({
                               Valor a Pagar
                             </span>
                             <span className="font-black text-emerald-800 font-mono text-sm block">
-                              R$ {l.valorTotalAPagar.toFixed(2)}
+                              {formatBRL(l.valorTotalAPagar)}
                             </span>
                             <span className="text-[9px] text-slate-500">Mês: {fatura.mesReferencia}</span>
                           </div>
