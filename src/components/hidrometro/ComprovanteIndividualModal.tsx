@@ -21,6 +21,7 @@ import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas-pro";
+import { FideliteLogo } from "../common/FideliteLogo";
 
 interface ComprovanteIndividualModalProps {
   isOpen: boolean;
@@ -214,13 +215,9 @@ export const ComprovanteIndividualModal: React.FC<ComprovanteIndividualModalProp
               className="print-area p-6 bg-gradient-to-br from-white to-blue-50/30 rounded-3xl border-2 border-blue-100 shadow-sm space-y-6 print:border-none print:shadow-none print:bg-white print:p-4"
             >
               {/* Slip Header */}
-              <div className="flex items-center justify-between border-b border-blue-100 pb-4">
+              <div className="flex items-center justify-between border-b border-blue-100 pb-3">
                 <div className="flex items-center">
-                  <img 
-                    src="/logo-fidelite.svg" 
-                    alt="Fidelité Negócios Imobiliários" 
-                    className="h-10 sm:h-12 w-auto object-contain"
-                  />
+                  <FideliteLogo size="sm" />
                 </div>
 
                 <div className="text-right">

@@ -24,6 +24,7 @@ import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas-pro";
+import { FideliteLogo } from "../common/FideliteLogo";
 
 interface RelatorioExportModalProps {
   isOpen: boolean;
@@ -363,158 +364,153 @@ export const RelatorioExportModal: React.FC<RelatorioExportModalProps> = ({
           <div 
             id="print-area"
             ref={printRef} 
-            className="print-area flex-1 overflow-y-auto p-6 sm:p-10 space-y-8 custom-scrollbar print:overflow-visible print:p-6 print:m-0 print:space-y-6 text-slate-900 bg-white"
+            className="print-area flex-1 overflow-y-auto p-4 sm:p-6 space-y-3.5 custom-scrollbar print:overflow-visible print:p-4 print:m-0 print:space-y-3 text-slate-900 bg-white"
           >
             {/* 1. Official Header with Fidelité Logo */}
-            <div className="border-b-2 border-slate-900/80 pb-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="border-b-2 border-slate-900/80 pb-2.5 flex flex-row items-center justify-between gap-3">
               <div className="flex items-center">
-                <img 
-                  src="/logo-fidelite.svg" 
-                  alt="Fidelité Negócios Imobiliários" 
-                  className="h-16 sm:h-20 w-auto object-contain"
-                />
+                <FideliteLogo size="md" />
               </div>
 
-              <div className="text-left sm:text-right text-xs text-slate-700 space-y-1 bg-slate-50 sm:bg-transparent p-3 sm:p-0 rounded-2xl border sm:border-0 border-slate-200 w-full sm:w-auto">
-                <p><span className="text-slate-500 font-medium">Condomínio / Edifício:</span> <strong className="text-slate-900 text-sm">{fatura.edificioNome}</strong></p>
+              <div className="text-right text-[11px] text-slate-700 space-y-0.5">
+                <p><span className="text-slate-500 font-medium">Condomínio:</span> <strong className="text-slate-900 text-xs">{fatura.edificioNome}</strong></p>
                 <p><span className="text-slate-500 font-medium">Mês de Referência:</span> <strong className="text-blue-700">{fatura.mesAnoTexto || fatura.mesReferencia}</strong></p>
-                <p><span className="text-slate-500 font-medium">Data da Medição:</span> <strong>{new Date(fatura.dataLeitura + "T12:00:00").toLocaleDateString("pt-BR")}</strong></p>
-                <p><span className="text-slate-500 font-medium">Total de Unidades:</span> <strong>{fatura.leituras?.length || 0} apartamentos</strong></p>
+                <p><span className="text-slate-500 font-medium">Data Medição:</span> <strong>{new Date(fatura.dataLeitura + "T12:00:00").toLocaleDateString("pt-BR")}</strong> • <strong>{fatura.leituras?.length || 0} aptos</strong></p>
               </div>
             </div>
 
-            {/* 2. Financial & Volume Summary Cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div className="p-4 bg-white rounded-2xl border-2 border-slate-200 shadow-sm">
-                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">
-                  Valor Total da Fatura
+            {/* 2. Financial & Volume Summary Cards (Compact) */}
+            <div className="grid grid-cols-4 gap-2">
+              <div className="p-2 sm:p-2.5 bg-slate-50/80 rounded-xl border border-slate-200">
+                <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block leading-none">
+                  Total da Fatura
                 </span>
-                <span className="text-lg sm:text-xl font-black text-slate-900 mt-1 block">
+                <span className="text-sm sm:text-base font-black text-slate-900 mt-1 block leading-tight font-mono">
                   {formatBRL(fatura.valorTotalConta)}
                 </span>
-                <span className="text-[10px] text-slate-500 font-medium">Conta da Concessionária</span>
+                <span className="text-[8px] text-slate-500 font-medium leading-none block mt-0.5">Concessionária</span>
               </div>
 
-              <div className="p-4 bg-white rounded-2xl border-2 border-blue-200 shadow-sm bg-blue-50/20">
-                <span className="text-[9px] font-black text-blue-600 uppercase tracking-widest block">
-                  Consumo Total Medido
+              <div className="p-2 sm:p-2.5 bg-blue-50/50 rounded-xl border border-blue-200">
+                <span className="text-[8px] font-black text-blue-600 uppercase tracking-wider block leading-none">
+                  Consumo Medido
                 </span>
-                <span className="text-lg sm:text-xl font-black text-blue-700 mt-1 block font-mono">
+                <span className="text-sm sm:text-base font-black text-blue-700 mt-1 block leading-tight font-mono">
                   {formatM3(fatura.consumoTotalApartamentosM3)}
                 </span>
-                <span className="text-[10px] text-blue-600 font-medium">Soma dos Hidrômetros</span>
+                <span className="text-[8px] text-blue-600 font-medium leading-none block mt-0.5">Soma Hidrômetros</span>
               </div>
 
-              <div className="p-4 bg-white rounded-2xl border-2 border-slate-200 shadow-sm">
-                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">
-                  Tarifa Rateada / m³
+              <div className="p-2 sm:p-2.5 bg-slate-50/80 rounded-xl border border-slate-200">
+                <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block leading-none">
+                  Tarifa / m³
                 </span>
-                <span className="text-lg sm:text-xl font-black text-slate-900 mt-1 block font-mono">
+                <span className="text-sm sm:text-base font-black text-slate-900 mt-1 block leading-tight font-mono">
                   {formatBRL(fatura.tarifaM3Calculada)}
                 </span>
-                <span className="text-[10px] text-slate-500 font-medium">Valor por m³ apurado</span>
+                <span className="text-[8px] text-slate-500 font-medium leading-none block mt-0.5">Valor apurado</span>
               </div>
 
-              <div className="p-4 bg-white rounded-2xl border-2 border-slate-200 shadow-sm">
-                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">
-                  Área Comum / Diferença
+              <div className="p-2 sm:p-2.5 bg-slate-50/80 rounded-xl border border-slate-200">
+                <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block leading-none">
+                  Área Comum
                 </span>
-                <span className="text-lg sm:text-xl font-black text-slate-900 mt-1 block font-mono">
+                <span className="text-sm sm:text-base font-black text-slate-900 mt-1 block leading-tight font-mono">
                   {fatura.valorDiferencaAreaComum > 0 ? formatBRL(fatura.valorDiferencaAreaComum) : "R$ 0,00"}
                 </span>
-                <span className="text-[10px] text-slate-500 font-medium">
+                <span className="text-[8px] text-slate-500 font-medium leading-none block mt-0.5">
                   {fatura.consumoDiferencaAreaComumM3 > 0 ? `${formatM3(fatura.consumoDiferencaAreaComumM3)} rateado` : "Sem diferença"}
                 </span>
               </div>
             </div>
 
             {/* 3. Detailed Consumption & Apportionment Table */}
-            <div className="space-y-3">
+            <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
-                  <Droplet className="w-4 h-4 text-blue-600" />
+                <h3 className="text-[11px] font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                  <Droplet className="w-3.5 h-3.5 text-blue-600" />
                   Demonstrativo Detalhado por Apartamento
                 </h3>
-                <span className="text-[10px] font-bold text-slate-500">
-                  Cálculo fidedigno ao valor da fatura geral
+                <span className="text-[9px] font-bold text-slate-500">
+                  Cálculo fidedigno ao consumo individual
                 </span>
               </div>
 
-              <div className="border border-slate-300 rounded-2xl overflow-hidden shadow-sm">
-                <table className="w-full text-left border-collapse text-xs">
+              <div className="border border-slate-300 rounded-xl overflow-hidden shadow-xs">
+                <table className="w-full text-left border-collapse text-[11px]">
                   <thead>
-                    <tr className="bg-slate-100 text-[10px] font-black text-slate-700 uppercase tracking-wider border-b border-slate-300">
-                      <th className="py-2.5 px-3">Apto</th>
-                      <th className="py-2.5 px-3">Morador / Responsável</th>
-                      <th className="py-2.5 px-3 text-center">Hidrômetro</th>
-                      <th className="py-2.5 px-3 text-right">Leitura Ant.</th>
-                      <th className="py-2.5 px-3 text-right">Leitura Atual</th>
-                      <th className="py-2.5 px-3 text-center">Consumo (m³)</th>
-                      <th className="py-2.5 px-3 text-right">Valor Consumo</th>
+                    <tr className="bg-slate-100 text-[9px] font-black text-slate-700 uppercase tracking-wider border-b border-slate-300">
+                      <th className="py-1.5 px-2.5">Apto</th>
+                      <th className="py-1.5 px-2.5">Morador / Responsável</th>
+                      <th className="py-1.5 px-2.5 text-center">Hidrômetro</th>
+                      <th className="py-1.5 px-2.5 text-right">Leitura Ant.</th>
+                      <th className="py-1.5 px-2.5 text-right">Leitura Atual</th>
+                      <th className="py-1.5 px-2.5 text-center">Consumo (m³)</th>
+                      <th className="py-1.5 px-2.5 text-right">Valor Consumo</th>
                       {fatura.valorDiferencaAreaComum > 0 && (
-                        <th className="py-2.5 px-3 text-right">Área Comum</th>
+                        <th className="py-1.5 px-2.5 text-right">Área Comum</th>
                       )}
-                      <th className="py-2.5 px-3 text-right font-black text-slate-900">Total a Pagar (R$)</th>
+                      <th className="py-1.5 px-2.5 text-right font-black text-slate-900">Total a Pagar</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">
                     {fatura.leituras.map((l, idx) => (
                       <tr key={l.unidadeId || idx} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="py-2.5 px-3 font-black text-slate-900">
+                        <td className="py-1.5 px-2.5 font-black text-slate-900">
                           {l.numeroUnidade} {l.bloco ? `(${l.bloco})` : ""}
                         </td>
-                        <td className="py-2.5 px-3 text-slate-700 font-medium truncate max-w-[200px]">
+                        <td className="py-1.5 px-2.5 text-slate-700 font-medium truncate max-w-[180px]">
                           {l.moradorNome || "Unidade Ocupada"}
                         </td>
-                        <td className="py-2.5 px-3 text-center font-mono text-[11px] text-slate-500">
+                        <td className="py-1.5 px-2.5 text-center font-mono text-[10px] text-slate-500">
                           {l.hidrometroNumero || "-"}
                         </td>
-                        <td className="py-2.5 px-3 text-right font-mono text-slate-500">
+                        <td className="py-1.5 px-2.5 text-right font-mono text-slate-500">
                           {l.leituraAnterior.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
                         </td>
-                        <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">
+                        <td className="py-1.5 px-2.5 text-right font-mono font-bold text-slate-900">
                           {l.leituraAtual.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
                         </td>
-                        <td className="py-2.5 px-3 text-center font-black text-blue-700 font-mono">
+                        <td className="py-1.5 px-2.5 text-center font-black text-blue-700 font-mono">
                           {formatM3(l.consumoM3)}
                           {l.viradaHidrometro && (
-                            <span className="block text-[9px] font-bold text-emerald-700 uppercase tracking-tighter mt-0.5">
+                            <span className="block text-[8px] font-bold text-emerald-700 uppercase tracking-tighter">
                               (Virada 9999→0)
                             </span>
                           )}
                         </td>
-                        <td className="py-2.5 px-3 text-right text-slate-700 font-mono">
+                        <td className="py-1.5 px-2.5 text-right text-slate-700 font-mono">
                           {formatBRL(l.valorConsumoM3)}
                         </td>
                         {fatura.valorDiferencaAreaComum > 0 && (
-                          <td className="py-2.5 px-3 text-right text-slate-500 font-mono">
+                          <td className="py-1.5 px-2.5 text-right text-slate-500 font-mono">
                             {formatBRL(l.valorAreaComumRateio)}
                           </td>
                         )}
-                        <td className="py-2.5 px-3 text-right font-black text-slate-900 font-mono text-sm bg-slate-50/50">
+                        <td className="py-1.5 px-2.5 text-right font-black text-slate-900 font-mono bg-slate-50/50">
                           {formatBRL(l.valorTotalAPagar)}
                         </td>
                       </tr>
                     ))}
                   </tbody>
                   <tfoot>
-                    <tr className="bg-slate-100 font-black text-slate-900 border-t-2 border-slate-300">
-                      <td colSpan={3} className="py-3 px-3 uppercase text-[11px]">
+                    <tr className="bg-slate-100 font-black text-slate-900 border-t border-slate-300">
+                      <td colSpan={3} className="py-2 px-2.5 uppercase text-[10px]">
                         Totais Gerais Faturados
                       </td>
-                      <td colSpan={2} className="py-3 px-3"></td>
-                      <td className="py-3 px-3 text-center text-blue-700 text-xs font-mono">
+                      <td colSpan={2} className="py-2 px-2.5"></td>
+                      <td className="py-2 px-2.5 text-center text-blue-700 text-[11px] font-mono">
                         {formatM3(fatura.consumoTotalApartamentosM3)}
                       </td>
-                      <td className="py-3 px-3 text-right font-mono">
+                      <td className="py-2 px-2.5 text-right font-mono text-[11px]">
                         {formatBRL(fatura.leituras.reduce((acc, l) => acc + l.valorConsumoM3, 0))}
                       </td>
                       {fatura.valorDiferencaAreaComum > 0 && (
-                        <td className="py-3 px-3 text-right text-slate-700 font-mono">
+                        <td className="py-2 px-2.5 text-right text-slate-700 font-mono text-[11px]">
                           {formatBRL(fatura.valorDiferencaAreaComum)}
                         </td>
                       )}
-                      <td className="py-3 px-3 text-right text-slate-900 text-sm font-mono bg-slate-200/50">
+                      <td className="py-2 px-2.5 text-right text-slate-900 text-xs font-mono bg-slate-200/60">
                         {formatBRL(fatura.valorTotalConta)}
                       </td>
                     </tr>
@@ -525,29 +521,29 @@ export const RelatorioExportModal: React.FC<RelatorioExportModalProps> = ({
 
             {/* 4. Client History Table across past months */}
             {showHistorico && historicoMeses.meses.length > 1 && (
-              <div className="space-y-3 pt-2 break-inside-avoid">
+              <div className="space-y-1.5 pt-1 break-inside-avoid">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
-                    <History className="w-4 h-4 text-blue-600" />
-                    Histórico Comparativo de Consumo por Cliente / Unidade
+                  <h3 className="text-[11px] font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                    <History className="w-3.5 h-3.5 text-blue-600" />
+                    Histórico Comparativo de Consumo
                   </h3>
-                  <span className="text-[10px] text-slate-500">
-                    Acompanhamento da evolução mensal de consumo (m³ e R$)
+                  <span className="text-[9px] text-slate-500">
+                    Evolução mensal (m³ e R$)
                   </span>
                 </div>
 
-                <div className="border border-slate-300 rounded-2xl overflow-hidden shadow-sm">
-                  <table className="w-full text-left border-collapse text-xs">
+                <div className="border border-slate-300 rounded-xl overflow-hidden shadow-xs">
+                  <table className="w-full text-left border-collapse text-[11px]">
                     <thead>
-                      <tr className="bg-slate-100 text-[10px] font-black text-slate-700 uppercase tracking-wider border-b border-slate-300">
-                        <th className="py-2.5 px-3">Apto</th>
-                        <th className="py-2.5 px-3">Morador</th>
+                      <tr className="bg-slate-100 text-[9px] font-black text-slate-700 uppercase tracking-wider border-b border-slate-300">
+                        <th className="py-1.5 px-2.5">Apto</th>
+                        <th className="py-1.5 px-2.5">Morador</th>
                         {historicoMeses.meses.map((m) => (
-                          <th key={m.mesReferencia} className="py-2.5 px-3 text-center">
+                          <th key={m.mesReferencia} className="py-1.5 px-2.5 text-center">
                             {m.mesAnoTexto}
                           </th>
                         ))}
-                        <th className="py-2.5 px-3 text-right font-black">Média (m³)</th>
+                        <th className="py-1.5 px-2.5 text-right font-black">Média (m³)</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-200">
@@ -562,10 +558,10 @@ export const RelatorioExportModal: React.FC<RelatorioExportModalProps> = ({
 
                         return (
                           <tr key={l.unidadeId || idx} className="hover:bg-slate-50/80">
-                            <td className="py-2 px-3 font-black text-slate-900">
+                            <td className="py-1.5 px-2.5 font-black text-slate-900">
                               {l.numeroUnidade}
                             </td>
-                            <td className="py-2 px-3 text-slate-600 truncate max-w-[150px]">
+                            <td className="py-1.5 px-2.5 text-slate-600 truncate max-w-[140px]">
                               {l.moradorNome || "-"}
                             </td>
                             {historicoMeses.meses.map((m) => {
@@ -574,12 +570,12 @@ export const RelatorioExportModal: React.FC<RelatorioExportModalProps> = ({
                               return (
                                 <td 
                                   key={m.mesReferencia} 
-                                  className={`py-2 px-3 text-center font-mono ${isCurrent ? 'bg-blue-50/40 font-bold text-blue-800' : 'text-slate-600'}`}
+                                  className={`py-1.5 px-2.5 text-center font-mono ${isCurrent ? 'bg-blue-50/40 font-bold text-blue-800' : 'text-slate-600'}`}
                                 >
                                   {record ? (
                                     <div>
                                       <span className="block">{formatM3(record.consumoM3, 1)}</span>
-                                      <span className="text-[10px] text-slate-400 block font-normal">{formatBRL(record.valorTotal)}</span>
+                                      <span className="text-[9px] text-slate-400 block font-normal">{formatBRL(record.valorTotal)}</span>
                                     </div>
                                   ) : (
                                     <span className="text-slate-300">-</span>
@@ -587,7 +583,7 @@ export const RelatorioExportModal: React.FC<RelatorioExportModalProps> = ({
                                 </td>
                               );
                             })}
-                            <td className="py-2 px-3 text-right font-mono font-bold text-slate-800">
+                            <td className="py-1.5 px-2.5 text-right font-mono font-bold text-slate-800">
                               {formatM3(avgConsumo)}
                             </td>
                           </tr>
@@ -601,50 +597,50 @@ export const RelatorioExportModal: React.FC<RelatorioExportModalProps> = ({
 
             {/* Notes if present */}
             {fatura.observacoes && (
-              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 text-xs text-slate-600 space-y-1 break-inside-avoid">
-                <span className="font-bold uppercase tracking-wider text-[10px] text-slate-400 block">
-                  Observações Gerais do Demonstrativo:
+              <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-[11px] text-slate-600 space-y-0.5 break-inside-avoid">
+                <span className="font-bold uppercase tracking-wider text-[9px] text-slate-400 block">
+                  Observações Gerais:
                 </span>
                 <p>{fatura.observacoes}</p>
               </div>
             )}
 
-            {/* 5. Comprovantes Fotográficos dos Hidrômetros (Galeria de Fotos com Dados) */}
+            {/* 5. Comprovantes Fotográficos dos Hidrômetros (Galeria Compacta de Fotos) */}
             {showFotos && fotosCount > 0 && (
-              <div className="space-y-4 pt-4 border-t-2 border-slate-300 print:break-before-page break-inside-avoid">
+              <div className="space-y-2 pt-2 border-t border-slate-300 break-inside-avoid">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
-                    <ImageIcon className="w-4 h-4 text-blue-600" />
-                    Comprovantes Fotográficos dos Hidrômetros ({fotosCount} registros)
+                  <h3 className="text-[11px] font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                    <ImageIcon className="w-3.5 h-3.5 text-blue-600" />
+                    Comprovantes Fotográficos dos Hidrômetros ({fotosCount} fotos)
                   </h3>
-                  <span className="text-[10px] text-slate-500 font-bold">
-                    Fidelité Imobiliária • Auditoria & Transparência
+                  <span className="text-[9px] text-slate-500 font-bold">
+                    Fidelité Imobiliária • Transparência
                   </span>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {fatura.leituras
                     .filter((l) => !!l.fotoHidrometroUrl)
                     .map((l, idx) => (
                       <div
                         key={l.unidadeId || idx}
-                        className="bg-white rounded-2xl border-2 border-slate-200 overflow-hidden shadow-sm flex flex-col break-inside-avoid"
+                        className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs flex flex-col break-inside-avoid"
                       >
                         {/* Header of unit card */}
-                        <div className="p-2.5 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
+                        <div className="p-1.5 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
                           <div>
-                            <span className="font-black text-slate-900 text-xs block">
-                              {formatUnitLabel(l.numeroUnidade)} {l.bloco ? `(${l.bloco})` : ""}
+                            <span className="font-black text-slate-900 text-[10px] block leading-tight">
+                              {formatUnitLabel(l.numeroUnidade)}
                             </span>
-                            <span className="text-[10px] text-slate-500 block truncate max-w-[140px]">
+                            <span className="text-[9px] text-slate-500 block truncate max-w-[90px] leading-tight">
                               {l.moradorNome || "Morador"}
                             </span>
                           </div>
                           <div className="text-right">
-                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">
+                            <span className="text-[8px] font-bold text-slate-400 uppercase block leading-tight">
                               Hidrômetro
                             </span>
-                            <span className="text-[10px] font-mono font-bold text-slate-700">
+                            <span className="text-[9px] font-mono font-bold text-slate-700 leading-tight">
                               {l.hidrometroNumero || "N/D"}
                             </span>
                           </div>
@@ -659,7 +655,7 @@ export const RelatorioExportModal: React.FC<RelatorioExportModalProps> = ({
                               `${fatura.edificioNome} • Leitura Registrada: ${l.leituraAtual.toLocaleString('pt-BR')} m³`
                             )
                           }
-                          className="h-48 bg-slate-100 relative group cursor-pointer overflow-hidden flex items-center justify-center"
+                          className="h-28 sm:h-32 bg-slate-100 relative group cursor-pointer overflow-hidden flex items-center justify-center"
                         >
                           <img
                             src={l.fotoHidrometroUrl}
@@ -667,32 +663,31 @@ export const RelatorioExportModal: React.FC<RelatorioExportModalProps> = ({
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                             referrerPolicy="no-referrer"
                           />
-                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white text-xs font-bold gap-1 print:hidden">
-                            <Eye className="w-4 h-4" />
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white text-[10px] font-bold gap-1 print:hidden">
+                            <Eye className="w-3 h-3" />
                             <span>Ampliar</span>
                           </div>
                         </div>
 
                         {/* Footer stats of unit */}
-                        <div className="p-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs">
+                        <div className="p-1.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-[10px]">
                           <div>
-                            <span className="text-[9px] text-slate-400 uppercase font-bold block">
-                              Leitura Atual
+                            <span className="text-[8px] text-slate-400 uppercase font-bold block leading-tight">
+                              Leitura
                             </span>
-                            <span className="font-black text-blue-700 font-mono text-sm block">
+                            <span className="font-black text-blue-700 font-mono text-[11px] block leading-tight">
                               {l.leituraAtual.toLocaleString('pt-BR')} m³
                             </span>
-                            <span className="text-[9px] text-slate-500">Consumo: {formatM3(l.consumoM3)}</span>
+                            <span className="text-[8px] text-slate-500 leading-tight block">({formatM3(l.consumoM3)})</span>
                           </div>
 
                           <div className="text-right">
-                            <span className="text-[9px] text-slate-400 uppercase font-bold block">
-                              Valor a Pagar
+                            <span className="text-[8px] text-slate-400 uppercase font-bold block leading-tight">
+                              Total
                             </span>
-                            <span className="font-black text-emerald-800 font-mono text-sm block">
+                            <span className="font-black text-emerald-800 font-mono text-[11px] block leading-tight">
                               {formatBRL(l.valorTotalAPagar)}
                             </span>
-                            <span className="text-[9px] text-slate-500">Mês: {fatura.mesReferencia}</span>
                           </div>
                         </div>
                       </div>
@@ -702,15 +697,15 @@ export const RelatorioExportModal: React.FC<RelatorioExportModalProps> = ({
             )}
 
             {/* 6. Document Signature Footer */}
-            <div className="pt-10 border-t-2 border-slate-300 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 gap-4 break-inside-avoid">
+            <div className="pt-3 border-t border-slate-300 flex flex-row items-center justify-between text-[10px] text-slate-500 gap-2 break-inside-avoid">
               <div>
-                <p className="font-bold text-slate-700">FIDELITÉ IMOBILIÁRIA - GESTÃO CONDOMINIAL</p>
-                <p className="text-[10px] text-slate-400">Documento oficial de prestação de contas de consumo de água • Emitido em {new Date().toLocaleDateString("pt-BR")}</p>
+                <p className="font-bold text-slate-700 text-[10px]">FIDELITÉ NEGÓCIOS IMOBILIÁRIOS</p>
+                <p className="text-[9px] text-slate-400">Prestação de contas de consumo de água • {new Date().toLocaleDateString("pt-BR")}</p>
               </div>
 
-              <div className="w-56 text-center border-t border-slate-400 pt-2">
-                <span className="text-[11px] font-black text-slate-800 block">Fidelité Imobiliária</span>
-                <span className="text-[9px] text-slate-500">Responsável pela Medição e Rateio</span>
+              <div className="w-44 text-center border-t border-slate-400 pt-1">
+                <span className="text-[10px] font-black text-slate-800 block leading-tight">Fidelité Imobiliária</span>
+                <span className="text-[8px] text-slate-500 leading-tight">Medição & Rateio</span>
               </div>
             </div>
           </div>
