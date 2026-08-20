@@ -1,7 +1,6 @@
 import React, { useState, useRef, useMemo } from "react";
 import { 
   X, 
-  Printer, 
   Download, 
   FileSpreadsheet, 
   Eye, 
@@ -170,92 +169,10 @@ export const RelatorioExportModal: React.FC<RelatorioExportModalProps> = ({
       toast.success("PDF baixado com sucesso!");
     } catch (error: any) {
       console.error("Erro ao gerar PDF:", error);
-      toast.error("Erro ao exportar PDF: " + (error?.message || "Tente imprimir pelo botão Imprimir"));
+      toast.error("Erro ao exportar PDF: " + (error?.message || "Ocorreu um erro ao gerar o PDF"));
     } finally {
       setIsGeneratingPDF(false);
     }
-  };
-
-  // Dedicated Browser Print function (Opens isolated printable document to guarantee zero blank pages)
-  const handlePrint = () => {
-    if (!printRef.current) {
-      window.print();
-      return;
-    }
-
-    const printContent = printRef.current.innerHTML;
-    const printWindow = window.open("", "_blank", "width=1100,height=900");
-
-    if (!printWindow) {
-      window.print();
-      return;
-    }
-
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html lang="pt-BR">
-      <head>
-        <meta charset="UTF-8">
-        <title>Demonstrativo de Água - ${fatura.edificioNome} (${fatura.mesAnoTexto || fatura.mesReferencia})</title>
-        <link rel="preconnect" href="https://fonts.googleapis.com">
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
-        <script src="https://cdn.tailwindcss.com"></script>
-        <style>
-          @page {
-            size: A4 portrait;
-            margin: 8mm 8mm 12mm 8mm;
-          }
-          body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: #ffffff;
-            color: #0f172a;
-            margin: 0;
-            padding: 8px;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
-          table {
-            page-break-inside: auto;
-            border-collapse: collapse;
-            width: 100%;
-          }
-          tr, td, th {
-            page-break-inside: avoid;
-            break-inside: avoid;
-          }
-          .break-inside-avoid {
-            page-break-inside: avoid;
-            break-inside: avoid;
-          }
-          img {
-            max-width: 100%;
-            height: auto;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
-          @media print {
-            .no-print, .print\\:hidden { display: none !important; }
-          }
-        </style>
-      </head>
-      <body class="bg-white text-slate-900">
-        <div class="max-w-5xl mx-auto space-y-6">
-          ${printContent}
-        </div>
-        <script>
-          window.onload = function() {
-            setTimeout(function() {
-              window.focus();
-              window.print();
-            }, 400);
-          };
-        </script>
-      </body>
-      </html>
-    `);
-
-    printWindow.document.close();
   };
 
   // CSV Export
@@ -364,7 +281,7 @@ export const RelatorioExportModal: React.FC<RelatorioExportModalProps> = ({
           <div className="p-4 sm:p-5 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3 bg-slate-50/90 shrink-0 print:hidden">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-2xl bg-blue-600 text-white flex items-center justify-center font-bold shadow-md shadow-blue-500/20">
-                <Printer className="w-5 h-5" />
+                <Droplet className="w-5 h-5" />
               </div>
               <div>
                 <h3 className="text-sm sm:text-base font-black text-slate-900 leading-tight">
@@ -417,29 +334,20 @@ export const RelatorioExportModal: React.FC<RelatorioExportModalProps> = ({
               <button
                 onClick={handleExportPDF}
                 disabled={isGeneratingPDF}
-                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-400 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-md shadow-emerald-500/20 transition-all flex items-center gap-1.5 cursor-pointer"
-                title="Gerar e baixar arquivo PDF completo diretamente"
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-400 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-md shadow-emerald-500/20 transition-all flex items-center gap-1.5 cursor-pointer"
+                title="Exportar e baixar arquivo PDF do demonstrativo"
               >
                 {isGeneratingPDF ? (
                   <>
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>Gerando...</span>
+                    <span>Gerando PDF...</span>
                   </>
                 ) : (
                   <>
                     <Download className="w-3.5 h-3.5" />
-                    <span>Baixar PDF</span>
+                    <span>Exportar PDF</span>
                   </>
                 )}
-              </button>
-
-              <button
-                onClick={handlePrint}
-                className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-md shadow-blue-500/20 transition-all flex items-center gap-1.5 cursor-pointer"
-                title="Imprimir ou Salvar em PDF pelo navegador"
-              >
-                <Printer className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Imprimir</span>
               </button>
 
               <button

@@ -2,7 +2,6 @@ import React, { useState, useRef } from "react";
 import { 
   X, 
   Send, 
-  Printer, 
   Copy, 
   Check, 
   Droplet, 
@@ -145,73 +144,10 @@ export const ComprovanteIndividualModal: React.FC<ComprovanteIndividualModalProp
       toast.success("Comprovante PDF baixado com sucesso!");
     } catch (error: any) {
       console.error("Erro ao gerar PDF:", error);
-      toast.error("Erro ao gerar PDF: " + (error?.message || "Tente imprimir pelo navegador"));
+      toast.error("Erro ao gerar PDF: " + (error?.message || "Ocorreu um erro ao gerar o PDF"));
     } finally {
       setIsGeneratingPDF(false);
     }
-  };
-
-  const handlePrintSlip = () => {
-    if (!slipRef.current) {
-      window.print();
-      return;
-    }
-
-    const printContent = slipRef.current.innerHTML;
-    const printWindow = window.open("", "_blank", "width=850,height=900");
-
-    if (!printWindow) {
-      window.print();
-      return;
-    }
-
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html lang="pt-BR">
-      <head>
-        <meta charset="UTF-8">
-        <title>Comprovante de Água - ${formatUnitLabel(currentLeitura.numeroUnidade)} - ${fatura.edificioNome}</title>
-        <link rel="preconnect" href="https://fonts.googleapis.com">
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
-        <script src="https://cdn.tailwindcss.com"></script>
-        <style>
-          @page {
-            size: A4 portrait;
-            margin: 10mm 10mm 10mm 10mm;
-          }
-          body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: #ffffff;
-            color: #0f172a;
-            margin: 0;
-            padding: 12px;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
-          img {
-            max-width: 100%;
-            height: auto;
-          }
-        </style>
-      </head>
-      <body class="bg-white text-slate-900">
-        <div class="max-w-2xl mx-auto">
-          ${printContent}
-        </div>
-        <script>
-          window.onload = function() {
-            setTimeout(function() {
-              window.focus();
-              window.print();
-            }, 300);
-          };
-        </script>
-      </body>
-      </html>
-    `);
-
-    printWindow.document.close();
   };
 
   return (
@@ -400,8 +336,8 @@ export const ComprovanteIndividualModal: React.FC<ComprovanteIndividualModalProp
               )}
             </div>
 
-            {/* Actions for WhatsApp / Print / PDF */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 print:hidden">
+            {/* Actions for WhatsApp / PDF */}
+            <div className="grid grid-cols-3 gap-2.5">
               <button
                 onClick={handleCopyWhatsApp}
                 className="px-3 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
@@ -428,15 +364,7 @@ export const ComprovanteIndividualModal: React.FC<ComprovanteIndividualModalProp
                 ) : (
                   <Download className="w-4 h-4" />
                 )}
-                <span>Baixar PDF</span>
-              </button>
-
-              <button
-                onClick={handlePrintSlip}
-                className="px-3 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-xs font-black uppercase tracking-wider shadow-md shadow-blue-500/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                <Printer className="w-4 h-4" />
-                <span>Imprimir</span>
+                <span>Exportar PDF</span>
               </button>
             </div>
           </div>
