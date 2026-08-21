@@ -19,7 +19,11 @@ import {
   ArrowRight,
   ArrowLeftRight,
   ArrowUpRight,
-  ArrowDownRight
+  ArrowDownRight,
+  SlidersHorizontal,
+  Building2,
+  Landmark,
+  CheckCheck
 } from 'lucide-react';
 import { BankAccount, FinancialCategory, FinancialTransaction } from '../../types';
 import { parseBankStatement, ParsedOFXTransaction, parseLedgerBalance, LedgerBalance } from './ofxParser';
@@ -40,6 +44,16 @@ export interface SplitPartItem {
   description: string;
   categoryId: string;
   amount: number | '';
+}
+
+export interface MatchResult {
+  candidate: FinancialTransaction;
+  isCrossAccount: boolean;
+  sourceAccount?: BankAccount;
+  score: number;
+  diffDays: number;
+  diffValue: number;
+  similarity: number;
 }
 
 function getCardStatementMonth(dateStr: string, closingDay: number): string {
@@ -72,6 +86,32 @@ const normalizeText = (text: string) => {
     .normalize('NFD') // decompose to combine diacritics
     .replace(/[\u0300-\u036f]/g, '') // remove diacritics
     .toUpperCase();
+};
+
+const cleanTokens = (str: string): string[] => {
+  if (!str) return [];
+  const stopWords = new Set([
+    'PIX', 'TED', 'DOC', 'PAGTO', 'PAGAMENTO', 'COMPRA', 'TRANSF', 'TRANSFERENCIA',
+    'DEBITO', 'CREDITO', 'ENVIO', 'RECEBIMENTO', 'BANCO', 'SA', 'LTDA', 'ME', 'EPP', 'EIRELI',
+    'DE', 'DO', 'DA', 'EM', 'POR', 'PARA', 'COM', 'EXTRATO', 'LANCAMENTO', 'PARCELA', 'VALOR',
+    'PAG', 'REC', 'CONTA', 'AGENCIA', 'ESTORNO', 'TARIFA', 'FATURA'
+  ]);
+  return normalizeText(str)
+    .replace(/[^A-Z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(w => w.length > 2 && !stopWords.has(w));
+};
+
+const calculateTokenSimilarity = (desc1: string, desc2: string): number => {
+  const tokens1 = cleanTokens(desc1);
+  const tokens2 = cleanTokens(desc2);
+  if (tokens1.length === 0 || tokens2.length === 0) return 0;
+  
+  const set2 = new Set(tokens2);
+  const intersection = tokens1.filter(t => set2.has(t));
+  const union = new Set([...tokens1, ...tokens2]);
+  
+  return intersection.length / union.size;
 };
 
 const formatCurrency = (val: number) => {
@@ -168,6 +208,12 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
   const [ignoredIds, setIgnoredIds] = useState<string[]>([]);
   const [conciliatedIds, setConciliatedIds] = useState<string[]>([]);
   
+  // Configuração da Conciliação Inteligente
+  const [searchScope, setSearchScope] = useState<'ALL_ACCOUNTS' | 'CURRENT_ACCOUNT'>('ALL_ACCOUNTS');
+  const [dateToleranceDays, setDateToleranceDays] = useState<number>(3);
+  const [valueTolerance, setValueTolerance] = useState<number>(0.01);
+  const [showConfigPanel, setShowConfigPanel] = useState<boolean>(false);
+
   // Para criação rápida de transação nova se não houver match
   const [activeNewTx, setActiveNewTx] = useState<AutoParsedOFXTransaction | null>(null);
   const [selectedCatId, setSelectedCatId] = useState('');
@@ -189,67 +235,134 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Filtra as pendentes e agendadas da conta selecionada para fazer o match/pesquisa
+  // Mapa rápido de contas por ID
+  const accountsMap = useMemo(() => {
+    const map = new Map<string, BankAccount>();
+    accounts.forEach(acc => map.set(acc.id, acc));
+    return map;
+  }, [accounts]);
+
+  // Candidatos a conciliação (pendentes e agendados).
+  // Respeita o escopo: 'ALL_ACCOUNTS' (todas as contas) ou 'CURRENT_ACCOUNT' (apenas a conta atual).
   const searchCandidates = useMemo(() => {
-    return transactions.filter(t => 
-      t.accountId === selectedAccountId && 
-      (t.status === 'PENDENTE' || t.status === 'AGENDADO')
-    );
-  }, [transactions, selectedAccountId]);
+    return transactions.filter(t => {
+      const isPending = t.status === 'PENDENTE' || t.status === 'AGENDADO';
+      if (!isPending) return false;
+      if (searchScope === 'CURRENT_ACCOUNT') {
+        return t.accountId === selectedAccountId;
+      }
+      return true; // ALL_ACCOUNTS
+    });
+  }, [transactions, selectedAccountId, searchScope]);
 
   // Proteção contra duplicação: verifica se já existe lançamento ID ou hash no banco para esta conta
   const isAlreadyImported = (imported: ParsedOFXTransaction) => {
     return transactions.some(t => t.accountId === selectedAccountId && t.fitId === imported.fitId);
   };
 
-  // Função que avalia se uma transação importada tem match automático inteligente no sistema
-  // - Valor igual (com tolerância de R$ 0,01)
-  // - Data igual ou próxima (± 3 dias)
-  // - Conta bancária igual (filtrado no escopo)
-  const findMatch = (imported: ParsedOFXTransaction) => {
+  // Avaliação inteligente detalhada de match:
+  // - Busca em todas as contas (ou apenas na atual conforme searchScope)
+  // - Critérios: Valor (com tolerância configurável), Data (com tolerância de ±X dias) e similaridade textual
+  // - Retorna MatchResult com informações claras sobre a conta de origem, score e similaridade
+  const findMatchDetails = (imported: ParsedOFXTransaction, excludedCandidateIds?: Set<string>): MatchResult | null => {
     const impDate = new Date(imported.date + 'T00:00:00');
+    const impAmount = Math.abs(imported.amount);
+    const impDesc = imported.description || '';
 
-    return searchCandidates.find(t => {
-      // Verifica compatibilidade de tipo
+    const matches: MatchResult[] = [];
+
+    for (const t of searchCandidates) {
+      if (excludedCandidateIds && excludedCandidateIds.has(t.id)) {
+        continue;
+      }
+
+      // Verifica compatibilidade de tipo (DEBIT = DESPESA, CREDIT = RECEITA)
       const isSameType = (imported.type === 'DEBIT' && t.type === 'DESPESA') || 
                          (imported.type === 'CREDIT' && t.type === 'RECEITA');
-      if (!isSameType) return false;
+      if (!isSameType) continue;
 
-      // Tolerância de R$ 0,01 valor
-      const valMatch = Math.abs(Math.abs(t.amount) - imported.amount) <= 0.012;
-      if (!valMatch) return false;
+      // Validação de Valor com tolerância configurável
+      const candAmount = Math.abs(t.amount);
+      const diffValue = Math.abs(candAmount - impAmount);
+      if (diffValue > valueTolerance + 0.002) continue;
 
-      // Diferença de até 3 dias
+      // Validação de Data com tolerância configurável de dias
       const tDate = new Date(t.date + 'T00:00:00');
       const diffTime = Math.abs(impDate.getTime() - tDate.getTime());
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      if (diffDays > dateToleranceDays) continue;
 
-      return diffDays <= 3;
-    });
+      // Cálculo de similaridade textual e pontuação composta
+      const candDesc = t.description || '';
+      const similarity = calculateTokenSimilarity(impDesc, candDesc);
+      const normImp = normalizeText(impDesc);
+      const normCand = normalizeText(candDesc);
+      const isSubstring = (normImp.length > 3 && normCand.includes(normImp)) || (normCand.length > 3 && normImp.includes(normCand));
+
+      const isSameAccount = t.accountId === selectedAccountId;
+      const sourceAcc = accountsMap.get(t.accountId);
+
+      // Algoritmo de Score Ponderado:
+      // Base por valor exato: até 50 pontos
+      const valueScore = Math.max(0, 50 - (diffValue / (valueTolerance || 0.01)) * 10);
+      // Base por proximidade de data: até 30 pontos
+      const dateScore = Math.max(0, 30 - diffDays * 6);
+      // Similaridade textual: até 35 pontos
+      const textScore = (similarity * 25) + (isSubstring ? 10 : 0);
+      // Bônus para a mesma conta (caso todos os outros critérios sejam idênticos): +15 pontos
+      const accountBonus = isSameAccount ? 15 : 0;
+
+      const totalScore = valueScore + dateScore + textScore + accountBonus;
+
+      matches.push({
+        candidate: t,
+        isCrossAccount: !isSameAccount,
+        sourceAccount: sourceAcc,
+        score: totalScore,
+        diffDays,
+        diffValue,
+        similarity
+      });
+    }
+
+    if (matches.length === 0) return null;
+
+    // Ordena pelo maior score e retorna o melhor match
+    matches.sort((a, b) => b.score - a.score);
+    return matches[0];
   };
 
-  // Filtro de resultados em tempo real para a pesquisa manual por descrição, valor ou data
+  // Atalho para compatibilidade
+  const findMatch = (imported: ParsedOFXTransaction): FinancialTransaction | undefined => {
+    const details = findMatchDetails(imported);
+    return details ? details.candidate : undefined;
+  };
+
+  // Filtro de resultados em tempo real para a pesquisa manual por descrição, valor, data, conta ou categoria
   const filterResults = (query: string, itemType: 'CREDIT' | 'DEBIT') => {
-    if (!query) return [];
-    const q = query.toLowerCase().trim();
     const desiredType = itemType === 'CREDIT' ? 'RECEITA' : 'DESPESA';
+    const typeFiltered = searchCandidates.filter(t => t.type === desiredType);
 
-    return searchCandidates.filter(t => {
-      if (t.type !== desiredType) return false;
+    if (!query) return typeFiltered;
+    const q = query.toLowerCase().trim();
 
+    return typeFiltered.filter(t => {
       const descMatch = (t.description || '').toLowerCase().includes(q);
       const amountMatch = String(t.amount).includes(q) || formatCurrency(t.amount).toLowerCase().includes(q);
       const dateMatch = (t.date || '').includes(q) || new Date(t.date + 'T00:00:00').toLocaleDateString('pt-BR').includes(q);
       const categoryMatch = (t.categoryName || '').toLowerCase().includes(q);
+      const accName = accountsMap.get(t.accountId)?.name?.toLowerCase() || '';
+      const accountMatch = accName.includes(q);
 
-      return descMatch || amountMatch || dateMatch || categoryMatch;
+      return descMatch || amountMatch || dateMatch || categoryMatch || accountMatch;
     });
   };
 
-  // Resumo estatístico da importação para o topo
+  // Resumo estatístico da importação para o topo com contagem de matches entre contas
   const fileSummary = useMemo(() => {
     let total = importedTxs.length;
     let withMatch = 0;
+    let withCrossAccountMatch = 0;
     let noMatch = 0;
     let alreadyImported = 0;
 
@@ -257,17 +370,20 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
       if (isAlreadyImported(item)) {
         alreadyImported++;
       } else {
-        const match = findMatch(item);
-        if (match) {
+        const matchObj = findMatchDetails(item);
+        if (matchObj) {
           withMatch++;
+          if (matchObj.isCrossAccount) {
+            withCrossAccountMatch++;
+          }
         } else {
           noMatch++;
         }
       }
     });
 
-    return { total, withMatch, noMatch, alreadyImported };
-  }, [importedTxs, transactions, selectedAccountId]);
+    return { total, withMatch, withCrossAccountMatch, noMatch, alreadyImported };
+  }, [importedTxs, transactions, selectedAccountId, searchScope, dateToleranceDays, valueTolerance, conciliatedIds, ignoredIds]);
 
   // Transações visíveis (remove locais conciliadas e ignoradas)
   const visibleImported = useMemo(() => {
@@ -519,18 +635,37 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
       return;
     }
 
+    const targetAccount = accountsMap.get(selectedAccountId);
+    const isTargetCard = targetAccount?.accountType === 'CREDITO';
+
     const updatesToApply: { id: string, updates: Partial<FinancialTransaction> }[] = [];
 
     selectedIds.forEach(txId => {
       const candidate = transactions.find(t => t.id === txId);
       const customAmount = selectedMap[txId];
       const hasAmountChanged = candidate && Math.abs(candidate.amount) !== Math.abs(customAmount);
+      const isCross = candidate && candidate.accountId !== selectedAccountId;
+      const origAcc = candidate ? accountsMap.get(candidate.accountId) : undefined;
+
+      const cardStatus = isTargetCard ? getInitialCreditCardStatus(imported.date, targetAccount?.closingDay || 10) : undefined;
+      const cardMonth = isTargetCard ? getCardStatementMonth(imported.date, targetAccount?.closingDay || 10) : undefined;
 
       const updates: Partial<FinancialTransaction> = {
         status: 'CONCILIADO',
         fitId: imported.fitId,
-        reconciledAt: new Date().toISOString()
+        reconciledAt: new Date().toISOString(),
+        accountId: selectedAccountId
       };
+
+      if (isTargetCard) {
+        updates.creditCardStatus = cardStatus;
+        updates.creditCardMonth = cardMonth;
+      }
+
+      if (isCross && candidate) {
+        const noteAppend = `[Conciliação Inteligente] Migrado da conta '${origAcc?.name || 'Origem'}' para '${targetAccount?.name || 'Destino'}' via extrato bancário.`;
+        updates.notes = candidate.notes ? `${candidate.notes}\n${noteAppend}` : noteAppend;
+      }
 
       if (hasAmountChanged && customAmount > 0) {
         updates.amount = candidate?.type === 'DESPESA' ? -Math.abs(customAmount) : Math.abs(customAmount);
@@ -552,35 +687,88 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
   };
 
   const handleConciliationMatch = (imported: ParsedOFXTransaction, matched: FinancialTransaction) => {
-    // Vincula o ID do extrato ao lançamento do sistema e muda status para CONCILIADO
+    const isCrossAccount = matched.accountId !== selectedAccountId;
+    const originalAccount = accountsMap.get(matched.accountId);
+    const targetAccount = accountsMap.get(selectedAccountId);
+
+    const isTargetCard = targetAccount?.accountType === 'CREDITO';
+    const cardStatus = isTargetCard ? getInitialCreditCardStatus(imported.date, targetAccount?.closingDay || 10) : undefined;
+    const cardMonth = isTargetCard ? getCardStatementMonth(imported.date, targetAccount?.closingDay || 10) : undefined;
+
+    const updates: Partial<FinancialTransaction> = {
+      status: 'CONCILIADO',
+      fitId: imported.fitId,
+      reconciledAt: new Date().toISOString(),
+      accountId: selectedAccountId
+    };
+
+    if (isTargetCard) {
+      updates.creditCardStatus = cardStatus;
+      updates.creditCardMonth = cardMonth;
+    }
+
+    if (isCrossAccount) {
+      const noteAppend = `[Conciliação Inteligente] Migrado da conta '${originalAccount?.name || 'Origem'}' para '${targetAccount?.name || 'Destino'}' via extrato bancário.`;
+      updates.notes = matched.notes ? `${matched.notes}\n${noteAppend}` : noteAppend;
+    }
+
     onUpdateTransactions([{
       id: matched.id,
-      updates: {
-        status: 'CONCILIADO',
-        fitId: imported.fitId,
-        reconciledAt: new Date().toISOString()
-      }
+      updates
     }]);
 
     setConciliatedIds(prev => [...prev, imported.fitId]);
-    toast.success("Transação conciliada com lançamento existente com sucesso!");
+    if (isCrossAccount) {
+      toast.success(`Transação transferida de "${originalAccount?.name || 'outra conta'}" e conciliada na conta "${targetAccount?.name}"!`);
+    } else {
+      toast.success("Transação conciliada com lançamento existente com sucesso!");
+    }
   };
 
   const handleConciliateAllMatches = () => {
     const matchesToConciliate: { id: string, updates: Partial<FinancialTransaction> }[] = [];
     const localConciliated: string[] = [];
+    let crossCount = 0;
+
+    const targetAccount = accountsMap.get(selectedAccountId);
+    const isTargetCard = targetAccount?.accountType === 'CREDITO';
+
+    // Evita conflitos onde mais de uma transação importada pegaria o mesmo candidato pendente
+    const claimedCandidateIds = new Set<string>();
 
     importedTxs.forEach(item => {
       if (!isAlreadyImported(item) && !conciliatedIds.includes(item.fitId) && !ignoredIds.includes(item.fitId)) {
-        const match = findMatch(item);
-        if (match) {
+        const matchObj = findMatchDetails(item, claimedCandidateIds);
+        if (matchObj) {
+          const match = matchObj.candidate;
+          claimedCandidateIds.add(match.id);
+          const isCross = matchObj.isCrossAccount;
+          if (isCross) crossCount++;
+
+          const cardStatus = isTargetCard ? getInitialCreditCardStatus(item.date, targetAccount?.closingDay || 10) : undefined;
+          const cardMonth = isTargetCard ? getCardStatementMonth(item.date, targetAccount?.closingDay || 10) : undefined;
+
+          const updates: Partial<FinancialTransaction> = {
+            status: 'CONCILIADO',
+            fitId: item.fitId,
+            reconciledAt: new Date().toISOString(),
+            accountId: selectedAccountId
+          };
+
+          if (isTargetCard) {
+            updates.creditCardStatus = cardStatus;
+            updates.creditCardMonth = cardMonth;
+          }
+
+          if (isCross) {
+            const origAcc = matchObj.sourceAccount;
+            const noteAppend = `[Conciliação Inteligente] Migrado da conta '${origAcc?.name || 'Origem'}' para '${targetAccount?.name}' via conciliação em lote.`;
+            updates.notes = match.notes ? `${match.notes}\n${noteAppend}` : noteAppend;
+          }
+
           matchesToConciliate.push({
             id: match.id,
-            updates: {
-              status: 'CONCILIADO',
-              fitId: item.fitId,
-              reconciledAt: new Date().toISOString()
-            }
+            updates
           });
           localConciliated.push(item.fitId);
         }
@@ -594,7 +782,9 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
 
     onUpdateTransactions(matchesToConciliate);
     setConciliatedIds(prev => [...prev, ...localConciliated]);
-    toast.success(`${matchesToConciliate.length} correspondências de matches conciliadas automaticamente!`);
+    toast.success(
+      `${matchesToConciliate.length} correspondências conciliadas com sucesso! ${crossCount > 0 ? `(${crossCount} vinculadas de outras contas)` : ''}`
+    );
   };
 
   const handleIgnore = (fitId: string) => {
@@ -897,21 +1087,134 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                   </div>
                 )}
 
-                {/* 5. Painel de Resumo da Importação no Topo */}
+                {/* 5. Painel de Resumo da Importação e Controles Inteligentes */}
                 <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-sm space-y-4 animate-fadeIn">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-                    <h4 className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                      <Info className="w-4.5 h-4.5 text-blue-500" /> Resumo da Importação
-                    </h4>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h4 className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                        <Info className="w-4.5 h-4.5 text-blue-500" /> Resumo da Importação
+                      </h4>
+                      <button
+                        onClick={() => setShowConfigPanel(!showConfigPanel)}
+                        className={`px-2.5 py-1 rounded-xl text-[10px] font-extrabold uppercase tracking-wider transition-all flex items-center gap-1.5 border cursor-pointer ${
+                          showConfigPanel
+                            ? 'bg-blue-50 text-blue-700 border-blue-200'
+                            : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                        }`}
+                        title="Configurar critérios de conciliação inteligente"
+                      >
+                        <SlidersHorizontal className="w-3 h-3 text-blue-600" />
+                        Critérios ({searchScope === 'ALL_ACCOUNTS' ? 'Todas Contas' : 'Conta Atual'} · ±{dateToleranceDays}d · R${valueTolerance.toFixed(2)})
+                      </button>
+                    </div>
+
                     {fileSummary.withMatch > 0 && (
                       <button
                         onClick={handleConciliateAllMatches}
-                        className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black uppercase tracking-wider rounded-xl transition-all shadow-sm flex items-center gap-1 cursor-pointer"
+                        className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black uppercase tracking-wider rounded-xl transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
                       >
-                        <Zap className="w-3.5 h-3.5" /> Conciliar todos os matches automaticamente
+                        <Zap className="w-3.5 h-3.5" /> Conciliar todos os matches ({fileSummary.withMatch})
                       </button>
                     )}
                   </div>
+
+                  {/* Painel expansível de configurações de busca inteligente */}
+                  {showConfigPanel && (
+                    <div className="bg-slate-50/80 border border-slate-200 rounded-2xl p-4 space-y-3 animate-fadeIn text-left">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                          <SlidersHorizontal className="w-3.5 h-3.5 text-blue-600" /> Parâmetros de Correspondência Inteligente
+                        </span>
+                        <button
+                          onClick={() => setShowConfigPanel(false)}
+                          className="text-slate-400 hover:text-slate-600 text-xs font-bold"
+                        >
+                          ✕
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
+                        {/* Escopo da Busca */}
+                        <div className="space-y-1.5">
+                          <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                            Escopo de Busca
+                          </label>
+                          <div className="flex items-center gap-1 bg-white border border-slate-200 p-1 rounded-xl">
+                            <button
+                              onClick={() => setSearchScope('ALL_ACCOUNTS')}
+                              className={`flex-1 py-1.5 px-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1 cursor-pointer ${
+                                searchScope === 'ALL_ACCOUNTS'
+                                  ? 'bg-blue-600 text-white shadow-xs'
+                                  : 'text-slate-600 hover:bg-slate-100'
+                              }`}
+                            >
+                              <Building2 className="w-3 h-3" /> Todas as Contas
+                            </button>
+                            <button
+                              onClick={() => setSearchScope('CURRENT_ACCOUNT')}
+                              className={`flex-1 py-1.5 px-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1 cursor-pointer ${
+                                searchScope === 'CURRENT_ACCOUNT'
+                                  ? 'bg-blue-600 text-white shadow-xs'
+                                  : 'text-slate-600 hover:bg-slate-100'
+                              }`}
+                            >
+                              <Landmark className="w-3 h-3" /> Apenas Esta
+                            </button>
+                          </div>
+                          <p className="text-[9px] text-slate-400 font-semibold leading-tight">
+                            {searchScope === 'ALL_ACCOUNTS'
+                              ? 'Busca lançamentos pendentes em qualquer banco cadastrado.'
+                              : 'Busca apenas na conta selecionada.'}
+                          </p>
+                        </div>
+
+                        {/* Tolerância de Data */}
+                        <div className="space-y-1.5">
+                          <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                            Tolerância de Data
+                          </label>
+                          <select
+                            value={dateToleranceDays}
+                            onChange={(e) => setDateToleranceDays(Number(e.target.value))}
+                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-100 cursor-pointer"
+                          >
+                            <option value={0}>Mesmo dia (0 dias)</option>
+                            <option value={1}>± 1 dia de tolerância</option>
+                            <option value={2}>± 2 dias de tolerância</option>
+                            <option value={3}>± 3 dias de tolerância (Padrão)</option>
+                            <option value={5}>± 5 dias de tolerância</option>
+                            <option value={7}>± 7 dias de tolerância</option>
+                            <option value={10}>± 10 dias de tolerância</option>
+                          </select>
+                          <p className="text-[9px] text-slate-400 font-semibold leading-tight">
+                            Permite pequenas variações de compensação bancária entre dias úteis.
+                          </p>
+                        </div>
+
+                        {/* Tolerância de Valor */}
+                        <div className="space-y-1.5">
+                          <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                            Tolerância de Valor
+                          </label>
+                          <select
+                            value={valueTolerance}
+                            onChange={(e) => setValueTolerance(Number(e.target.value))}
+                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-100 cursor-pointer"
+                          >
+                            <option value={0.00}>Exato (R$ 0,00)</option>
+                            <option value={0.01}>Até R$ 0,01 (Padrão centavos)</option>
+                            <option value={0.05}>Até R$ 0,05</option>
+                            <option value={0.10}>Até R$ 0,10</option>
+                            <option value={0.50}>Até R$ 0,50</option>
+                            <option value={1.00}>Até R$ 1,00</option>
+                          </select>
+                          <p className="text-[9px] text-slate-400 font-semibold leading-tight">
+                            Compensa arredondamentos de taxas ou tarifas centesimais.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100 text-center">
@@ -919,9 +1222,14 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                       <p className="text-lg font-black text-slate-700 mt-1.5">{fileSummary.total}</p>
                     </div>
 
-                    <div className="bg-emerald-50/60 p-3 rounded-2xl border border-emerald-100 text-center">
+                    <div className="bg-emerald-50/60 p-3 rounded-2xl border border-emerald-100 text-center relative">
                       <p className="text-[9px] font-black text-emerald-600 uppercase tracking-widest leading-none">Com Match</p>
                       <p className="text-lg font-black text-emerald-800 mt-1.5">{fileSummary.withMatch}</p>
+                      {fileSummary.withCrossAccountMatch > 0 && (
+                        <span className="text-[8px] font-black text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-md mt-1 inline-block">
+                          {fileSummary.withCrossAccountMatch} em outras contas
+                        </span>
+                      )}
                     </div>
 
                     <div className="bg-amber-50/60 p-3 rounded-2xl border border-amber-100 text-center">
@@ -944,7 +1252,10 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                   </div>
                 ) : (
                   visibleImported.map(item => {
-                    const match = findMatch(item);
+                    const matchDetails = findMatchDetails(item);
+                    const match = matchDetails?.candidate;
+                    const isCrossAccount = matchDetails?.isCrossAccount;
+                    const sourceAccount = matchDetails?.sourceAccount;
                     const duplicate = isAlreadyImported(item);
                     const isEditing = editingTxId === item.fitId;
                     const isSearchOpen = showSearchForFitId[item.fitId];
@@ -1160,7 +1471,7 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                                 <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                                 <input
                                   type="text"
-                                  placeholder="Buscar por descrição, valor, data ou categoria..."
+                                  placeholder="Buscar por descrição, valor, data, categoria ou conta..."
                                   value={query}
                                   onChange={(e) => setSearchQueries(prev => ({ ...prev, [item.fitId]: e.target.value }))}
                                   onFocus={() => setActiveSearchFitId(item.fitId)}
@@ -1186,7 +1497,7 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                                   if (results.length === 0) {
                                     return (
                                       <p className="p-4 text-[10px] font-bold text-slate-400 text-center uppercase tracking-wider">
-                                        {query ? 'Nenhum lançamento pendente correspondente encontrado' : 'Nenhum lançamento pendente nesta conta'}
+                                        {query ? 'Nenhum lançamento pendente correspondente encontrado' : 'Nenhum lançamento pendente encontrado'}
                                       </p>
                                     );
                                   }
@@ -1194,6 +1505,8 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                                   return results.map(candidate => {
                                     const isSelected = selectedMap[candidate.id] !== undefined;
                                     const currentAmount = isSelected ? selectedMap[candidate.id] : Math.abs(candidate.amount);
+                                    const candAcc = accountsMap[candidate.accountId];
+                                    const isOtherAcc = candidate.accountId !== selectedAccountId;
 
                                     return (
                                       <div
@@ -1218,11 +1531,23 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                                                   RECORRENTE
                                                 </span>
                                               )}
+                                              {isOtherAcc && candAcc && (
+                                                <span className="bg-amber-50 text-amber-700 font-extrabold text-[8px] uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0 border border-amber-200 flex items-center gap-1">
+                                                  <Building2 className="w-2.5 h-2.5 text-amber-600" />
+                                                  {candAcc.name}
+                                                </span>
+                                              )}
                                             </div>
                                             <div className="text-[10px] text-slate-400 font-semibold flex items-center gap-1.5">
                                               <span className="font-mono">{new Date(candidate.date + 'T00:00:00').toLocaleDateString('pt-BR')}</span>
                                               <span className="text-slate-300">•</span>
                                               <span>{candidate.categoryName || 'Sem Categoria'}</span>
+                                              {!isOtherAcc && candAcc && (
+                                                <>
+                                                  <span className="text-slate-300">•</span>
+                                                  <span className="text-slate-500 font-medium">{candAcc.name}</span>
+                                                </>
+                                              )}
                                             </div>
                                           </div>
                                         </div>
@@ -1329,7 +1654,9 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                         className={`rounded-3xl p-5 border shadow-sm transition-all animate-fadeIn ${
                           duplicate 
                             ? 'bg-slate-50/70 border-slate-200/80' 
-                            : 'bg-white border-emerald-100 hover:border-emerald-250'
+                            : isCrossAccount
+                              ? 'bg-amber-50/20 border-amber-200 hover:border-amber-300'
+                              : 'bg-white border-emerald-100 hover:border-emerald-250'
                         }`}
                       >
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -1351,6 +1678,10 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                                     JÁ IMPORTADO
                                   </span>
                                 )
+                              ) : isCrossAccount ? (
+                                <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-800 border border-amber-200 font-extrabold px-2 py-0.5 rounded text-[8px] uppercase tracking-wider">
+                                  <Building2 className="w-2.5 h-2.5 text-amber-700" /> MATCH EM OUTRO BANCO: {sourceAccount?.name || 'Outra Conta'}
+                                </span>
                               ) : (
                                 <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-700 font-extrabold px-2 py-0.5 rounded text-[8px] uppercase tracking-wider">
                                   MATCH ENCONTRADO
@@ -1420,23 +1751,71 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                                   </span>
                                 </div>
                               )
+                            ) : isCrossAccount ? (
+                              /* Visual para match de outra conta/banco */
+                              <div className="bg-amber-50/80 border border-amber-200/80 rounded-2xl p-4 text-left w-full md:w-[430px] space-y-2.5">
+                                <div className="flex items-center gap-1.5 text-xs font-black text-amber-800">
+                                  <Building2 className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                                  Correspondência no banco: <span className="underline decoration-amber-400">{sourceAccount?.name || 'Outra Conta'}</span>
+                                </div>
+                                <div className="text-xs text-slate-700 font-bold leading-normal">
+                                  ✓ Lançamento sistema: <span className="text-slate-900 font-extrabold">{match?.description}</span> —{' '}
+                                  <span className="font-mono">{match?.date ? new Date(match.date + 'T00:00:00').toLocaleDateString('pt-BR') : ''}</span> —{' '}
+                                  <span className="text-blue-600 font-black">{match?.categoryName || 'Sem Categoria'}</span>
+                                </div>
+                                <div className="text-[10px] font-semibold text-slate-500 leading-none">
+                                  Valor sistema: <span className="font-mono font-bold text-slate-700">{formatCurrency(match?.amount || 0)}</span> · Valor extrato: <span className="font-mono font-bold text-slate-800">{formatCurrency(item.amount)}</span>
+                                </div>
+                                <div className="text-[9.5px] text-amber-800 bg-amber-100/60 rounded-xl p-2 font-medium leading-tight">
+                                  ℹ️ Ao confirmar, o lançamento será conciliado e realocado para <strong>{selectedAccount?.name}</strong>, prevenindo duplicidades.
+                                </div>
+
+                                <div className="flex items-center gap-2 pt-2 border-t border-amber-200/60">
+                                  <button
+                                    onClick={() => handleConciliationMatch(item, match!)}
+                                    className="bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold text-[10px] uppercase tracking-wide px-3.5 py-2 flex items-center gap-1 cursor-pointer transition-all hover:scale-[1.02] shadow-sm"
+                                  >
+                                    <Check className="w-3.5 h-3.5" /> Confirmar e Realocar para esta conta
+                                  </button>
+
+                                  <button
+                                    onClick={() => handleIgnore(item.fitId)}
+                                    className="text-slate-400 hover:text-slate-600 text-[10px] font-extrabold uppercase tracking-wider px-2 py-2"
+                                  >
+                                    Ignorar
+                                  </button>
+
+                                  <button
+                                    onClick={() => {
+                                      setEditingTxId(item.fitId);
+                                      setTempDesc(item.description);
+                                      setTempDate(item.date);
+                                      setTempAmount(item.amount);
+                                    }}
+                                    className="p-2 text-slate-400 hover:text-blue-600 hover:bg-white rounded-xl transition-all ml-auto"
+                                    title="Editar transação antes de conciliar"
+                                  >
+                                    <Pencil className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </div>
                             ) : (
-                              /* 2. Visual de cada transação com match automático */
+                              /* 2. Visual de cada transação com match automático na mesma conta */
                               <div className="bg-emerald-55 bg-emerald-50 text-emerald-600 rounded-2xl p-4 text-left w-full md:w-[410px] space-y-3">
                                 <div>
                                   <div className="text-xs text-slate-700 font-bold leading-normal">
-                                    ✓ Corresponde a: <span className="text-emerald-800 font-extrabold">{match.description}</span> —{' '}
-                                    <span className="font-mono">{new Date(match.date + 'T00:00:00').toLocaleDateString('pt-BR')}</span> —{' '}
-                                    <span className="text-blue-600 font-black">{match.categoryName || 'Sem Categoria'}</span>
+                                    ✓ Corresponde a: <span className="text-emerald-800 font-extrabold">{match?.description}</span> —{' '}
+                                    <span className="font-mono">{match?.date ? new Date(match.date + 'T00:00:00').toLocaleDateString('pt-BR') : ''}</span> —{' '}
+                                    <span className="text-blue-600 font-black">{match?.categoryName || 'Sem Categoria'}</span>
                                   </div>
                                   <div className="text-[10px] font-semibold text-slate-500 mt-1 leading-none">
-                                    Valor sistema: <span className="font-mono font-bold text-slate-705">{formatCurrency(match.amount)}</span> · Valor extrato: <span className="font-mono font-bold text-slate-750">{formatCurrency(item.amount)}</span>
+                                    Valor sistema: <span className="font-mono font-bold text-slate-705">{formatCurrency(match?.amount || 0)}</span> · Valor extrato: <span className="font-mono font-bold text-slate-750">{formatCurrency(item.amount)}</span>
                                   </div>
                                 </div>
 
                                 <div className="flex items-center gap-2 pt-2 border-t border-emerald-100">
                                   <button
-                                    onClick={() => handleConciliationMatch(item, match)}
+                                    onClick={() => handleConciliationMatch(item, match!)}
                                     className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-[10px] uppercase tracking-wide px-3.5 py-2 flex items-center gap-1 cursor-pointer transition-all hover:scale-[1.02] shadow-sm"
                                   >
                                     <Check className="w-3.5 h-3.5" /> Conciliar automaticamente
