@@ -371,25 +371,28 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   };
 
   // Credit Card invoice list filters
+  const currentMonthYM = useMemo(() => {
+    const today = new Date();
+    return `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}`;
+  }, []);
+
   const uniqueInvoiceMonths = useMemo(() => {
     if (!selectedCardForInvoice) return [];
     const cardTxs = transactions.filter(t => t.accountId === selectedCardForInvoice.id && t.creditCardMonth);
-    const months = Array.from(new Set(cardTxs.map(t => t.creditCardMonth!)));
-    if (months.length === 0) {
-      const today = new Date();
-      const ym = `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}`;
-      months.push(ym);
-    }
-    return months.sort().reverse();
-  }, [selectedCardForInvoice, transactions]);
+    const monthsSet = new Set(cardTxs.map(t => t.creditCardMonth!));
+    // Always include the current vigent month in the options list
+    monthsSet.add(currentMonthYM);
+    return Array.from(monthsSet).sort().reverse();
+  }, [selectedCardForInvoice, transactions, currentMonthYM]);
 
+  // When opening or changing card invoice panel, automatically default to the current vigent month
   useEffect(() => {
-    if (uniqueInvoiceMonths.length > 0) {
-      setSelectedInvoiceMonth(uniqueInvoiceMonths[0]);
+    if (selectedCardForInvoice) {
+      setSelectedInvoiceMonth(currentMonthYM);
     } else {
       setSelectedInvoiceMonth('');
     }
-  }, [uniqueInvoiceMonths]);
+  }, [selectedCardForInvoice?.id, currentMonthYM]);
 
   const invoiceTransactions = useMemo(() => {
     if (!selectedCardForInvoice || !selectedInvoiceMonth) return [];
@@ -1528,66 +1531,84 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
       {/* Credit Card Invoices Screen and Transaction Statement Overlay */}
       {selectedCardForInvoice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setSelectedCardForInvoice(null)} />
-          <div className="relative bg-white w-full max-w-2xl rounded-[32px] shadow-2xl overflow-hidden border border-slate-100 flex flex-col max-h-[85vh] animate-scaleUp">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
+          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-xs" onClick={() => setSelectedCardForInvoice(null)} />
+          <div className="relative bg-white w-full max-w-4xl rounded-[32px] shadow-2xl overflow-hidden border border-slate-200/80 flex flex-col max-h-[90vh] animate-scaleUp">
             
             {/* Header */}
-            <div className="px-8 pt-8 pb-4 border-b border-slate-100 flex-shrink-0 flex items-center justify-between">
+            <div className="px-6 sm:px-8 pt-6 sm:pt-7 pb-4 border-b border-slate-100 flex-shrink-0 flex items-center justify-between">
               <div>
-                <span className="text-[9px] font-black uppercase tracking-widest bg-slate-150 text-slate-550 px-2.5 py-1 rounded-md mb-2 inline-block">
+                <span className="text-[9px] font-black uppercase tracking-widest bg-blue-50 text-blue-700 border border-blue-100 px-2.5 py-1 rounded-md mb-2 inline-block">
                   Faturas Mensais
                 </span>
-                <h3 className="text-base font-black text-slate-900 uppercase tracking-tight flex items-center gap-2">
-                  <CreditCardIcon className="w-4.5 h-4.5 text-blue-500 shrink-0" />
-                  Card: {selectedCardForInvoice.name}
+                <h3 className="text-base sm:text-lg font-black text-slate-800 uppercase tracking-tight flex items-center gap-2">
+                  <CreditCardIcon className="w-5 h-5 text-blue-600 shrink-0" />
+                  Cartão: {selectedCardForInvoice.name}
                 </h3>
               </div>
               <button 
                 onClick={() => setSelectedCardForInvoice(null)}
-                className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-700 rounded-full transition-all"
+                className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-700 rounded-full transition-all cursor-pointer"
+                title="Fechar"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             {/* Inner Content */}
-            <div className="flex-1 overflow-y-auto px-8 py-6 space-y-5">
+            <div className="flex-1 overflow-y-auto px-6 sm:px-8 py-5 space-y-5">
               
               {/* Selector segment */}
-              <div className="flex items-center justify-between bg-slate-50 p-4 border border-slate-100 rounded-2xl">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/80 p-4 border border-slate-200/70 rounded-2xl">
                 <div className="flex items-center gap-2.5">
-                  <Calendar className="w-4 h-4 text-slate-400 shrink-0" />
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Período de Fatura:</label>
+                  <Calendar className="w-4 h-4 text-blue-600 shrink-0" />
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">Período de Fatura:</label>
+                    <span className="text-[10px] text-slate-400 font-semibold">Selecione o mês da competência</span>
+                  </div>
                 </div>
-                <select
-                  value={selectedInvoiceMonth}
-                  onChange={(e) => setSelectedInvoiceMonth(e.target.value)}
-                  className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/10"
-                >
-                  {uniqueInvoiceMonths.map(m => (
-                    <option key={m} value={m}>{formatMonthName(m)}</option>
-                  ))}
-                </select>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={selectedInvoiceMonth}
+                    onChange={(e) => setSelectedInvoiceMonth(e.target.value)}
+                    className="w-full sm:w-auto px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/20 shadow-xs"
+                  >
+                    {uniqueInvoiceMonths.map(m => (
+                      <option key={m} value={m}>
+                        {formatMonthName(m)} {m === currentMonthYM ? '(Mês Vigente)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {selectedInvoiceMonth !== currentMonthYM && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedInvoiceMonth(currentMonthYM)}
+                      className="px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer"
+                      title="Voltar para o mês corrente"
+                    >
+                      Mês Atual
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Summary limits */}
-              <div className="grid grid-cols-3 gap-4">
-                <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+                <div className="bg-slate-50/80 rounded-2xl p-4 border border-slate-200/70">
                   <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">FECHAMENTO DA FATURA</div>
-                  <div className="text-xs font-black text-slate-800 mt-1 uppercase">DIA {selectedCardForInvoice.closingDay || 10}</div>
+                  <div className="text-sm font-black text-slate-800 mt-1 uppercase">DIA {selectedCardForInvoice.closingDay || 10}</div>
                 </div>
-                <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
+                <div className="bg-slate-50/80 rounded-2xl p-4 border border-slate-200/70">
                   <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">VENCIMENTO DA FATURA</div>
-                  <div className="text-xs font-black text-slate-800 mt-1 uppercase">DIA {selectedCardForInvoice.dueDay || 15}</div>
+                  <div className="text-sm font-black text-slate-800 mt-1 uppercase">DIA {selectedCardForInvoice.dueDay || 15}</div>
                 </div>
-                <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
+                <div className="bg-slate-50/80 rounded-2xl p-4 border border-slate-200/70">
                   <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">SITUAÇÃO GERAL</div>
                   <div className="mt-1">
-                    <span className={`inline-block px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wide ${
-                      isInvoicePaid ? 'bg-emerald-100 text-emerald-700' : 'bg-orange-100 text-orange-700'
+                    <span className={`inline-block px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wide border ${
+                      isInvoicePaid ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'
                     }`}>
-                      {isInvoicePaid ? 'PAGA' : 'EM ABERTO'}
+                      {isInvoicePaid ? 'FATURA PAGA' : 'FATURA EM ABERTO'}
                     </span>
                   </div>
                 </div>
@@ -1596,150 +1617,167 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               {/* Transactions List */}
               <div className="space-y-2.5">
                 <div className="flex items-center justify-between">
-                  <div className="text-xs font-black text-slate-500 tracking-wider uppercase">Lançamentos da Competência</div>
-                  <span className="text-[10px] text-slate-400 font-bold">{invoiceTransactions.length} item(ns) nesta fatura</span>
+                  <div className="text-xs font-black text-slate-700 tracking-wider uppercase flex items-center gap-2">
+                    Lançamentos da Competência
+                  </div>
+                  <span className="text-[10px] text-slate-500 font-bold bg-slate-100 px-2 py-0.5 rounded-md">
+                    {invoiceTransactions.length} item(ns) nesta fatura
+                  </span>
                 </div>
-                <div className="border border-slate-150 rounded-2xl overflow-hidden bg-white max-h-64 overflow-y-auto shadow-sm">
-                  <table className="min-w-full text-xs text-left text-slate-600">
-                    <thead className="bg-slate-50 text-[10px] text-slate-450 uppercase font-black border-b border-slate-150 sticky top-0 z-10">
-                      <tr>
-                        <th className="px-4 py-3">Data</th>
-                        <th className="px-4 py-3">Descrição Descritiva</th>
-                        <th className="px-4 py-3">Categoria</th>
-                        <th className="px-4 py-3 text-right">Valor</th>
-                        <th className="px-3 py-3 text-center w-24">Ações</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {invoiceTransactions.length === 0 ? (
+                <div className="border border-slate-200/90 rounded-2xl overflow-hidden bg-white shadow-xs">
+                  <div className="max-h-72 overflow-x-auto overflow-y-auto">
+                    <table className="w-full text-xs text-left text-slate-600 border-collapse min-w-[640px]">
+                      <thead className="bg-slate-50/95 backdrop-blur-xs text-[10px] text-slate-500 uppercase font-black border-b border-slate-200 sticky top-0 z-10">
                         <tr>
-                          <td colSpan={5} className="px-4 py-8 text-center text-slate-400 italic">
-                            Nenhum lançamento registrado nesta fatura mensal.
-                          </td>
+                          <th className="px-4 py-3.5 whitespace-nowrap w-28">Data</th>
+                          <th className="px-4 py-3.5 whitespace-nowrap min-w-[220px]">Descrição Descritiva</th>
+                          <th className="px-4 py-3.5 whitespace-nowrap w-36">Categoria</th>
+                          <th className="px-4 py-3.5 whitespace-nowrap w-36 text-right">Valor</th>
+                          <th className="px-4 py-3.5 whitespace-nowrap w-24 text-center pr-5">Ações</th>
                         </tr>
-                      ) : (
-                        invoiceTransactions.map(t => {
-                          const isMenuOpen = activeTxMenuId === t.id;
-                          return (
-                            <tr key={t.id} className="hover:bg-slate-50/70 transition-colors">
-                              <td className="px-4 py-3 font-mono text-slate-500 whitespace-nowrap">
-                                {t.date.split('-').reverse().join('/')}
-                              </td>
-                              <td className="px-4 py-3 font-extrabold text-slate-800">
-                                <div>{t.description}</div>
-                                {t.movedFromMonth && (
-                                  <div className="mt-1 flex items-center gap-1.5 flex-wrap">
-                                    <span 
-                                      className="inline-flex items-center gap-1 bg-amber-50 text-amber-800 border border-amber-200/80 px-2 py-0.5 rounded text-[9.5px] font-bold cursor-help"
-                                      title={t.movedHistory && t.movedHistory.length > 0
-                                        ? t.movedHistory.map(h => `Movido de ${formatMonthShort(h.fromMonth)} para ${formatMonthShort(h.toMonth)} em ${new Date(h.movedAt).toLocaleDateString('pt-BR')}`).join(' ➔ ')
-                                        : `Originalmente da fatura de ${formatMonthShort(t.movedFromMonth)}`
-                                      }
-                                      onClick={() => {
-                                        if (t.movedHistory && t.movedHistory.length > 0) {
-                                          setViewHistoryTx(t);
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {invoiceTransactions.length === 0 ? (
+                          <tr>
+                            <td colSpan={5} className="px-4 py-10 text-center text-slate-400 font-medium italic">
+                              Nenhum lançamento registrado para esta fatura mensal.
+                            </td>
+                          </tr>
+                        ) : (
+                          invoiceTransactions.map(t => {
+                            const isMenuOpen = activeTxMenuId === t.id;
+                            return (
+                              <tr key={t.id} className="hover:bg-slate-50/80 transition-colors">
+                                <td className="px-4 py-3.5 font-mono text-slate-500 whitespace-nowrap font-medium">
+                                  {t.date.split('-').reverse().join('/')}
+                                </td>
+                                <td className="px-4 py-3.5 font-extrabold text-slate-800">
+                                  <div>{t.description}</div>
+                                  {t.movedFromMonth && (
+                                    <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                                      <span 
+                                        className="inline-flex items-center gap-1 bg-amber-50 text-amber-800 border border-amber-200/80 px-2 py-0.5 rounded text-[9.5px] font-bold cursor-help"
+                                        title={t.movedHistory && t.movedHistory.length > 0
+                                          ? t.movedHistory.map(h => `Movido de ${formatMonthShort(h.fromMonth)} para ${formatMonthShort(h.toMonth)} em ${new Date(h.movedAt).toLocaleDateString('pt-BR')}`).join(' ➔ ')
+                                          : `Originalmente da fatura de ${formatMonthShort(t.movedFromMonth)}`
                                         }
-                                      }}
-                                    >
-                                      <Clock className="w-2.5 h-2.5 text-amber-600 shrink-0" />
-                                      Movido de {formatMonthShort(t.movedFromMonth)}
-                                    </span>
-                                  </div>
-                                )}
-                              </td>
-                              <td className="px-4 py-3 whitespace-nowrap">
-                                <span className="bg-slate-100 font-bold px-2 py-0.5 rounded-md text-[10px] text-slate-600">
-                                  {t.categoryName || 'Gerais'}
-                                </span>
-                              </td>
-                              <td className="px-4 py-3 text-right font-bold text-rose-500 whitespace-nowrap">
-                                - {formatCurrency(t.amount)}
-                              </td>
-                              <td className="px-3 py-3 text-center relative whitespace-nowrap">
-                                <div className="flex items-center justify-center gap-1">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleInitiateMove(t)}
-                                    title="Mover para próxima fatura"
-                                    className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-all flex items-center gap-1 text-[10px] font-bold"
-                                  >
-                                    <CalendarPlus className="w-3.5 h-3.5 shrink-0" />
-                                    <span className="hidden sm:inline">Mover</span>
-                                  </button>
-
-                                  <div className="relative">
+                                        onClick={() => {
+                                          if (t.movedHistory && t.movedHistory.length > 0) {
+                                            setViewHistoryTx(t);
+                                          }
+                                        }}
+                                      >
+                                        <Clock className="w-2.5 h-2.5 text-amber-600 shrink-0" />
+                                        Movido de {formatMonthShort(t.movedFromMonth)}
+                                      </span>
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="px-4 py-3.5 whitespace-nowrap">
+                                  <span className="bg-slate-100 font-bold px-2 py-0.5 rounded-md text-[10px] text-slate-600">
+                                    {t.categoryName || 'Gerais'}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3.5 text-right font-black text-rose-600 whitespace-nowrap font-mono">
+                                  - {formatCurrency(t.amount)}
+                                </td>
+                                <td className="px-4 py-3.5 text-center relative whitespace-nowrap pr-5">
+                                  <div className="flex items-center justify-center gap-1">
                                     <button
                                       type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setActiveTxMenuId(isMenuOpen ? null : t.id);
-                                      }}
-                                      className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-all"
-                                      title="Mais opções"
+                                      onClick={() => handleInitiateMove(t)}
+                                      title="Mover para próxima fatura"
+                                      className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-all flex items-center gap-1 text-[10px] font-bold cursor-pointer"
                                     >
-                                      <MoreVertical className="w-3.5 h-3.5" />
+                                      <CalendarPlus className="w-3.5 h-3.5 shrink-0" />
+                                      <span className="hidden sm:inline">Mover</span>
                                     </button>
 
-                                    {isMenuOpen && (
-                                      <>
-                                        <div 
-                                          className="fixed inset-0 z-30" 
-                                          onClick={() => setActiveTxMenuId(null)}
-                                        />
-                                        <div className="absolute right-0 top-full mt-1 w-52 bg-white rounded-xl shadow-xl border border-slate-150 py-1.5 z-40 text-left animate-fadeIn">
-                                          <button
-                                            type="button"
-                                            onClick={() => handleInitiateMove(t)}
-                                            className="w-full px-3.5 py-2 text-[11px] font-bold text-slate-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-2 transition-colors"
-                                          >
-                                            <CalendarPlus className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                                            Mover para próxima fatura
-                                          </button>
-                                          
-                                          {t.movedHistory && t.movedHistory.length > 0 && (
+                                    <div className="relative">
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setActiveTxMenuId(isMenuOpen ? null : t.id);
+                                        }}
+                                        className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-all cursor-pointer"
+                                        title="Mais opções"
+                                      >
+                                        <MoreVertical className="w-3.5 h-3.5" />
+                                      </button>
+
+                                      {isMenuOpen && (
+                                        <>
+                                          <div 
+                                            className="fixed inset-0 z-30" 
+                                            onClick={() => setActiveTxMenuId(null)}
+                                          />
+                                          <div className="absolute right-0 top-full mt-1 w-52 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-40 text-left animate-fadeIn">
                                             <button
                                               type="button"
-                                              onClick={() => {
-                                                setActiveTxMenuId(null);
-                                                setViewHistoryTx(t);
-                                              }}
-                                              className="w-full px-3.5 py-2 text-[11px] font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors border-t border-slate-100"
+                                              onClick={() => handleInitiateMove(t)}
+                                              className="w-full px-3.5 py-2 text-[11px] font-bold text-slate-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-2 transition-colors cursor-pointer"
                                             >
-                                              <History className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                                              Ver histórico de faturas
+                                              <CalendarPlus className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                                              Mover para próxima fatura
                                             </button>
-                                          )}
-                                        </div>
-                                      </>
-                                    )}
+                                            
+                                            {t.movedHistory && t.movedHistory.length > 0 && (
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  setActiveTxMenuId(null);
+                                                  setViewHistoryTx(t);
+                                                }}
+                                                className="w-full px-3.5 py-2 text-[11px] font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors border-t border-slate-100 cursor-pointer"
+                                              >
+                                                <History className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                                                Ver histórico de faturas
+                                              </button>
+                                            )}
+                                          </div>
+                                        </>
+                                      )}
+                                    </div>
                                   </div>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })
-                      )}
-                    </tbody>
-                  </table>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
 
-              {/* Total Summary Row */}
-              <div className="flex items-center justify-between p-5 bg-slate-900 text-white rounded-2xl shadow-sm">
+              {/* Total Summary Row (Clean Light Gradient without harsh black) */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 sm:p-5 bg-gradient-to-r from-blue-50/80 via-slate-50 to-indigo-50/70 border border-blue-200/80 rounded-2xl shadow-xs">
                 <div>
-                  <div className="text-[10px] font-black tracking-widest text-slate-400 uppercase">Valor Total do Demonstrativo</div>
-                  <div className="text-sm text-slate-300 mt-0.5">Competência: {formatMonthName(selectedInvoiceMonth)}</div>
+                  <div className="text-[10px] font-black tracking-widest text-blue-700 uppercase flex items-center gap-1.5">
+                    <CreditCardIcon className="w-3.5 h-3.5 text-blue-600" /> Valor Total do Demonstrativo
+                  </div>
+                  <div className="text-xs text-slate-600 font-semibold mt-0.5 flex items-center gap-2 flex-wrap">
+                    <span>Competência: <strong className="text-slate-800 font-bold">{formatMonthName(selectedInvoiceMonth)}</strong></span>
+                    {selectedInvoiceMonth === currentMonthYM && (
+                      <span className="text-[9px] font-black bg-blue-100 text-blue-800 uppercase px-2 py-0.5 rounded-md">
+                        Mês Vigente
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div className="text-xl font-black">{formatCurrency(invoiceTotal)}</div>
+                <div className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight font-mono">
+                  {formatCurrency(invoiceTotal)}
+                </div>
               </div>
             </div>
 
             {/* Actions Footer */}
-            <div className="px-8 pb-8 pt-4 border-t border-slate-100 flex-shrink-0 flex gap-4">
+            <div className="px-6 sm:px-8 pb-6 sm:pb-7 pt-4 border-t border-slate-100 flex-shrink-0 flex flex-col sm:flex-row gap-3">
               <button
                 type="button"
                 onClick={handleExportPDF}
-                className="flex-1 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl font-bold uppercase tracking-wider text-xs flex items-center justify-center gap-2 transition-all"
+                className="flex-1 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl font-bold uppercase tracking-wider text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
               >
                 <FileText className="w-4 h-4 text-slate-500" />
                 Exportar Fatura PDF
@@ -1755,7 +1793,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                     }
                     setIsPayingInvoiceOpen(true);
                   }}
-                  className="flex-1 py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-black uppercase tracking-wider text-xs shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2 transition-all hover:scale-[1.01] active:scale-95"
+                  className="flex-1 py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-black uppercase tracking-wider text-xs shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2 transition-all hover:scale-[1.01] active:scale-95 cursor-pointer"
                 >
                   <CheckCircle2 className="w-4 h-4 text-white" />
                   Efetuar pagamento da Fatura
@@ -1769,8 +1807,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       {/* Recurrence & Move Confirmation Dialog */}
       {txToMove && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => !isMovingTx && setTxToMove(null)} />
-          <div className="relative bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden border border-slate-100 flex flex-col animate-scaleUp">
+          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-xs" onClick={() => !isMovingTx && setTxToMove(null)} />
+          <div className="relative bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden border border-slate-200/80 flex flex-col animate-scaleUp">
             
             {/* Header */}
             <div className="px-7 pt-7 pb-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
@@ -1783,7 +1821,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   )}
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-slate-900 uppercase tracking-tight">
+                  <h3 className="text-base font-black text-slate-800 uppercase tracking-tight">
                     {recurrentOccurrences.length > 0 ? 'Lançamento Recorrente Detectado' : 'Mover para Próxima Fatura'}
                   </h3>
                   <p className="text-xs text-slate-500 font-medium mt-0.5">
@@ -1794,7 +1832,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               <button 
                 disabled={isMovingTx}
                 onClick={() => setTxToMove(null)}
-                className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-full transition-all disabled:opacity-50"
+                className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-full transition-all disabled:opacity-50 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1922,8 +1960,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       {/* Invoice Movement Audit History Dialog */}
       {viewHistoryTx && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setViewHistoryTx(null)} />
-          <div className="relative bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden border border-slate-100 flex flex-col animate-scaleUp">
+          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-xs" onClick={() => setViewHistoryTx(null)} />
+          <div className="relative bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden border border-slate-200/80 flex flex-col animate-scaleUp">
             
             <div className="px-6 pt-6 pb-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
               <div className="flex items-center gap-2.5">
@@ -1931,13 +1969,13 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   <History className="w-4.5 h-4.5" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight">Histórico de Movimentações</h3>
+                  <h3 className="text-sm font-black text-slate-800 uppercase tracking-tight">Histórico de Movimentações</h3>
                   <p className="text-[11px] text-slate-500 font-medium truncate max-w-[240px]">{viewHistoryTx.description}</p>
                 </div>
               </div>
               <button 
                 onClick={() => setViewHistoryTx(null)}
-                className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-full transition-all"
+                className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-full transition-all cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1976,7 +2014,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               <button
                 type="button"
                 onClick={() => setViewHistoryTx(null)}
-                className="w-full py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-bold uppercase tracking-wider transition-all"
+                className="w-full py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer"
               >
                 Fechar
               </button>
@@ -1988,10 +2026,10 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       {/* Settle invoice details payment picker */}
       {isPayingInvoiceOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setIsPayingInvoiceOpen(false)} />
-          <div className="relative bg-white w-full max-w-sm rounded-[32px] shadow-2xl p-6 border border-slate-100 flex flex-col font-sans animate-scaleUp">
+          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-xs" onClick={() => setIsPayingInvoiceOpen(false)} />
+          <div className="relative bg-white w-full max-w-sm rounded-[32px] shadow-2xl p-6 border border-slate-200/80 flex flex-col font-sans animate-scaleUp">
             
-            <h4 className="text-sm font-black text-slate-900 uppercase tracking-tight">Confirmar Liquidação de Fatura</h4>
+            <h4 className="text-sm font-black text-slate-800 uppercase tracking-tight">Confirmar Liquidação de Fatura</h4>
             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-1">
               Escolha a conta e a data para registrar a quitação
             </p>
@@ -2026,7 +2064,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
               <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 text-center">
                 <span className="text-[10px] text-slate-400 font-black tracking-widest uppercase block">VALOR A LIQUIDAR:</span>
-                <span className="text-lg font-black text-slate-950 mt-1 block">{formatCurrency(invoiceTotal)}</span>
+                <span className="text-lg font-black text-slate-800 mt-1 block">{formatCurrency(invoiceTotal)}</span>
               </div>
             </div>
 
@@ -2034,14 +2072,14 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               <button
                 type="button"
                 onClick={handleConfirmInvoicePayment}
-                className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black uppercase tracking-wider text-xs transition-all hover:scale-[1.01] active:scale-95 shadow-md shadow-emerald-500/10"
+                className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black uppercase tracking-wider text-xs transition-all hover:scale-[1.01] active:scale-95 shadow-md shadow-emerald-500/10 cursor-pointer"
               >
                 Confirmar Liquidação
               </button>
               <button
                 type="button"
                 onClick={() => setIsPayingInvoiceOpen(false)}
-                className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-2xl font-black uppercase tracking-wider text-xs transition-all text-center"
+                className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-2xl font-black uppercase tracking-wider text-xs transition-all text-center cursor-pointer"
               >
                 Cancelar
               </button>
