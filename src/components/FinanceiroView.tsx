@@ -913,6 +913,7 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
               onUpdateAccount={handleUpdateAccount}
               onDeleteAccount={handleDeleteAccount}
               onPayCreditCardInvoice={handlePayCreditCardInvoice}
+              onUpdateTransactions={handleUpdateTransactions}
             />
           )}
 

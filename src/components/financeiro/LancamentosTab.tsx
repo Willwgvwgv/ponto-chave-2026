@@ -1207,6 +1207,11 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
                                 PARCELA {t.installmentInfo ? `(${t.installmentInfo})` : ''}
                               </span>
                             )}
+                            {t.movedFromMonth && (
+                              <span className="px-1.5 py-0.5 bg-amber-50 text-amber-800 border border-amber-200/80 font-bold text-[8px] uppercase tracking-wider rounded-md" title={`Originalmente da fatura ${t.movedFromMonth}`}>
+                                MOVIDO DE {t.movedFromMonth}
+                              </span>
+                            )}
                           </p>
                           {t.notes && <p className="text-[10px] text-slate-400 mt-0.5">{t.notes}</p>}
                         </div>

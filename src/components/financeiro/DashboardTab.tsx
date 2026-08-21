@@ -18,7 +18,13 @@ import {
   FileText,
   CheckCircle2,
   Calendar,
-  X
+  X,
+  Repeat,
+  History,
+  Clock,
+  HelpCircle,
+  ArrowRightCircle,
+  CalendarPlus
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -72,6 +78,7 @@ interface DashboardTabProps {
     totalAmount: number,
     cardTxIds: string[]
   ) => Promise<void>;
+  onUpdateTransactions?: (items: { id: string; updates: Partial<FinancialTransaction> }[]) => Promise<void>;
 }
 
 const bankPresetColors: Record<string, string> = {
@@ -113,7 +120,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   onAddAccount,
   onUpdateAccount,
   onDeleteAccount,
-  onPayCreditCardInvoice
+  onPayCreditCardInvoice,
+  onUpdateTransactions
 }) => {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<BankAccount | null>(null);
@@ -143,6 +151,13 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   const [isPayingInvoiceOpen, setIsPayingInvoiceOpen] = useState(false);
   const [paymentSourceAccountId, setPaymentSourceAccountId] = useState('');
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
+
+  // States for Moving Invoices & Recurrence Dialog
+  const [txToMove, setTxToMove] = useState<FinancialTransaction | null>(null);
+  const [recurrentOccurrences, setRecurrentOccurrences] = useState<FinancialTransaction[]>([]);
+  const [isMovingTx, setIsMovingTx] = useState(false);
+  const [activeTxMenuId, setActiveTxMenuId] = useState<string | null>(null);
+  const [viewHistoryTx, setViewHistoryTx] = useState<FinancialTransaction | null>(null);
 
   const openModifyModal = (acc?: BankAccount) => {
     if (acc) {
@@ -437,6 +452,199 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
     ];
     return `${monthsPortuguese[parseInt(month) - 1]} / ${year}`;
+  };
+
+  const formatMonthShort = (yearYm: string) => {
+    if (!yearYm) return '';
+    const [year, month] = yearYm.split('-');
+    const monthAbbrs = [
+      'JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN',
+      'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'
+    ];
+    const mIndex = parseInt(month, 10) - 1;
+    return `${monthAbbrs[mIndex] || month}/${year}`;
+  };
+
+  const getNextStatementMonth = (monthStr: string): string => {
+    if (!monthStr) {
+      const today = new Date();
+      monthStr = `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}`;
+    }
+    const [yearStr, mStr] = monthStr.split('-');
+    let year = parseInt(yearStr, 10);
+    let month = parseInt(mStr, 10);
+    month += 1;
+    if (month > 12) {
+      month = 1;
+      year += 1;
+    }
+    return `${year}-${month.toString().padStart(2, '0')}`;
+  };
+
+  const cleanDescriptionForRecurrence = (desc: string): string => {
+    if (!desc) return '';
+    return desc
+      .replace(/[\(\[\{]?\s*\d{1,2}\s*[\/\-de]\s*\d{1,2}\s*[\)\]\}]?/gi, '') // remove (01/12), 11/12, etc
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toUpperCase();
+  };
+
+  const findSubsequentRecurrentOccurrences = (
+    targetTx: FinancialTransaction,
+    allTransactions: FinancialTransaction[]
+  ): FinancialTransaction[] => {
+    if (!targetTx) return [];
+    
+    const targetBaseDesc = cleanDescriptionForRecurrence(targetTx.description);
+    const targetMonth = targetTx.creditCardMonth || targetTx.date.substring(0, 7);
+
+    const matched = allTransactions.filter(t => {
+      if (t.id === targetTx.id) return false;
+      if (t.accountId !== targetTx.accountId) return false;
+      if (t.status === 'IGNORADO' || t.status === 'CANCELADO') return false;
+
+      // Match by explicit recurrence group or clean base description
+      const hasGroupMatch = Boolean(
+        targetTx.recurrenceGroupId && 
+        t.recurrenceGroupId && 
+        t.recurrenceGroupId === targetTx.recurrenceGroupId
+      );
+
+      const tBaseDesc = cleanDescriptionForRecurrence(t.description);
+      const hasDescMatch = Boolean(targetBaseDesc && tBaseDesc && (
+        tBaseDesc === targetBaseDesc ||
+        tBaseDesc.includes(targetBaseDesc) ||
+        targetBaseDesc.includes(tBaseDesc)
+      ));
+
+      if (!hasGroupMatch && !hasDescMatch) return false;
+
+      // Filter to occurrences in the same month (later date) or subsequent months
+      const tMonth = t.creditCardMonth || t.date.substring(0, 7);
+      if (tMonth > targetMonth) return true;
+      if (tMonth === targetMonth && t.date > targetTx.date) return true;
+
+      return false;
+    });
+
+    return matched.sort((a, b) => {
+      const monthA = a.creditCardMonth || a.date;
+      const monthB = b.creditCardMonth || b.date;
+      return monthA.localeCompare(monthB);
+    });
+  };
+
+  const handleInitiateMove = (tx: FinancialTransaction) => {
+    setActiveTxMenuId(null);
+    const subsequent = findSubsequentRecurrentOccurrences(tx, transactions);
+    setTxToMove(tx);
+    setRecurrentOccurrences(subsequent);
+  };
+
+  const handleExecuteMoveSingle = async (tx: FinancialTransaction) => {
+    if (!onUpdateTransactions) {
+      toast.error("Função de atualização de transações não disponível.");
+      return;
+    }
+    try {
+      setIsMovingTx(true);
+      const currentMonth = tx.creditCardMonth || selectedInvoiceMonth || `${new Date().getFullYear()}-${(new Date().getMonth() + 1).toString().padStart(2, '0')}`;
+      const nextMonth = getNextStatementMonth(currentMonth);
+      
+      const newHistoryLog = [
+        ...(tx.movedHistory || []),
+        {
+          fromMonth: currentMonth,
+          toMonth: nextMonth,
+          movedAt: new Date().toISOString()
+        }
+      ];
+
+      const updates: Partial<FinancialTransaction> = {
+        creditCardMonth: nextMonth,
+        movedFromMonth: tx.movedFromMonth || currentMonth,
+        movedAt: new Date().toISOString(),
+        movedHistory: newHistoryLog
+      };
+
+      await onUpdateTransactions([{ id: tx.id, updates }]);
+      toast.success(`Lançamento movido para a fatura de ${formatMonthName(nextMonth)}!`);
+      setTxToMove(null);
+      setRecurrentOccurrences([]);
+    } catch (err: any) {
+      console.error("Erro ao mover lançamento:", err);
+      toast.error("Erro ao mover lançamento para a próxima fatura.");
+    } finally {
+      setIsMovingTx(false);
+    }
+  };
+
+  const handleExecuteMoveAll = async (tx: FinancialTransaction, subsequentList: FinancialTransaction[]) => {
+    if (!onUpdateTransactions) {
+      toast.error("Função de atualização de transações não disponível.");
+      return;
+    }
+    try {
+      setIsMovingTx(true);
+      const updatesPayload: { id: string; updates: Partial<FinancialTransaction> }[] = [];
+
+      // 1. Move target transaction
+      const currentMonth = tx.creditCardMonth || selectedInvoiceMonth || `${new Date().getFullYear()}-${(new Date().getMonth() + 1).toString().padStart(2, '0')}`;
+      const nextMonth = getNextStatementMonth(currentMonth);
+      const targetHistory = [
+        ...(tx.movedHistory || []),
+        {
+          fromMonth: currentMonth,
+          toMonth: nextMonth,
+          movedAt: new Date().toISOString(),
+          reason: 'Movimentação em cascata da série recorrente'
+        }
+      ];
+      updatesPayload.push({
+        id: tx.id,
+        updates: {
+          creditCardMonth: nextMonth,
+          movedFromMonth: tx.movedFromMonth || currentMonth,
+          movedAt: new Date().toISOString(),
+          movedHistory: targetHistory
+        }
+      });
+
+      // 2. Move each subsequent occurrence one month forward to maintain sequence
+      subsequentList.forEach(subTx => {
+        const subCurrMonth = subTx.creditCardMonth || subTx.date.substring(0, 7);
+        const subNextMonth = getNextStatementMonth(subCurrMonth);
+        const subHistory = [
+          ...(subTx.movedHistory || []),
+          {
+            fromMonth: subCurrMonth,
+            toMonth: subNextMonth,
+            movedAt: new Date().toISOString(),
+            reason: 'Movimentação em cascata da série recorrente'
+          }
+        ];
+        updatesPayload.push({
+          id: subTx.id,
+          updates: {
+            creditCardMonth: subNextMonth,
+            movedFromMonth: subTx.movedFromMonth || subCurrMonth,
+            movedAt: new Date().toISOString(),
+            movedHistory: subHistory
+          }
+        });
+      });
+
+      await onUpdateTransactions(updatesPayload);
+      toast.success(`${updatesPayload.length} lançamentos da série foram movidos para as faturas seguintes!`);
+      setTxToMove(null);
+      setRecurrentOccurrences([]);
+    } catch (err: any) {
+      console.error("Erro ao mover lançamentos em cascata:", err);
+      toast.error("Erro ao mover as ocorrências da série recorrente.");
+    } finally {
+      setIsMovingTx(false);
+    }
   };
 
   const handleExportPDF = () => {
@@ -1387,39 +1595,129 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
               {/* Transactions List */}
               <div className="space-y-2.5">
-                <div className="text-xs font-black text-slate-500 tracking-wider uppercase">Lançamentos da Competência</div>
-                <div className="border border-slate-150 rounded-2xl overflow-hidden bg-white max-h-56 overflow-y-auto">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs font-black text-slate-500 tracking-wider uppercase">Lançamentos da Competência</div>
+                  <span className="text-[10px] text-slate-400 font-bold">{invoiceTransactions.length} item(ns) nesta fatura</span>
+                </div>
+                <div className="border border-slate-150 rounded-2xl overflow-hidden bg-white max-h-64 overflow-y-auto shadow-sm">
                   <table className="min-w-full text-xs text-left text-slate-600">
-                    <thead className="bg-slate-50 text-[10px] text-slate-450 uppercase font-black border-b border-slate-150">
+                    <thead className="bg-slate-50 text-[10px] text-slate-450 uppercase font-black border-b border-slate-150 sticky top-0 z-10">
                       <tr>
                         <th className="px-4 py-3">Data</th>
                         <th className="px-4 py-3">Descrição Descritiva</th>
                         <th className="px-4 py-3">Categoria</th>
                         <th className="px-4 py-3 text-right">Valor</th>
+                        <th className="px-3 py-3 text-center w-24">Ações</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {invoiceTransactions.length === 0 ? (
                         <tr>
-                          <td colSpan={4} className="px-4 py-8 text-center text-slate-400 italic">
+                          <td colSpan={5} className="px-4 py-8 text-center text-slate-400 italic">
                             Nenhum lançamento registrado nesta fatura mensal.
                           </td>
                         </tr>
                       ) : (
-                        invoiceTransactions.map(t => (
-                          <tr key={t.id} className="hover:bg-slate-50/50">
-                            <td className="px-4 py-3 font-mono">{t.date.split('-').reverse().join('/')}</td>
-                            <td className="px-4 py-3 font-extrabold text-slate-800">{t.description}</td>
-                            <td className="px-4 py-3">
-                              <span className="bg-slate-100 font-bold px-2 py-0.5 rounded-md text-[10px]">
-                                {t.categoryName || 'Gerais'}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3 text-right font-bold text-rose-500">
-                              - {formatCurrency(t.amount)}
-                            </td>
-                          </tr>
-                        ))
+                        invoiceTransactions.map(t => {
+                          const isMenuOpen = activeTxMenuId === t.id;
+                          return (
+                            <tr key={t.id} className="hover:bg-slate-50/70 transition-colors">
+                              <td className="px-4 py-3 font-mono text-slate-500 whitespace-nowrap">
+                                {t.date.split('-').reverse().join('/')}
+                              </td>
+                              <td className="px-4 py-3 font-extrabold text-slate-800">
+                                <div>{t.description}</div>
+                                {t.movedFromMonth && (
+                                  <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                                    <span 
+                                      className="inline-flex items-center gap-1 bg-amber-50 text-amber-800 border border-amber-200/80 px-2 py-0.5 rounded text-[9.5px] font-bold cursor-help"
+                                      title={t.movedHistory && t.movedHistory.length > 0
+                                        ? t.movedHistory.map(h => `Movido de ${formatMonthShort(h.fromMonth)} para ${formatMonthShort(h.toMonth)} em ${new Date(h.movedAt).toLocaleDateString('pt-BR')}`).join(' ➔ ')
+                                        : `Originalmente da fatura de ${formatMonthShort(t.movedFromMonth)}`
+                                      }
+                                      onClick={() => {
+                                        if (t.movedHistory && t.movedHistory.length > 0) {
+                                          setViewHistoryTx(t);
+                                        }
+                                      }}
+                                    >
+                                      <Clock className="w-2.5 h-2.5 text-amber-600 shrink-0" />
+                                      Movido de {formatMonthShort(t.movedFromMonth)}
+                                    </span>
+                                  </div>
+                                )}
+                              </td>
+                              <td className="px-4 py-3 whitespace-nowrap">
+                                <span className="bg-slate-100 font-bold px-2 py-0.5 rounded-md text-[10px] text-slate-600">
+                                  {t.categoryName || 'Gerais'}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-right font-bold text-rose-500 whitespace-nowrap">
+                                - {formatCurrency(t.amount)}
+                              </td>
+                              <td className="px-3 py-3 text-center relative whitespace-nowrap">
+                                <div className="flex items-center justify-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleInitiateMove(t)}
+                                    title="Mover para próxima fatura"
+                                    className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-all flex items-center gap-1 text-[10px] font-bold"
+                                  >
+                                    <CalendarPlus className="w-3.5 h-3.5 shrink-0" />
+                                    <span className="hidden sm:inline">Mover</span>
+                                  </button>
+
+                                  <div className="relative">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setActiveTxMenuId(isMenuOpen ? null : t.id);
+                                      }}
+                                      className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-all"
+                                      title="Mais opções"
+                                    >
+                                      <MoreVertical className="w-3.5 h-3.5" />
+                                    </button>
+
+                                    {isMenuOpen && (
+                                      <>
+                                        <div 
+                                          className="fixed inset-0 z-30" 
+                                          onClick={() => setActiveTxMenuId(null)}
+                                        />
+                                        <div className="absolute right-0 top-full mt-1 w-52 bg-white rounded-xl shadow-xl border border-slate-150 py-1.5 z-40 text-left animate-fadeIn">
+                                          <button
+                                            type="button"
+                                            onClick={() => handleInitiateMove(t)}
+                                            className="w-full px-3.5 py-2 text-[11px] font-bold text-slate-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-2 transition-colors"
+                                          >
+                                            <CalendarPlus className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                                            Mover para próxima fatura
+                                          </button>
+                                          
+                                          {t.movedHistory && t.movedHistory.length > 0 && (
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setActiveTxMenuId(null);
+                                                setViewHistoryTx(t);
+                                              }}
+                                              className="w-full px-3.5 py-2 text-[11px] font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors border-t border-slate-100"
+                                            >
+                                              <History className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                                              Ver histórico de faturas
+                                            </button>
+                                          )}
+                                        </div>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
                       )}
                     </tbody>
                   </table>
@@ -1427,10 +1725,10 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               </div>
 
               {/* Total Summary Row */}
-              <div className="flex items-center justify-between p-5 bg-slate-900 text-white rounded-2xl">
+              <div className="flex items-center justify-between p-5 bg-slate-900 text-white rounded-2xl shadow-sm">
                 <div>
                   <div className="text-[10px] font-black tracking-widest text-slate-400 uppercase">Valor Total do Demonstrativo</div>
-                  <div className="text-sm text-slate-350 mt-0.5">Competência: {formatMonthName(selectedInvoiceMonth)}</div>
+                  <div className="text-sm text-slate-300 mt-0.5">Competência: {formatMonthName(selectedInvoiceMonth)}</div>
                 </div>
                 <div className="text-xl font-black">{formatCurrency(invoiceTotal)}</div>
               </div>
@@ -1463,6 +1761,225 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   Efetuar pagamento da Fatura
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Recurrence & Move Confirmation Dialog */}
+      {txToMove && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => !isMovingTx && setTxToMove(null)} />
+          <div className="relative bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden border border-slate-100 flex flex-col animate-scaleUp">
+            
+            {/* Header */}
+            <div className="px-7 pt-7 pb-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div className="flex items-center gap-3">
+                <div className={`p-2.5 rounded-xl ${recurrentOccurrences.length > 0 ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
+                  {recurrentOccurrences.length > 0 ? (
+                    <Repeat className="w-5 h-5" />
+                  ) : (
+                    <CalendarPlus className="w-5 h-5" />
+                  )}
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900 uppercase tracking-tight">
+                    {recurrentOccurrences.length > 0 ? 'Lançamento Recorrente Detectado' : 'Mover para Próxima Fatura'}
+                  </h3>
+                  <p className="text-xs text-slate-500 font-medium mt-0.5">
+                    Competência atual: {formatMonthName(txToMove.creditCardMonth || selectedInvoiceMonth)}
+                  </p>
+                </div>
+              </div>
+              <button 
+                disabled={isMovingTx}
+                onClick={() => setTxToMove(null)}
+                className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-full transition-all disabled:opacity-50"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Content Body */}
+            <div className="p-7 space-y-4">
+              {/* Item Info Box */}
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-150 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Lançamento Selecionado</span>
+                  <span className="text-xs font-mono text-slate-500">{txToMove.date.split('-').reverse().join('/')}</span>
+                </div>
+                <div className="text-sm font-black text-slate-800">{txToMove.description}</div>
+                <div className="flex items-center justify-between pt-2 border-t border-slate-200 text-xs">
+                  <span className="text-slate-500 font-bold">{txToMove.categoryName || 'Gerais'}</span>
+                  <span className="font-black text-rose-500">- {formatCurrency(txToMove.amount)}</span>
+                </div>
+              </div>
+
+              {/* Destination Preview */}
+              <div className="flex items-center justify-between px-4 py-3 bg-blue-50/70 border border-blue-100 rounded-2xl text-xs">
+                <div className="flex items-center gap-2 text-slate-600 font-bold">
+                  <span>De: <strong className="text-slate-800">{formatMonthShort(txToMove.creditCardMonth || selectedInvoiceMonth)}</strong></span>
+                  <ArrowRight className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                  <span>Para: <strong className="text-blue-700">{formatMonthShort(getNextStatementMonth(txToMove.creditCardMonth || selectedInvoiceMonth))}</strong></span>
+                </div>
+                <span className="text-[10px] font-black uppercase tracking-wider bg-blue-100 text-blue-700 px-2 py-0.5 rounded-md">
+                  Fatura Seguinte
+                </span>
+              </div>
+
+              {/* Recurrence Detection Message or Single Confirmation */}
+              {recurrentOccurrences.length > 0 ? (
+                <div className="space-y-3">
+                  <div className="p-3.5 bg-amber-50/80 border border-amber-200/80 rounded-2xl text-xs text-amber-900">
+                    <p className="font-bold flex items-center gap-1.5">
+                      <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                      Este lançamento também aparece nos próximos meses ({recurrentOccurrences.length} ocorrência{recurrentOccurrences.length > 1 ? 's' : ''} subsequente{recurrentOccurrences.length > 1 ? 's' : ''}).
+                    </p>
+                    <p className="text-[11px] text-amber-800 mt-1">
+                      Deseja mover apenas a ocorrência deste mês ou mover em cascata toda a sequência dos próximos meses?
+                    </p>
+                  </div>
+
+                  {/* Future list preview */}
+                  <div className="bg-slate-50 rounded-xl p-3 border border-slate-150 space-y-1.5 max-h-32 overflow-y-auto">
+                    <div className="text-[9px] font-black uppercase tracking-widest text-slate-400">Próximas ocorrências da série:</div>
+                    {recurrentOccurrences.map((occ, idx) => (
+                      <div key={occ.id} className="flex items-center justify-between text-[11px] text-slate-600 bg-white p-1.5 rounded-lg border border-slate-100">
+                        <span className="font-bold truncate max-w-[200px]">{occ.description}</span>
+                        <div className="flex items-center gap-1 text-[10px] font-mono text-slate-500 shrink-0">
+                          <span>{formatMonthShort(occ.creditCardMonth || occ.date.substring(0, 7))}</span>
+                          <ArrowRight className="w-2.5 h-2.5 text-slate-400" />
+                          <span className="text-blue-600 font-bold">{formatMonthShort(getNextStatementMonth(occ.creditCardMonth || occ.date.substring(0, 7)))}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Ao confirmar, o lançamento será transferido para a fatura do mês subsequente. O total demonstrativo de ambas as competências será recalculado automaticamente e o log de auditoria será salvo.
+                </p>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div className="p-6 bg-slate-50 border-t border-slate-100 flex flex-col gap-2.5">
+              {recurrentOccurrences.length > 0 ? (
+                <>
+                  <button
+                    type="button"
+                    disabled={isMovingTx}
+                    onClick={() => handleExecuteMoveAll(txToMove, recurrentOccurrences)}
+                    className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-black uppercase tracking-wider text-xs shadow-md shadow-blue-500/20 flex items-center justify-center gap-2 transition-all hover:scale-[1.01] active:scale-95 disabled:opacity-50"
+                  >
+                    {isMovingTx ? (
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <Repeat className="w-4 h-4" />
+                    )}
+                    Mover este e os próximos ({recurrentOccurrences.length + 1} lançamentos)
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={isMovingTx}
+                    onClick={() => handleExecuteMoveSingle(txToMove)}
+                    className="w-full py-3 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-2xl font-bold uppercase tracking-wider text-xs flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                  >
+                    <ArrowRight className="w-3.5 h-3.5 text-slate-500" />
+                    Mover apenas este mês ({formatMonthShort(getNextStatementMonth(txToMove.creditCardMonth || selectedInvoiceMonth))})
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  disabled={isMovingTx}
+                  onClick={() => handleExecuteMoveSingle(txToMove)}
+                  className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-black uppercase tracking-wider text-xs shadow-md shadow-blue-500/20 flex items-center justify-center gap-2 transition-all hover:scale-[1.01] active:scale-95 disabled:opacity-50"
+                >
+                  {isMovingTx ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="w-4 h-4" />
+                  )}
+                  Confirmar e Mover para {formatMonthName(getNextStatementMonth(txToMove.creditCardMonth || selectedInvoiceMonth))}
+                </button>
+              )}
+
+              <button
+                type="button"
+                disabled={isMovingTx}
+                onClick={() => setTxToMove(null)}
+                className="w-full py-2.5 text-slate-500 hover:text-slate-700 text-xs font-bold uppercase tracking-wider transition-colors"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Invoice Movement Audit History Dialog */}
+      {viewHistoryTx && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setViewHistoryTx(null)} />
+          <div className="relative bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden border border-slate-100 flex flex-col animate-scaleUp">
+            
+            <div className="px-6 pt-6 pb-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-amber-100 text-amber-700 rounded-xl">
+                  <History className="w-4.5 h-4.5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight">Histórico de Movimentações</h3>
+                  <p className="text-[11px] text-slate-500 font-medium truncate max-w-[240px]">{viewHistoryTx.description}</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setViewHistoryTx(null)}
+                className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-full transition-all"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
+              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-150 text-xs space-y-1">
+                <div className="text-[9px] font-black uppercase tracking-wider text-slate-400">Competência Original</div>
+                <div className="font-black text-slate-800">{formatMonthName(viewHistoryTx.movedFromMonth || '')} ({formatMonthShort(viewHistoryTx.movedFromMonth || '')})</div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Log de Alterações</div>
+                <div className="space-y-2">
+                  {(viewHistoryTx.movedHistory || []).map((item, idx) => (
+                    <div key={idx} className="p-3 bg-white rounded-xl border border-slate-150 space-y-1.5 text-xs shadow-xs">
+                      <div className="flex items-center justify-between text-slate-500 text-[10px] font-mono">
+                        <span>{new Date(item.movedAt).toLocaleDateString('pt-BR')} às {new Date(item.movedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+                        <span className="bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-bold uppercase text-[8.5px]">Movido</span>
+                      </div>
+                      <div className="flex items-center gap-2 font-bold text-slate-800">
+                        <span>Fatura {formatMonthShort(item.fromMonth)}</span>
+                        <ArrowRight className="w-3.5 h-3.5 text-blue-500" />
+                        <span className="text-blue-700 font-black">Fatura {formatMonthShort(item.toMonth)}</span>
+                      </div>
+                      {item.reason && (
+                        <p className="text-[10px] text-slate-400 italic">{item.reason}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 bg-slate-50 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setViewHistoryTx(null)}
+                className="w-full py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-bold uppercase tracking-wider transition-all"
+              >
+                Fechar
+              </button>
             </div>
           </div>
         </div>

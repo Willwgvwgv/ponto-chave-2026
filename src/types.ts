@@ -435,6 +435,14 @@ export interface FinancialTransaction {
   originalDescription?: string;
   creditCardStatus?: 'FATURA_ABERTA' | 'FATURA_FECHADA' | 'FATURA_PAGA';
   creditCardMonth?: string; // YYYY-MM
+  movedFromMonth?: string; // YYYY-MM original
+  movedAt?: string;
+  movedHistory?: {
+    fromMonth: string;
+    toMonth: string;
+    movedAt: string;
+    reason?: string;
+  }[];
   isTransfer?: boolean;
   transferAccountId?: string;
   transferGroupId?: string;
