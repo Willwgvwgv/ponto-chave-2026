@@ -63,6 +63,12 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
 
   const [activeSubTab, setActiveSubTab] = useState<'dashboard' | 'lancamentos' | 'conciliacao' | 'dre' | 'fluxo' | 'categorias'>('dashboard');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [pendingCategoryFilterIds, setPendingCategoryFilterIds] = useState<string[] | null>(null);
+
+  const handleShowUncategorized = (txIds: string[]) => {
+    setPendingCategoryFilterIds(txIds);
+    setActiveSubTab('lancamentos');
+  };
 
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
   const [categories, setCategories] = useState<FinancialCategory[]>([]);
@@ -929,6 +935,8 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
               onUpdateTransactions={handleUpdateTransactions}
               onDeleteTransactions={handleDeleteMultipleTransactions}
               isAdmin={profile?.role === 'admin'}
+              initialFilterIds={pendingCategoryFilterIds}
+              onClearInitialFilter={() => setPendingCategoryFilterIds(null)}
             />
           )}
 
@@ -948,6 +956,7 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
             <DRETab 
               categories={categories} 
               transactions={transactions} 
+              onShowUncategorized={handleShowUncategorized}
             />
           )}
 

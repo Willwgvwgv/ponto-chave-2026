@@ -19,9 +19,10 @@ import { toast } from 'sonner';
 interface DRETabProps {
   categories: FinancialCategory[];
   transactions: FinancialTransaction[];
+  onShowUncategorized?: (txIds: string[]) => void;
 }
 
-export const DRETab: React.FC<DRETabProps> = ({ categories, transactions }) => {
+export const DRETab: React.FC<DRETabProps> = ({ categories, transactions, onShowUncategorized }) => {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
 
   const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
@@ -423,16 +424,28 @@ export const DRETab: React.FC<DRETabProps> = ({ categories, transactions }) => {
 
       {/* Banner de Auditoria de Conciliação se houver lançamentos sem categoria */}
       {uncategorizedTxs.length > 0 ? (
-        <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-3 text-amber-900 animate-fadeIn">
-          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-          <div className="text-xs space-y-1">
-            <p className="font-extrabold uppercase tracking-wide">
-              Atenção: Existem {uncategorizedTxs.length} lançamento(s) sem categoria associada no exercício de {selectedYear}
-            </p>
-            <p className="font-medium text-amber-800">
-              Esses lançamentos somam <strong>{formatCurrencyValue(totalUncategorizedDespesas)}</strong> em despesas e <strong>{formatCurrencyValue(totalUncategorizedReceitas)}</strong> em receitas. Para que eles componham as rubricas específicas do DRE, acesse a aba <strong>Lançamentos</strong> e atribua a respectiva categoria.
-            </p>
+        <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-amber-900 animate-fadeIn">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div className="text-xs space-y-1">
+              <p className="font-extrabold uppercase tracking-wide">
+                Atenção: Existem {uncategorizedTxs.length} lançamento(s) sem categoria associada no exercício de {selectedYear}
+              </p>
+              <p className="font-medium text-amber-800">
+                Esses lançamentos somam <strong>{formatCurrencyValue(totalUncategorizedDespesas)}</strong> em despesas e <strong>{formatCurrencyValue(totalUncategorizedReceitas)}</strong> em receitas. Para que eles componham as rubricas específicas do DRE, acesse a aba <strong>Lançamentos</strong> e atribua a respectiva categoria.
+              </p>
+            </div>
           </div>
+          {onShowUncategorized && (
+            <button
+              type="button"
+              onClick={() => onShowUncategorized(uncategorizedTxs.map(t => t.id))}
+              className="shrink-0 flex items-center justify-center gap-1.5 px-4 py-2.5 bg-amber-600 hover:bg-amber-700 active:scale-98 text-white rounded-xl font-bold text-xs transition-all shadow-xs cursor-pointer whitespace-nowrap self-end sm:self-center"
+            >
+              <span>Ver e regularizar agora</span>
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          )}
         </div>
       ) : (
         <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between text-xs text-slate-700">

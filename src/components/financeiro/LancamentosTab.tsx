@@ -21,7 +21,9 @@ import {
   List,
   TrendingUp,
   TrendingDown,
-  Scale
+  Scale,
+  X,
+  AlertTriangle
 } from 'lucide-react';
 import { BankAccount, FinancialCategory, FinancialTransaction } from '../../types';
 import { db, doc, deleteDoc } from '../../firebase';
@@ -40,6 +42,8 @@ interface LancamentosTabProps {
   onUpdateTransactions: (items: { id: string, updates: Partial<FinancialTransaction> }[]) => void;
   onDeleteTransactions: (ids: string[]) => void;
   isAdmin?: boolean;
+  initialFilterIds?: string[] | null;
+  onClearInitialFilter?: () => void;
 }
 
 function getRecurrenceInstances(startDateStr: string, frequency: string, periodMonths: string, customMonths?: number) {
@@ -141,7 +145,9 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
   onAddTransactions,
   onUpdateTransactions,
   onDeleteTransactions,
-  isAdmin
+  isAdmin,
+  initialFilterIds,
+  onClearInitialFilter
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedAccount, setSelectedAccount] = useState('all');
@@ -443,6 +449,17 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
 
   // Lista de lançamentos com filtros
   const filteredTransactions = useMemo(() => {
+    if (initialFilterIds && initialFilterIds.length > 0) {
+      const idSet = new Set(initialFilterIds);
+      return transactions
+        .filter(t => idSet.has(t.id))
+        .sort((a, b) => {
+          const aTime = a.date ? new Date(a.date + 'T00:00:00').getTime() : 0;
+          const bTime = b.date ? new Date(b.date + 'T00:00:00').getTime() : 0;
+          return sortAscending ? aTime - bTime : bTime - aTime;
+        });
+    }
+
     return transactions.filter(t => {
       // Filtro de data / período do mês ou datas personalizadas
       const matchPeriod = (() => {
@@ -464,7 +481,7 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
       const bTime = b.date ? new Date(b.date + 'T00:00:00').getTime() : 0;
       return sortAscending ? aTime - bTime : bTime - aTime;
     });
-  }, [transactions, searchTerm, selectedAccount, selectedCategory, selectedType, selectedStatus, sortAscending, startDateStr, endDateStr, filterMode]);
+  }, [transactions, searchTerm, selectedAccount, selectedCategory, selectedType, selectedStatus, sortAscending, startDateStr, endDateStr, filterMode, initialFilterIds]);
 
   const { entradasSum, saidasSum, saldoSum } = useMemo(() => {
     let entradas = 0;
@@ -884,6 +901,33 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
           Transferência entre Contas
         </button>
       </div>
+
+      {/* Indicador de Filtro Específico (ex: Lançamentos sem Categoria vindos do DRE) */}
+      {initialFilterIds && initialFilterIds.length > 0 && (
+        <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-amber-900 animate-fadeIn shadow-xs">
+          <div className="flex items-center gap-2.5">
+            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
+            <div>
+              <span className="text-xs font-bold text-amber-950">
+                Filtrando: {filteredTransactions.length} {filteredTransactions.length === 1 ? 'lançamento sem categoria associada' : 'lançamentos sem categoria associada'}
+              </span>
+              <p className="text-[11px] font-medium text-amber-800">
+                Exibindo apenas os lançamentos pendentes de categorização.
+              </p>
+            </div>
+          </div>
+          {onClearInitialFilter && (
+            <button
+              type="button"
+              onClick={onClearInitialFilter}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-white hover:bg-amber-100/70 active:scale-98 border border-amber-300 text-amber-900 rounded-xl font-bold text-xs transition-all shadow-2xs cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+              <span>Limpar filtro</span>
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Seletor de Período e Filtros */}
       <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-5">
