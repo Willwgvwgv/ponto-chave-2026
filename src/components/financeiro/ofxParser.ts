@@ -1,4 +1,5 @@
 export interface ParsedOFXTransaction {
+  internalId: string;
   fitId: string;
   type: 'DEBIT' | 'CREDIT';
   date: string; // YYYY-MM-DD
@@ -10,6 +11,7 @@ export function parseOFX(text: string): ParsedOFXTransaction[] {
   const transactions: ParsedOFXTransaction[] = [];
   const stmttrns = text.split(/<\/STMTTRN>|<STMTTRN>/gi);
 
+  let index = 0;
   for (const block of stmttrns) {
     if (!block.trim() || !block.includes('<TRNAMT>')) continue;
 
@@ -33,7 +35,11 @@ export function parseOFX(text: string): ParsedOFXTransaction[] {
       const description = (memoMatch ? memoMatch[1].trim() : (nameMatch ? nameMatch[1].trim() : 'Transação Importada'))
         .replace(/&amp;/g, '&');
 
+      const internalId = `ofx_${Date.now()}_${index}_${Math.random().toString(36).substring(2, 8)}`;
+      index++;
+
       transactions.push({
+        internalId,
         fitId,
         type: typeVal === 'DEBIT' || amount < 0 ? 'DEBIT' : 'CREDIT',
         amount: Math.abs(amount),
@@ -272,8 +278,10 @@ export function parseCSV(text: string): ParsedOFXTransaction[] {
 
     const cleanDesc = rawDesc.toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 45);
     const fitId = `csv_${parsedDate}_${amount}_${cleanDesc}`;
+    const internalId = `csv_${Date.now()}_${i}_${Math.random().toString(36).substring(2, 8)}`;
 
     transactions.push({
+      internalId,
       fitId,
       type: typeVal,
       amount,

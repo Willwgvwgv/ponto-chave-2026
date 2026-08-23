@@ -241,9 +241,9 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
   // Estados para busca manual e seleção múltipla
   const [searchQueries, setSearchQueries] = useState<Record<string, string>>({});
   const [showSearchForFitId, setShowSearchForFitId] = useState<Record<string, boolean>>({});
-  const [activeSearchFitId, setActiveSearchFitId] = useState<string | null>(null);
+  const [activeSearchId, setActiveSearchId] = useState<string | null>(null);
   const [selectedCandidatesByFitId, setSelectedCandidatesByFitId] = useState<Record<string, Record<string, number>>>({});
-  const [unreconcileConfirmItem, setUnreconcileConfirmItem] = useState<{ fitId: string; txIds: string[]; description: string } | null>(null);
+  const [unreconcileConfirmItem, setUnreconcileConfirmItem] = useState<{ internalId: string; fitId: string; txIds: string[]; description: string } | null>(null);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [showPendingImportConfirm, setShowPendingImportConfirm] = useState<boolean>(false);
 
@@ -251,7 +251,7 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
 
   // Rastreia e notifica a contagem de itens não confirmados para alertar sobre perda de progresso
   const unconfirmedCount = useMemo(() => {
-    return importedTxs.filter(tx => !conciliatedIds.includes(tx.fitId) && !ignoredIds.includes(tx.fitId)).length;
+    return importedTxs.filter(tx => !conciliatedIds.includes(tx.internalId) && !ignoredIds.includes(tx.internalId)).length;
   }, [importedTxs, conciliatedIds, ignoredIds]);
 
   useEffect(() => {
@@ -433,7 +433,7 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
 
   // Transações visíveis (remove locais conciliadas e ignoradas)
   const visibleImported = useMemo(() => {
-    return importedTxs.filter(tx => !ignoredIds.includes(tx.fitId) && !conciliatedIds.includes(tx.fitId));
+    return importedTxs.filter(tx => !ignoredIds.includes(tx.internalId) && !conciliatedIds.includes(tx.internalId));
   }, [importedTxs, ignoredIds, conciliatedIds]);
 
   const selectedAccount = useMemo(() => {
@@ -565,7 +565,7 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
           setConciliatedIds([]);
           setSearchQueries({});
           setShowSearchForFitId({});
-          setActiveSearchFitId(null);
+          setActiveSearchId(null);
         }
 
         toast.success(`Sucesso! Importadas ${parsed.length} transações do extrato.`);
@@ -592,9 +592,9 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
     }
   };
 
-  const handleConfirmInlineEdit = (fitId: string) => {
+  const handleConfirmInlineEdit = (internalId: string) => {
     setImportedTxs(prev => prev.map(tx => {
-      if (tx.fitId === fitId) {
+      if (tx.internalId === internalId) {
         const historyCat = findCategoryByHistory(tempDesc, transactions, categories);
         const cat = historyCat || findAutoCategory(tempDesc, tx.type === 'CREDIT' ? 'CREDIT' : 'DEBIT', categories);
         return {
@@ -659,25 +659,25 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
   };
 
   // Multi-seleção de candidatos para vincular
-  const handleToggleCandidate = (fitId: string, candidate: FinancialTransaction) => {
+  const handleToggleCandidate = (internalId: string, candidate: FinancialTransaction) => {
     setSelectedCandidatesByFitId(prev => {
-      const currentMap = prev[fitId] || {};
+      const currentMap = prev[internalId] || {};
       const nextMap = { ...currentMap };
       if (nextMap[candidate.id] !== undefined) {
         delete nextMap[candidate.id];
       } else {
         nextMap[candidate.id] = Math.abs(candidate.amount);
       }
-      return { ...prev, [fitId]: nextMap };
+      return { ...prev, [internalId]: nextMap };
     });
   };
 
-  const handleUpdateCandidateAmount = (fitId: string, txId: string, amount: number) => {
+  const handleUpdateCandidateAmount = (internalId: string, txId: string, amount: number) => {
     setSelectedCandidatesByFitId(prev => {
-      const currentMap = prev[fitId] || {};
+      const currentMap = prev[internalId] || {};
       return {
         ...prev,
-        [fitId]: {
+        [internalId]: {
           ...currentMap,
           [txId]: amount
         }
@@ -686,7 +686,7 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
   };
 
   const handleConciliationMatchMultiple = (imported: ParsedOFXTransaction) => {
-    const selectedMap = selectedCandidatesByFitId[imported.fitId] || {};
+    const selectedMap = selectedCandidatesByFitId[imported.internalId] || {};
     const selectedIds = Object.keys(selectedMap);
     if (selectedIds.length === 0) {
       toast.error("Selecione pelo menos um lançamento pendente para vincular.");
@@ -740,12 +740,12 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
     });
 
     onUpdateTransactions(updatesToApply);
-    setConciliatedIds(prev => [...prev, imported.fitId]);
-    setShowSearchForFitId(prev => ({ ...prev, [imported.fitId]: false }));
-    setSearchQueries(prev => ({ ...prev, [imported.fitId]: '' }));
+    setConciliatedIds(prev => [...prev, imported.internalId]);
+    setShowSearchForFitId(prev => ({ ...prev, [imported.internalId]: false }));
+    setSearchQueries(prev => ({ ...prev, [imported.internalId]: '' }));
     setSelectedCandidatesByFitId(prev => {
       const next = { ...prev };
-      delete next[imported.fitId];
+      delete next[imported.internalId];
       return next;
     });
     toast.success(`${updatesToApply.length} lançamento(s) vinculado(s) e conciliado(s) com sucesso!`);
@@ -782,7 +782,7 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
       updates
     }]);
 
-    setConciliatedIds(prev => [...prev, imported.fitId]);
+    setConciliatedIds(prev => [...prev, imported.internalId]);
     if (isCrossAccount) {
       toast.success(`Transação transferida de "${originalAccount?.name || 'outra conta'}" e conciliada na conta "${targetAccount?.name}"!`);
     } else {
@@ -802,7 +802,7 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
     const claimedCandidateIds = new Set<string>();
 
     importedTxs.forEach(item => {
-      if (!isAlreadyImported(item) && !conciliatedIds.includes(item.fitId) && !ignoredIds.includes(item.fitId)) {
+      if (!isAlreadyImported(item) && !conciliatedIds.includes(item.internalId) && !ignoredIds.includes(item.internalId)) {
         const matchObj = findMatchDetails(item, claimedCandidateIds);
         if (matchObj) {
           const match = matchObj.candidate;
@@ -835,7 +835,7 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
             id: match.id,
             updates
           });
-          localConciliated.push(item.fitId);
+          localConciliated.push(item.internalId);
         }
       }
     });
@@ -852,21 +852,21 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
     );
   };
 
-  const handleIgnore = (fitId: string) => {
-    setIgnoredIds(prev => [...prev, fitId]);
+  const handleIgnore = (internalId: string) => {
+    setIgnoredIds(prev => [...prev, internalId]);
     toast.info("Transação marcada como ignorada.");
   };
 
   const handleConfirmUnreconcile = () => {
     if (!unreconcileConfirmItem) return;
-    const { fitId, txIds } = unreconcileConfirmItem;
+    const { internalId, fitId, txIds } = unreconcileConfirmItem;
     
     if (txIds.length > 0 && onDeleteTransactions) {
       onDeleteTransactions(txIds);
     }
     
-    setConciliatedIds(prev => prev.filter(id => id !== fitId));
-    setIgnoredIds(prev => prev.filter(id => id !== fitId));
+    setConciliatedIds(prev => prev.filter(id => id !== internalId));
+    setIgnoredIds(prev => prev.filter(id => id !== internalId));
     setUnreconcileConfirmItem(null);
     toast.success("Lançamento desfeito com sucesso! O item do extrato foi reaberto para conciliação.");
   };
@@ -922,7 +922,7 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
       });
 
       onAddTransactions(newTransactions);
-      setConciliatedIds(prev => [...prev, imported.fitId]);
+      setConciliatedIds(prev => [...prev, imported.internalId]);
       setActiveNewTx(null);
       setSplitParts([]);
       setReconcileType('NORMAL');
@@ -974,7 +974,7 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
         }
       ]);
 
-      setConciliatedIds(prev => [...prev, imported.fitId]);
+      setConciliatedIds(prev => [...prev, imported.internalId]);
       setActiveNewTx(null);
       setRecTfCounterpartId('');
       setReconcileType('NORMAL');
@@ -1012,7 +1012,7 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
         installmentCount: installmentCount
       });
 
-      setConciliatedIds(prev => [...prev, imported.fitId]);
+      setConciliatedIds(prev => [...prev, imported.internalId]);
       setActiveNewTx(null);
       setSelectedCatId('');
       setReconcileType('NORMAL');
@@ -1046,7 +1046,7 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
       creditCardMonth: cardMonth
     });
 
-    setConciliatedIds(prev => [...prev, imported.fitId]);
+    setConciliatedIds(prev => [...prev, imported.internalId]);
     setActiveNewTx(null);
     setSelectedCatId('');
     setReconcileType('NORMAL');
@@ -1156,7 +1156,7 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                   setLedgerBalance(null);
                   setSearchQueries({});
                   setShowSearchForFitId({});
-                  setActiveSearchFitId(null);
+                  setActiveSearchId(null);
                 }}
                 className="text-[10px] font-bold text-rose-500 hover:underline uppercase tracking-wide cursor-pointer"
               >
@@ -1395,14 +1395,14 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                     const isCrossAccount = matchDetails?.isCrossAccount;
                     const sourceAccount = matchDetails?.sourceAccount;
                     const duplicate = isAlreadyImported(item);
-                    const isEditing = editingTxId === item.fitId;
-                    const isSearchOpen = showSearchForFitId[item.fitId];
-                    const query = searchQueries[item.fitId] || '';
+                    const isEditing = editingTxId === item.internalId;
+                    const isSearchOpen = showSearchForFitId[item.internalId];
+                    const query = searchQueries[item.internalId] || '';
 
                     if (isEditing) {
                       return (
                         <div 
-                          key={item.fitId} 
+                          key={item.internalId} 
                           className="bg-white rounded-3xl p-6 border-2 border-emerald-500 shadow-md space-y-4 flex flex-col animate-fadeIn"
                         >
                           <div className="flex items-center gap-1.5 text-xs font-black text-emerald-600 uppercase tracking-wider">
@@ -1459,7 +1459,7 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                                 ✗ Cancelar
                               </button>
                               <button
-                                onClick={() => handleConfirmInlineEdit(item.fitId)}
+                                onClick={() => handleConfirmInlineEdit(item.internalId)}
                                 className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-2xl text-xs uppercase tracking-wider transition-colors shadow-sm cursor-pointer flex items-center gap-1"
                               >
                                 ✓ Confirmar
@@ -1473,7 +1473,7 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                     if (!duplicate && !match) {
                       return (
                         <div
-                          key={item.fitId}
+                          key={item.internalId}
                           className="rounded-3xl p-5 border border-slate-200 bg-white shadow-sm hover:border-slate-300 transition-all animate-fadeIn"
                         >
                           <div className="flex items-start justify-between gap-4">
@@ -1546,7 +1546,7 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                             {/* Editar */}
                             <button
                               onClick={() => {
-                                setEditingTxId(item.fitId);
+                                setEditingTxId(item.internalId);
                                 setTempDesc(item.description);
                                 setTempDate(item.date);
                                 setTempAmount(item.amount);
@@ -1559,8 +1559,8 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                             {/* Vincular a existente */}
                             <button
                               onClick={() => {
-                                setShowSearchForFitId(prev => ({ ...prev, [item.fitId]: !prev[item.fitId] }));
-                                setActiveSearchFitId(item.fitId);
+                                setShowSearchForFitId(prev => ({ ...prev, [item.internalId]: !prev[item.internalId] }));
+                                setActiveSearchId(item.internalId);
                               }}
                               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wide transition-all cursor-pointer border ${
                                 isSearchOpen
@@ -1595,7 +1595,7 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
 
                             {/* Ignorar — empurrado para a direita */}
                             <button
-                              onClick={() => handleIgnore(item.fitId)}
+                              onClick={() => handleIgnore(item.internalId)}
                               className="ml-auto flex items-center gap-1 px-2.5 py-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 border border-transparent hover:border-rose-100 rounded-xl text-[10px] font-bold uppercase tracking-wide transition-all cursor-pointer"
                               title="Ignorar"
                             >
@@ -1621,14 +1621,14 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                                   type="text"
                                   placeholder="Buscar por descrição, valor, data, categoria ou conta..."
                                   value={query}
-                                  onChange={(e) => setSearchQueries(prev => ({ ...prev, [item.fitId]: e.target.value }))}
-                                  onFocus={() => setActiveSearchFitId(item.fitId)}
+                                  onChange={(e) => setSearchQueries(prev => ({ ...prev, [item.internalId]: e.target.value }))}
+                                  onFocus={() => setActiveSearchId(item.internalId)}
                                   className="w-full pl-9 pr-8 py-2.5 bg-white border border-slate-200 focus:border-blue-300 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all placeholder:text-slate-400"
                                   autoFocus
                                 />
                                 {query && (
                                   <button
-                                    onClick={() => setSearchQueries(prev => ({ ...prev, [item.fitId]: '' }))}
+                                    onClick={() => setSearchQueries(prev => ({ ...prev, [item.internalId]: '' }))}
                                     className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
                                   >
                                     <X className="w-3.5 h-3.5" />
@@ -1640,7 +1640,7 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                               <div className="bg-white border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100 max-h-56 overflow-y-auto w-full text-left">
                                 {(() => {
                                   const results = filterResults(query, item.type, item.amount).slice(0, 15);
-                                  const selectedMap = selectedCandidatesByFitId[item.fitId] || {};
+                                  const selectedMap = selectedCandidatesByFitId[item.internalId] || {};
 
                                   if (results.length === 0) {
                                     return (
@@ -1659,7 +1659,7 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                                     return (
                                       <div
                                         key={candidate.id}
-                                        onClick={() => handleToggleCandidate(item.fitId, candidate)}
+                                        onClick={() => handleToggleCandidate(item.internalId, candidate)}
                                         className={`w-full text-left px-3.5 py-2.5 flex items-center justify-between text-xs transition-colors cursor-pointer select-none ${
                                           isSelected ? 'bg-blue-50/70' : 'hover:bg-slate-50'
                                         }`}
@@ -1707,7 +1707,7 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                                               <span className="text-[10px] font-bold text-slate-400 select-none">R$</span>
                                               <CurrencyInput
                                                 value={currentAmount}
-                                                onChange={(val) => handleUpdateCandidateAmount(item.fitId, candidate.id, val)}
+                                                onChange={(val) => handleUpdateCandidateAmount(item.internalId, candidate.id, val)}
                                                 showPrefix={false}
                                                 placeholder="0,00"
                                                 className="w-20 text-xs font-mono font-black text-slate-900 focus:outline-none text-right bg-transparent"
@@ -1727,7 +1727,7 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
 
                               {/* Rodapé fixo do vinculador com conferência de saldo */}
                               {(() => {
-                                const selectedMap = selectedCandidatesByFitId[item.fitId] || {};
+                                const selectedMap = selectedCandidatesByFitId[item.internalId] || {};
                                 const selectedIds = Object.keys(selectedMap);
                                 const selectedCount = selectedIds.length;
                                 const sumSelected = selectedIds.reduce((acc, id) => acc + (Number(selectedMap[id]) || 0), 0);
@@ -1767,8 +1767,8 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                                     <div className="flex items-center justify-end gap-2 pt-1">
                                       <button
                                         onClick={() => {
-                                          setShowSearchForFitId(prev => ({ ...prev, [item.fitId]: false }));
-                                          setSearchQueries(prev => ({ ...prev, [item.fitId]: '' }));
+                                          setShowSearchForFitId(prev => ({ ...prev, [item.internalId]: false }));
+                                          setSearchQueries(prev => ({ ...prev, [item.internalId]: '' }));
                                         }}
                                         className="px-3.5 py-2 text-slate-500 hover:text-slate-700 hover:bg-slate-200/60 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer"
                                       >
@@ -1798,7 +1798,7 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
 
                     return (
                       <div 
-                        key={item.fitId} 
+                        key={item.internalId} 
                         className={`rounded-3xl p-5 border shadow-sm transition-all animate-fadeIn ${
                           duplicate 
                             ? 'bg-slate-50/70 border-slate-200/80' 
@@ -1902,7 +1902,7 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                                   </div>
                                   <button
                                     type="button"
-                                    onClick={() => setUnreconcileConfirmItem({ fitId: item.fitId, txIds: ledgerTxsForFitId.map(t => t.id), description: item.description })}
+                                    onClick={() => setUnreconcileConfirmItem({ internalId: item.internalId, fitId: item.fitId, txIds: ledgerTxsForFitId.map(t => t.id), description: item.description })}
                                     className="w-full mt-2 py-1.5 px-3 bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
                                   >
                                     <Undo2 className="w-3.5 h-3.5" /> Desfazer e reabrir
@@ -1920,7 +1920,7 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                                   </div>
                                   <button
                                     type="button"
-                                    onClick={() => setUnreconcileConfirmItem({ fitId: item.fitId, txIds: ledgerTxsForFitId.map(t => t.id), description: item.description })}
+                                    onClick={() => setUnreconcileConfirmItem({ internalId: item.internalId, fitId: item.fitId, txIds: ledgerTxsForFitId.map(t => t.id), description: item.description })}
                                     className="w-full py-1.5 px-3 bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
                                   >
                                     <Undo2 className="w-3.5 h-3.5" /> Desfazer e reabrir
@@ -1955,20 +1955,20 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                                   </button>
 
                                   <button
-                                    onClick={() => handleIgnore(item.fitId)}
-                                    className="text-slate-400 hover:text-slate-600 text-[10px] font-extrabold uppercase tracking-wider px-2 py-2"
+                                    onClick={() => handleIgnore(item.internalId)}
+                                    className="text-slate-400 hover:text-slate-600 text-[10px] font-extrabold uppercase tracking-wider px-2 py-2 cursor-pointer"
                                   >
                                     Ignorar
                                   </button>
 
                                   <button
                                     onClick={() => {
-                                      setEditingTxId(item.fitId);
+                                      setEditingTxId(item.internalId);
                                       setTempDesc(item.description);
                                       setTempDate(item.date);
                                       setTempAmount(item.amount);
                                     }}
-                                    className="p-2 text-slate-400 hover:text-blue-600 hover:bg-white rounded-xl transition-all ml-auto"
+                                    className="p-2 text-slate-400 hover:text-blue-600 hover:bg-white rounded-xl transition-all ml-auto cursor-pointer"
                                     title="Editar transação antes de conciliar"
                                   >
                                     <Pencil className="w-3.5 h-3.5" />
@@ -1998,20 +1998,20 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                                   </button>
 
                                   <button
-                                    onClick={() => handleIgnore(item.fitId)}
-                                    className="text-slate-400 hover:text-slate-600 text-[10px] font-extrabold uppercase tracking-wider px-2 py-2"
+                                    onClick={() => handleIgnore(item.internalId)}
+                                    className="text-slate-400 hover:text-slate-600 text-[10px] font-extrabold uppercase tracking-wider px-2 py-2 cursor-pointer"
                                   >
                                     Ignorar
                                   </button>
 
                                   <button
                                     onClick={() => {
-                                      setEditingTxId(item.fitId);
+                                      setEditingTxId(item.internalId);
                                       setTempDesc(item.description);
                                       setTempDate(item.date);
                                       setTempAmount(item.amount);
                                     }}
-                                    className="p-2 text-slate-400 hover:text-blue-600 hover:bg-slate-100 rounded-xl transition-all ml-auto"
+                                    className="p-2 text-slate-400 hover:text-blue-600 hover:bg-slate-100 rounded-xl transition-all ml-auto cursor-pointer"
                                     title="Editar transação antes de conciliar"
                                   >
                                     <Pencil className="w-3.5 h-3.5" />
