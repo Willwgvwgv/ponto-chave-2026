@@ -244,6 +244,8 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
   const [activeSearchFitId, setActiveSearchFitId] = useState<string | null>(null);
   const [selectedCandidatesByFitId, setSelectedCandidatesByFitId] = useState<Record<string, Record<string, number>>>({});
   const [unreconcileConfirmItem, setUnreconcileConfirmItem] = useState<{ fitId: string; txIds: string[]; description: string } | null>(null);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [showPendingImportConfirm, setShowPendingImportConfirm] = useState<boolean>(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -503,10 +505,16 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    processFile(file);
+    if (visibleImported.length > 0) {
+      setPendingFile(file);
+      setShowPendingImportConfirm(true);
+    } else {
+      processFile(file, false);
+    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const processFile = (file: File) => {
+  const processFile = (file: File, append: boolean = false) => {
     const reader = new FileReader();
     reader.onload = (event) => {
       const text = event.target?.result as string;
@@ -521,7 +529,7 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
         if (isOFX) {
           const balance = parseLedgerBalance(text);
           setLedgerBalance(balance);
-        } else {
+        } else if (!append) {
           setLedgerBalance(null);
         }
 
@@ -545,23 +553,20 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
           };
         });
 
-        setImportedTxs(enriched);
-        setIgnoredIds([]);
-        setConciliatedIds([]);
-        setSearchQueries({});
-        setShowSearchForFitId({});
-        setActiveSearchFitId(null);
-
-        // DIAGNÓSTICO TEMPORÁRIO
-        console.log(`[DEBUG CONCILIAÇÃO] importedTxs.length = ${enriched.length}`);
-        const protecaoItems = enriched.filter(t => (t.description || '').toLowerCase().includes('proteção perda ou roubo') || (t.description || '').toLowerCase().includes('protecao perda ou roubo'));
-        console.log(`[DEBUG CONCILIAÇÃO] Itens de Proteção encontrados (${protecaoItems.length}):`, protecaoItems.map(p => ({
-          fitId: p.fitId,
-          description: p.description,
-          amount: p.amount,
-          date: p.date,
-          type: p.type
-        })));
+        if (append) {
+          setImportedTxs(prev => {
+            const existingIds = new Set(prev.map(p => p.fitId));
+            const fresh = enriched.filter(e => !existingIds.has(e.fitId));
+            return [...prev, ...fresh];
+          });
+        } else {
+          setImportedTxs(enriched);
+          setIgnoredIds([]);
+          setConciliatedIds([]);
+          setSearchQueries({});
+          setShowSearchForFitId({});
+          setActiveSearchFitId(null);
+        }
 
         toast.success(`Sucesso! Importadas ${parsed.length} transações do extrato.`);
       } catch (err) {
@@ -578,8 +583,12 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     const file = e.dataTransfer.files?.[0];
-    if (file) {
-      processFile(file);
+    if (!file) return;
+    if (visibleImported.length > 0) {
+      setPendingFile(file);
+      setShowPendingImportConfirm(true);
+    } else {
+      processFile(file, false);
     }
   };
 
@@ -1071,22 +1080,16 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
               </select>
             </div>
 
-            <div>
-              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">2. Importe o Extrato (OFX ou CSV)</label>
-              <div 
-                onDragOver={handleDragOver}
-                onDrop={handleDrop}
-                onClick={() => fileInputRef.current?.click()}
-                className="border-2 border-dashed border-slate-200 hover:border-blue-400 hover:bg-slate-50/50 rounded-2xl p-6 text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-3 relative group"
-              >
-                <div className="w-12 h-12 rounded-2xl bg-slate-50 text-slate-400 group-hover:text-blue-500 group-hover:bg-blue-50 flex items-center justify-center transition-colors">
-                  <Upload className="w-6 h-6" />
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-slate-700">Arraste seu arquivo OFX ou CSV aqui</p>
-                  <p className="text-[10px] text-slate-400 font-semibold mt-1">ou clique para selecionar do computador</p>
-                  <p className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2.5 py-1 rounded-lg mt-3 inline-block">Sicoob e Cresol: use OFX · Inter: use CSV</p>
-                </div>
+            {visibleImported.length > 0 ? (
+              <div className="pt-1">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full py-2.5 px-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 hover:border-slate-300 rounded-2xl text-slate-700 text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-2xs"
+                >
+                  <Upload className="w-3.5 h-3.5 text-blue-600" />
+                  <span>+ Importar outro arquivo (OFX/CSV)</span>
+                </button>
                 <input 
                   type="file" 
                   ref={fileInputRef} 
@@ -1095,7 +1098,33 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                   className="hidden" 
                 />
               </div>
-            </div>
+            ) : (
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">2. Importe o Extrato (OFX ou CSV)</label>
+                <div 
+                  onDragOver={handleDragOver}
+                  onDrop={handleDrop}
+                  onClick={() => fileInputRef.current?.click()}
+                  className="border-2 border-dashed border-slate-200 hover:border-blue-400 hover:bg-slate-50/50 rounded-2xl p-6 text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-3 relative group"
+                >
+                  <div className="w-12 h-12 rounded-2xl bg-slate-50 text-slate-400 group-hover:text-blue-500 group-hover:bg-blue-50 flex items-center justify-center transition-colors">
+                    <Upload className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-700">Arraste seu arquivo OFX ou CSV aqui</p>
+                    <p className="text-[10px] text-slate-400 font-semibold mt-1">ou clique para selecionar do computador</p>
+                    <p className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2.5 py-1 rounded-lg mt-3 inline-block">Sicoob e Cresol: use OFX · Inter: use CSV</p>
+                  </div>
+                  <input 
+                    type="file" 
+                    ref={fileInputRef} 
+                    onChange={handleFileUpload} 
+                    accept=".ofx,.csv" 
+                    className="hidden" 
+                  />
+                </div>
+              </div>
+            )}
 
             {importedTxs.length > 0 && (
               <div className="space-y-2 pt-4 border-t border-slate-100 animate-fadeIn font-sans">
@@ -1352,20 +1381,6 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                     </div>
                   </div>
                 </div>
-
-                {/* DIAGNÓSTICO DE RENDERIZAÇÃO */}
-                {(() => {
-                  console.log(`[DEBUG RENDER] visibleImported.length = ${visibleImported.length}`);
-                  const protecaoVis = visibleImported.filter(i => (i.description || '').toLowerCase().includes('proteção perda ou roubo') || (i.description || '').toLowerCase().includes('protecao perda ou roubo'));
-                  console.log(`[DEBUG RENDER] Proteção em visibleImported (${protecaoVis.length}):`, protecaoVis.map(p => ({
-                    fitId: p.fitId,
-                    description: p.description,
-                    amount: p.amount,
-                    date: p.date,
-                    type: p.type
-                  })));
-                  return null;
-                })()}
 
                 {visibleImported.length === 0 ? (
                   <div className="bg-emerald-50 border border-emerald-100 rounded-3xl p-8 text-center text-emerald-700 animate-fadeIn">
@@ -2695,6 +2710,50 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                 className="flex-1 py-2.5 px-4 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold uppercase tracking-wider text-xs shadow-xs transition-colors cursor-pointer"
               >
                 Sim, desfazer e reabrir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmação para Importar Novo Arquivo com Lote em Andamento */}
+      {showPendingImportConfirm && pendingFile && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fadeIn">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-start gap-3.5">
+              <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-800">Lote em andamento</h3>
+                <p className="text-xs text-slate-600 mt-1.5 leading-relaxed">
+                  Você tem <strong>{visibleImported.length} itens</strong> ainda não revisados desta importação. Importar um novo arquivo vai adicionar a esta lista. Deseja continuar?
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPendingImportConfirm(false);
+                  setPendingFile(null);
+                }}
+                className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPendingImportConfirm(false);
+                  if (pendingFile) {
+                    processFile(pendingFile, true);
+                    setPendingFile(null);
+                  }
+                }}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm cursor-pointer"
+              >
+                Continuar mesmo assim
               </button>
             </div>
           </div>
