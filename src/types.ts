@@ -447,6 +447,9 @@ export interface FinancialTransaction {
   transferAccountId?: string;
   transferGroupId?: string;
   splitGroupId?: string;
+  installmentInfo?: string;
+  installmentNumber?: number;
+  installmentCount?: number;
 }
 
 export interface DREEntry {

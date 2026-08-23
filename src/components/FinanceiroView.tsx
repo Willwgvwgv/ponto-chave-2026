@@ -43,7 +43,9 @@ import {
   BarChart3, 
   CalendarDays, 
   Tag,
-  Landmark 
+  Landmark,
+  AlertTriangle,
+  X
 } from 'lucide-react';
 
 interface FinanceiroViewProps {
@@ -65,9 +67,54 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [pendingCategoryFilterIds, setPendingCategoryFilterIds] = useState<string[] | null>(null);
 
+  // Proteção contra perda de dados na Conciliação Bancária
+  const [unconfirmedReconciliationCount, setUnconfirmedReconciliationCount] = useState<number>(0);
+  const [showExitConfirmationModal, setShowExitConfirmationModal] = useState<boolean>(false);
+  const [pendingNavigationSubTab, setPendingNavigationSubTab] = useState<'dashboard' | 'lancamentos' | 'conciliacao' | 'dre' | 'fluxo' | 'categorias' | null>(null);
+  const [reconcileResetTrigger, setReconcileResetTrigger] = useState<number>(0);
+
+  // Previne fechamento/recarregamento acidental da página se houver pendências
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (activeSubTab === 'conciliacao' && unconfirmedReconciliationCount > 0) {
+        e.preventDefault();
+        e.returnValue = '';
+        return '';
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [activeSubTab, unconfirmedReconciliationCount]);
+
+  const handleRequestTabChange = (targetTab: 'dashboard' | 'lancamentos' | 'conciliacao' | 'dre' | 'fluxo' | 'categorias') => {
+    setIsDropdownOpen(false);
+    if (activeSubTab === 'conciliacao' && targetTab !== 'conciliacao' && unconfirmedReconciliationCount > 0) {
+      setPendingNavigationSubTab(targetTab);
+      setShowExitConfirmationModal(true);
+      return;
+    }
+    setActiveSubTab(targetTab);
+  };
+
+  const handleConfirmExit = () => {
+    if (pendingNavigationSubTab) {
+      setActiveSubTab(pendingNavigationSubTab);
+    }
+    setReconcileResetTrigger(prev => prev + 1);
+    setUnconfirmedReconciliationCount(0);
+    setShowExitConfirmationModal(false);
+    setPendingNavigationSubTab(null);
+  };
+
+  const handleCancelExit = () => {
+    setShowExitConfirmationModal(false);
+    setPendingNavigationSubTab(null);
+  };
+
   const handleShowUncategorized = (txIds: string[]) => {
     setPendingCategoryFilterIds(txIds);
-    setActiveSubTab('lancamentos');
+    handleRequestTabChange('lancamentos');
   };
 
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
@@ -758,10 +805,7 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
       {/* Menu Tabulativo */}
       <div className="flex items-center gap-1.5 bg-slate-100 p-1.5 rounded-2xl relative w-fit self-start">
         <button
-          onClick={() => {
-            setActiveSubTab('dashboard');
-            setIsDropdownOpen(false);
-          }}
+          onClick={() => handleRequestTabChange('dashboard')}
           className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold uppercase tracking-wide transition-all whitespace-nowrap ${
             activeSubTab === 'dashboard' ? 'bg-white text-blue-600 shadow animate-fadeIn' : 'text-slate-500 hover:text-slate-705'
           }`}
@@ -771,10 +815,7 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
         </button>
         
         <button
-          onClick={() => {
-            setActiveSubTab('lancamentos');
-            setIsDropdownOpen(false);
-          }}
+          onClick={() => handleRequestTabChange('lancamentos')}
           className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold uppercase tracking-wide transition-all whitespace-nowrap ${
             activeSubTab === 'lancamentos' ? 'bg-white text-blue-600 shadow animate-fadeIn' : 'text-slate-500 hover:text-slate-705'
           }`}
@@ -784,10 +825,7 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
         </button>
 
         <button
-          onClick={() => {
-            setActiveSubTab('conciliacao');
-            setIsDropdownOpen(false);
-          }}
+          onClick={() => handleRequestTabChange('conciliacao')}
           className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold uppercase tracking-wide transition-all whitespace-nowrap ${
             activeSubTab === 'conciliacao' ? 'bg-white text-blue-600 shadow animate-fadeIn' : 'text-slate-500 hover:text-slate-705'
           }`}
@@ -797,10 +835,7 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
         </button>
 
         <button
-          onClick={() => {
-            setActiveSubTab('dre');
-            setIsDropdownOpen(false);
-          }}
+          onClick={() => handleRequestTabChange('dre')}
           className={`hidden lg:flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold uppercase tracking-wide transition-all whitespace-nowrap ${
             activeSubTab === 'dre' ? 'bg-white text-blue-600 shadow animate-fadeIn' : 'text-slate-500 hover:text-slate-702'
           }`}
@@ -810,10 +845,7 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
         </button>
 
         <button
-          onClick={() => {
-            setActiveSubTab('fluxo');
-            setIsDropdownOpen(false);
-          }}
+          onClick={() => handleRequestTabChange('fluxo')}
           className={`hidden lg:flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold uppercase tracking-wide transition-all whitespace-nowrap ${
             activeSubTab === 'fluxo' ? 'bg-white text-blue-600 shadow animate-fadeIn' : 'text-slate-500 hover:text-slate-705'
           }`}
@@ -823,10 +855,7 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
         </button>
 
         <button
-          onClick={() => {
-            setActiveSubTab('categorias');
-            setIsDropdownOpen(false);
-          }}
+          onClick={() => handleRequestTabChange('categorias')}
           className={`hidden lg:flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold uppercase tracking-wide transition-all whitespace-nowrap ${
             activeSubTab === 'categorias' ? 'bg-white text-blue-600 shadow animate-fadeIn' : 'text-slate-500 hover:text-slate-705'
           }`}
@@ -861,10 +890,7 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
               />
               <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-200 rounded-2xl shadow-xl py-2 z-20 animate-fadeIn">
                 <button
-                  onClick={() => {
-                    setActiveSubTab('dre');
-                    setIsDropdownOpen(false);
-                  }}
+                  onClick={() => handleRequestTabChange('dre')}
                   className={`w-full flex items-center gap-2 px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide transition-all ${
                     activeSubTab === 'dre' ? 'bg-blue-50 text-blue-600' : 'text-slate-600 hover:bg-slate-50'
                   }`}
@@ -874,10 +900,7 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
                 </button>
 
                 <button
-                  onClick={() => {
-                    setActiveSubTab('fluxo');
-                    setIsDropdownOpen(false);
-                  }}
+                  onClick={() => handleRequestTabChange('fluxo')}
                   className={`w-full flex items-center gap-2 px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide transition-all ${
                     activeSubTab === 'fluxo' ? 'bg-blue-50 text-blue-600' : 'text-slate-600 hover:bg-slate-50'
                   }`}
@@ -887,10 +910,7 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
                 </button>
 
                 <button
-                  onClick={() => {
-                    setActiveSubTab('categorias');
-                    setIsDropdownOpen(false);
-                  }}
+                  onClick={() => handleRequestTabChange('categorias')}
                   className={`w-full flex items-center gap-2 px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide transition-all ${
                     activeSubTab === 'categorias' ? 'bg-blue-50 text-blue-600' : 'text-slate-600 hover:bg-slate-50'
                   }`}
@@ -949,6 +969,8 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
               onAddTransactions={handleCreateTransactions}
               onUpdateStatus={handleUpdateTransactionStatus}
               onUpdateTransactions={handleUpdateTransactions}
+              onUnconfirmedCountChange={setUnconfirmedReconciliationCount}
+              resetTrigger={reconcileResetTrigger}
             />
           )}
 
@@ -977,6 +999,47 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
               onUpdateCategory={handleUpdateCategory}
             />
           )}
+        </div>
+      )}
+
+      {/* Modal de Confirmação de Saída com Itens Não Confirmados na Conciliação */}
+      {showExitConfirmationModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div 
+            className="absolute inset-0 bg-slate-900/50 backdrop-blur-xs animate-fadeIn"
+            onClick={handleCancelExit}
+          />
+          <div className="relative bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-100 p-6 animate-fadeIn text-center space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center mx-auto shadow-2xs">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+
+            <div className="space-y-2">
+              <h3 className="text-base font-black text-slate-900">
+                Progresso não salvo na Conciliação
+              </h3>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Você tem <strong>{unconfirmedReconciliationCount} lançamento(s)</strong> ainda não confirmados nesta importação. Se sair agora, esse progresso será perdido. Deseja continuar mesmo assim?
+              </p>
+            </div>
+
+            <div className="pt-2 flex flex-col sm:flex-row gap-2">
+              <button
+                type="button"
+                onClick={handleCancelExit}
+                className="flex-1 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold uppercase tracking-wider text-xs transition-colors cursor-pointer"
+              >
+                Continuar revisando
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmExit}
+                className="flex-1 py-2.5 px-4 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold uppercase tracking-wider text-xs shadow-xs transition-colors cursor-pointer"
+              >
+                Sair mesmo assim
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

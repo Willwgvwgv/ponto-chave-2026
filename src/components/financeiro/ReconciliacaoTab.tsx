@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   Upload, 
   FileText, 
@@ -23,7 +23,8 @@ import {
   SlidersHorizontal,
   Building2,
   Landmark,
-  CheckCheck
+  CheckCheck,
+  Layers
 } from 'lucide-react';
 import { BankAccount, FinancialCategory, FinancialTransaction } from '../../types';
 import { parseBankStatement, ParsedOFXTransaction, parseLedgerBalance, LedgerBalance } from './ofxParser';
@@ -191,6 +192,8 @@ interface ReconciliacaoTabProps {
   onAddTransactions: (txs: Omit<FinancialTransaction, "id" | "companyId" | "createdAt">[]) => void;
   onUpdateStatus: (id: string, status: 'PENDENTE' | 'CONCILIADO' | 'IGNORADO') => void;
   onUpdateTransactions: (items: { id: string, updates: Partial<FinancialTransaction> }[]) => void;
+  onUnconfirmedCountChange?: (count: number) => void;
+  resetTrigger?: number;
 }
 
 export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
@@ -200,7 +203,9 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
   onAddTransaction,
   onAddTransactions,
   onUpdateStatus,
-  onUpdateTransactions
+  onUpdateTransactions,
+  onUnconfirmedCountChange,
+  resetTrigger
 }) => {
   const [selectedAccountId, setSelectedAccountId] = useState(accounts[0]?.id || '');
   const [importedTxs, setImportedTxs] = useState<AutoParsedOFXTransaction[]>([]);
@@ -217,7 +222,9 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
   // Para criação rápida de transação nova se não houver match
   const [activeNewTx, setActiveNewTx] = useState<AutoParsedOFXTransaction | null>(null);
   const [selectedCatId, setSelectedCatId] = useState('');
-  const [reconcileType, setReconcileType] = useState<'NORMAL' | 'TRANSFERENCIA' | 'DIVIDIR'>('NORMAL');
+  const [reconcileType, setReconcileType] = useState<'NORMAL' | 'TRANSFERENCIA' | 'DIVIDIR' | 'PARCELA'>('NORMAL');
+  const [installmentNumber, setInstallmentNumber] = useState<number>(1);
+  const [installmentCount, setInstallmentCount] = useState<number>(2);
   const [recTfCounterpartId, setRecTfCounterpartId] = useState('');
   const [splitParts, setSplitParts] = useState<SplitPartItem[]>([]);
 
@@ -234,6 +241,24 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
   const [selectedCandidatesByFitId, setSelectedCandidatesByFitId] = useState<Record<string, Record<string, number>>>({});
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Rastreia e notifica a contagem de itens não confirmados para alertar sobre perda de progresso
+  const unconfirmedCount = useMemo(() => {
+    return importedTxs.filter(tx => !conciliatedIds.includes(tx.fitId) && !ignoredIds.includes(tx.fitId)).length;
+  }, [importedTxs, conciliatedIds, ignoredIds]);
+
+  useEffect(() => {
+    onUnconfirmedCountChange?.(unconfirmedCount);
+  }, [unconfirmedCount, onUnconfirmedCountChange]);
+
+  useEffect(() => {
+    if (resetTrigger && resetTrigger > 0) {
+      setImportedTxs([]);
+      setConciliatedIds([]);
+      setIgnoredIds([]);
+      setLedgerBalance(null);
+    }
+  }, [resetTrigger]);
 
   // Mapa rápido de contas por ID
   const accountsMap = useMemo(() => {
@@ -339,23 +364,37 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
   };
 
   // Filtro de resultados em tempo real para a pesquisa manual por descrição, valor, data, conta ou categoria
-  const filterResults = (query: string, itemType: 'CREDIT' | 'DEBIT') => {
+  // Ordena com prioridade de proximidade ao valor meta do extrato
+  const filterResults = (query: string, itemType: 'CREDIT' | 'DEBIT', targetAmount?: number) => {
     const desiredType = itemType === 'CREDIT' ? 'RECEITA' : 'DESPESA';
     const typeFiltered = searchCandidates.filter(t => t.type === desiredType);
 
-    if (!query) return typeFiltered;
-    const q = query.toLowerCase().trim();
+    const targetVal = targetAmount ? Math.abs(targetAmount) : 0;
 
-    return typeFiltered.filter(t => {
-      const descMatch = (t.description || '').toLowerCase().includes(q);
-      const amountMatch = String(t.amount).includes(q) || formatCurrency(t.amount).toLowerCase().includes(q);
-      const dateMatch = (t.date || '').includes(q) || new Date(t.date + 'T00:00:00').toLocaleDateString('pt-BR').includes(q);
-      const categoryMatch = (t.categoryName || '').toLowerCase().includes(q);
-      const accName = accountsMap.get(t.accountId)?.name?.toLowerCase() || '';
-      const accountMatch = accName.includes(q);
+    let filtered = typeFiltered;
+    if (query) {
+      const q = query.toLowerCase().trim();
+      filtered = typeFiltered.filter(t => {
+        const descMatch = (t.description || '').toLowerCase().includes(q);
+        const amountMatch = String(t.amount).includes(q) || formatCurrency(t.amount).toLowerCase().includes(q);
+        const dateMatch = (t.date || '').includes(q) || new Date(t.date + 'T00:00:00').toLocaleDateString('pt-BR').includes(q);
+        const categoryMatch = (t.categoryName || '').toLowerCase().includes(q);
+        const accName = accountsMap.get(t.accountId)?.name?.toLowerCase() || '';
+        const accountMatch = accName.includes(q);
 
-      return descMatch || amountMatch || dateMatch || categoryMatch || accountMatch;
-    });
+        return descMatch || amountMatch || dateMatch || categoryMatch || accountMatch;
+      });
+    }
+
+    if (targetVal > 0) {
+      return [...filtered].sort((a, b) => {
+        const diffA = Math.abs(Math.abs(a.amount) - targetVal);
+        const diffB = Math.abs(Math.abs(b.amount) - targetVal);
+        return diffA - diffB;
+      });
+    }
+
+    return filtered;
   };
 
   // Resumo estatístico da importação para o topo com contagem de matches entre contas
@@ -903,6 +942,44 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
       return;
     }
 
+    if (reconcileType === 'PARCELA') {
+      const category = categories.find(c => c.id === selectedCatId);
+      const isAutoMatch = imported.isAutoCategorized && selectedCatId === imported.suggestedCategoryId;
+      
+      const account = accounts.find(a => a.id === selectedAccountId);
+      const isCard = account?.accountType === 'CREDITO';
+      const cardStatus = isCard ? getInitialCreditCardStatus(imported.date, account?.closingDay || 10) : undefined;
+      const cardMonth = isCard ? getCardStatementMonth(imported.date, account?.closingDay || 10) : undefined;
+      const instInfo = `${installmentNumber}/${installmentCount}`;
+
+      onAddTransaction({
+        accountId: selectedAccountId,
+        date: imported.date,
+        description: `${imported.description} (Parc. ${instInfo})`,
+        amount: imported.amount,
+        type: isCard ? 'DESPESA' : (imported.type === 'CREDIT' ? 'RECEITA' : 'DESPESA'),
+        categoryId: selectedCatId || undefined,
+        categoryName: category ? category.name : undefined,
+        status: 'CONCILIADO',
+        origin: isAutoMatch ? 'AUTO' : 'IMPORTADO',
+        fitId: imported.fitId,
+        originalDescription: imported.originalDescription || undefined,
+        notes: `FITID: ${imported.fitId} · Parcela ${instInfo}. ${isAutoMatch ? 'Categorização inteligente automática.' : ''}`,
+        creditCardStatus: cardStatus,
+        creditCardMonth: cardMonth,
+        installmentInfo: instInfo,
+        installmentNumber: installmentNumber,
+        installmentCount: installmentCount
+      });
+
+      setConciliatedIds(prev => [...prev, imported.fitId]);
+      setActiveNewTx(null);
+      setSelectedCatId('');
+      setReconcileType('NORMAL');
+      toast.success(`Lançamento registrado como parcela ${instInfo} e conciliado!`);
+      return;
+    }
+
     const category = categories.find(c => c.id === selectedCatId);
     const isAutoMatch = imported.isAutoCategorized && selectedCatId === imported.suggestedCategoryId;
     
@@ -932,6 +1009,7 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
     setConciliatedIds(prev => [...prev, imported.fitId]);
     setActiveNewTx(null);
     setSelectedCatId('');
+    setReconcileType('NORMAL');
     toast.success("Lançamento criado, registrado e conciliado!");
   };
 
@@ -1431,7 +1509,7 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                                 setActiveNewTx(item);
                                 setSelectedCatId(item.suggestedCategoryId || '');
                               }}
-                              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-[10px] font-bold uppercase tracking-wide transition-all cursor-pointer"
+                              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl text-[10px] font-bold uppercase tracking-wide transition-all cursor-pointer shadow-2xs"
                             >
                               <Plus className="w-3 h-3" /> Criar lançamento
                             </button>
@@ -1491,7 +1569,7 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                               {/* Resultados da busca / lista de candidatos com checkbox e ajuste inline */}
                               <div className="bg-white border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100 max-h-56 overflow-y-auto w-full text-left">
                                 {(() => {
-                                  const results = query ? filterResults(query, item.type) : searchCandidates.filter(t => (item.type === 'CREDIT' ? t.type === 'RECEITA' : t.type === 'DESPESA')).slice(0, 15);
+                                  const results = filterResults(query, item.type, item.amount).slice(0, 15);
                                   const selectedMap = selectedCandidatesByFitId[item.fitId] || {};
 
                                   if (results.length === 0) {
@@ -1876,9 +1954,13 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                     <>
                       <ArrowLeftRight className="w-4 h-4 text-blue-600" /> Transferência Entre Contas
                     </>
+                  ) : reconcileType === 'PARCELA' ? (
+                    <>
+                      <Layers className="w-4 h-4 text-amber-600" /> Parcela de Compra Parcelada
+                    </>
                   ) : (
                     <>
-                      <Plus className="w-4 h-4 text-emerald-600" /> Criar Lançamento Reconciliado
+                      <Plus className="w-4 h-4 text-blue-600" /> Criar Lançamento Reconciliado
                     </>
                   )}
                 </h3>
@@ -1887,7 +1969,9 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                     ? 'Distribua o valor do extrato entre múltiplos lançamentos e categorias'
                     : reconcileType === 'TRANSFERENCIA'
                       ? 'Transfira valores entre contas com conciliação automática nas duas pontas'
-                      : 'Selecione a categoria para criar e conciliar imediatamente'}
+                      : reconcileType === 'PARCELA'
+                        ? 'Identifique o número e o total de parcelas deste lançamento'
+                        : 'Selecione a categoria para criar e conciliar imediatamente'}
                 </p>
               </div>
               <button
@@ -1903,61 +1987,61 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
             <div className="px-6 py-5 overflow-y-auto flex-1 space-y-4">
 
               {/* Card 1 — Dados do Extrato (Fonte da Verdade) */}
-              <div className="bg-slate-900 text-white rounded-2xl p-4 border border-slate-800 shadow-md space-y-3 relative overflow-hidden">
+              <div className="bg-slate-50 text-slate-800 rounded-2xl p-4 border border-slate-200 shadow-2xs space-y-3 relative overflow-hidden">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <FileText className="w-3.5 h-3.5 text-blue-400" />
-                    <span className="text-[10px] font-black text-slate-300 uppercase tracking-wider">
+                    <FileText className="w-3.5 h-3.5 text-blue-600" />
+                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider">
                       Dados do Extrato Bancário
                     </span>
                   </div>
-                  {activeNewTx.amount < 0 ? (
-                    <span className="px-2 py-0.5 rounded-md bg-rose-500/20 text-rose-300 border border-rose-500/30 text-[9px] font-black uppercase tracking-wider flex items-center gap-1">
-                      <ArrowDownRight className="w-3 h-3 text-rose-400" /> Saída / Débito
+                  {activeNewTx.type === 'DEBIT' ? (
+                    <span className="px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 text-[9.5px] font-bold uppercase tracking-wider flex items-center gap-1">
+                      <ArrowDownRight className="w-3 h-3 text-rose-600" /> Saída / Débito
                     </span>
                   ) : (
-                    <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[9px] font-black uppercase tracking-wider flex items-center gap-1">
-                      <ArrowUpRight className="w-3 h-3 text-emerald-400" /> Entrada / Crédito
+                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[9.5px] font-bold uppercase tracking-wider flex items-center gap-1">
+                      <ArrowUpRight className="w-3 h-3 text-emerald-600" /> Entrada / Crédito
                     </span>
                   )}
                 </div>
 
                 <div>
                   <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-0.5">Descrição</span>
-                  <p className="font-bold text-white text-xs leading-snug break-words">
+                  <p className="font-bold text-slate-900 text-xs leading-snug break-words">
                     {activeNewTx.description}
                   </p>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4 pt-2.5 border-t border-slate-800">
+                <div className="grid grid-cols-2 gap-4 pt-2.5 border-t border-slate-200/80">
                   <div>
                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Valor</span>
-                    <p className={`font-mono text-sm font-black ${activeNewTx.amount < 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
-                      {formatCurrency(activeNewTx.amount)}
+                    <p className={`font-mono text-sm font-black ${activeNewTx.type === 'DEBIT' ? 'text-rose-600' : 'text-emerald-600'}`}>
+                      {activeNewTx.type === 'DEBIT' ? '-' : '+'} {formatCurrency(Math.abs(activeNewTx.amount))}
                     </p>
                   </div>
                   <div>
                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Data</span>
-                    <p className="font-mono text-xs font-bold text-slate-200 mt-0.5">
+                    <p className="font-mono text-xs font-bold text-slate-700 mt-0.5">
                       {new Date(activeNewTx.date + 'T00:00:00').toLocaleDateString('pt-BR')}
                     </p>
                   </div>
                 </div>
               </div>
 
-              {/* Card 2 — Tipo de lançamento (toggle com ícones) */}
+              {/* Card 2 — Tipo de lançamento (toggle com 4 opções) */}
               <div className="bg-slate-50 rounded-2xl p-3.5 border border-slate-200/80 space-y-2">
                 <div className="flex items-center gap-2">
                   <Tag className="w-3.5 h-3.5 text-slate-500" />
                   <span className="text-[10px] font-black text-slate-700 uppercase tracking-wider">Tipo de Conciliação</span>
                 </div>
-                <div className="grid grid-cols-3 bg-white border border-slate-200 p-1 rounded-xl gap-1 shadow-2xs">
+                <div className="grid grid-cols-2 sm:grid-cols-4 bg-white border border-slate-200 p-1 rounded-xl gap-1 shadow-2xs">
                   <button
                     type="button"
                     onClick={() => setReconcileType('NORMAL')}
                     className={`py-2 px-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                       reconcileType === 'NORMAL'
-                        ? 'bg-emerald-600 text-white shadow-sm'
+                        ? 'bg-blue-600 text-white shadow-xs'
                         : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
                     }`}
                   >
@@ -1973,7 +2057,7 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                     }}
                     className={`py-2 px-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                       reconcileType === 'TRANSFERENCIA'
-                        ? 'bg-blue-600 text-white shadow-sm'
+                        ? 'bg-blue-600 text-white shadow-xs'
                         : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
                     }`}
                   >
@@ -2006,17 +2090,29 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                     }}
                     className={`py-2 px-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                       reconcileType === 'DIVIDIR'
-                        ? 'bg-purple-600 text-white shadow-sm'
+                        ? 'bg-purple-600 text-white shadow-xs'
                         : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
                     }`}
                   >
                     <Scissors className="w-3 h-3 shrink-0" />
                     <span className="truncate">Dividir</span>
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setReconcileType('PARCELA')}
+                    className={`py-2 px-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                      reconcileType === 'PARCELA'
+                        ? 'bg-amber-600 text-white shadow-xs'
+                        : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+                    }`}
+                  >
+                    <Layers className="w-3 h-3 shrink-0" />
+                    <span className="truncate">Parcela</span>
+                  </button>
                 </div>
               </div>
 
-              {/* Card 3 — Categoria, Transferência com Fluxo de Contas ou Rateio */}
+              {/* Card 3 — Categoria, Transferência, Rateio ou Parcela */}
               <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200/80 space-y-3">
                 {reconcileType === 'DIVIDIR' ? (
                   <>
@@ -2158,6 +2254,91 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                           </div>
                         );
                       })()}
+                    </div>
+                  </>
+                ) : reconcileType === 'PARCELA' ? (
+                  /* Modo PARCELA */
+                  <>
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-2">
+                        <Layers className="w-4 h-4 text-amber-600" />
+                        <span className="text-[11px] font-black text-slate-800 uppercase tracking-wider">Identificação de Compra Parcelada</span>
+                      </div>
+                      <span className="text-[9px] font-black text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-lg uppercase tracking-wider">
+                        Parcela {installmentNumber} de {installmentCount}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
+                      <div>
+                        <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                          Nº da Parcela Atual
+                        </label>
+                        <input 
+                          type="number"
+                          min={1}
+                          max={installmentCount || 99}
+                          value={installmentNumber}
+                          onChange={(e) => setInstallmentNumber(Math.max(1, parseInt(e.target.value) || 1))}
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                          Total de Parcelas
+                        </label>
+                        <input 
+                          type="number"
+                          min={Math.max(2, installmentNumber)}
+                          max={99}
+                          value={installmentCount}
+                          onChange={(e) => {
+                            const val = Math.max(1, parseInt(e.target.value) || 1);
+                            setInstallmentCount(val);
+                            if (installmentNumber > val) setInstallmentNumber(val);
+                          }}
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">
+                        Categoria Financeira
+                      </label>
+                      <select
+                        value={selectedCatId}
+                        onChange={(e) => setSelectedCatId(e.target.value)}
+                        className={`w-full px-4 py-2.5 border rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20 text-xs font-bold cursor-pointer transition-colors shadow-2xs ${
+                          isSuggestedSelected
+                            ? 'bg-amber-50/50 border-amber-200 text-amber-900'
+                            : 'bg-white border-slate-200 text-slate-700'
+                        }`}
+                        required
+                      >
+                        <option value="">Selecione a Categoria...</option>
+                        {Object.keys(groupedCats.items).map((groupName) => {
+                          const groupItems = groupedCats.items[groupName] || [];
+                          return (
+                            <optgroup key={groupName} label={groupName.toUpperCase()}>
+                              {groupItems.map(c => (
+                                <option key={c.id} value={c.id}>
+                                  {c.name}{c.id === activeNewTx.suggestedCategoryId ? ' ★ Sugerido' : ''}
+                                </option>
+                              ))}
+                            </optgroup>
+                          );
+                        })}
+                      </select>
+                    </div>
+
+                    <div className="p-2.5 bg-amber-50/70 border border-amber-200/80 rounded-xl flex items-start gap-2 text-[10.5px] text-amber-900 font-medium leading-relaxed">
+                      <Info className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                      <span>
+                        Registra este lançamento como <strong>Parcela {installmentNumber} de {installmentCount}</strong> para rastreamento organizado. Não gera parcelas futuras automaticamente.
+                      </span>
                     </div>
                   </>
                 ) : reconcileType === 'NORMAL' ? (
@@ -2357,29 +2538,35 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                 splitParts.every(p => p.description.trim().length > 0 && !!p.categoryId && Number(p.amount) > 0) &&
                 Math.abs(Math.abs(activeNewTx.amount) - splitParts.reduce((acc, p) => acc + (Number(p.amount) || 0), 0)) <= 0.012;
 
+              const isParcelaValid = reconcileType === 'PARCELA' && !!selectedCatId && installmentNumber >= 1 && installmentCount >= 1;
+
               const isDisabled = reconcileType === 'NORMAL' 
                 ? !selectedCatId 
                 : reconcileType === 'TRANSFERENCIA' 
                   ? !recTfCounterpartId 
-                  : !isSplitValid;
+                  : reconcileType === 'PARCELA'
+                    ? !isParcelaValid
+                    : !isSplitValid;
 
               return (
-                <div className="px-6 pb-5 pt-3.5 border-t border-slate-100 flex flex-col gap-2.5 bg-slate-50/30">
+                <div className="px-6 pb-5 pt-3.5 border-t border-slate-100 flex flex-col gap-2.5 bg-slate-50/50">
                   <button
                     onClick={() => handleCreateAndConciliate(activeNewTx)}
                     disabled={isDisabled}
-                    className="w-full py-3.5 bg-emerald-600 text-white rounded-2xl font-black uppercase tracking-widest text-xs shadow-lg shadow-emerald-500/20 hover:bg-emerald-700 transition-all hover:scale-[1.01] active:scale-95 disabled:opacity-40 disabled:scale-100 cursor-pointer"
+                    className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold uppercase tracking-wider text-xs shadow-xs transition-all hover:scale-[1.005] active:scale-95 disabled:opacity-40 disabled:scale-100 cursor-pointer"
                   >
                     {reconcileType === 'DIVIDIR' 
                       ? `Confirmar Divisão (${splitParts.length} partes)` 
                       : reconcileType === 'TRANSFERENCIA'
                         ? 'Confirmar Transferência'
-                        : 'Confirmar e Registrar'}
+                        : reconcileType === 'PARCELA'
+                          ? `Confirmar Parcela (${installmentNumber}/${installmentCount})`
+                          : 'Confirmar e Registrar'}
                   </button>
                   <button
                     type="button"
                     onClick={() => setActiveNewTx(null)}
-                    className="w-full py-2.5 bg-slate-100 text-slate-600 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-slate-200 transition-all cursor-pointer"
+                    className="w-full py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl font-bold uppercase tracking-wider text-xs hover:bg-slate-100 transition-all cursor-pointer"
                   >
                     Voltar
                   </button>
