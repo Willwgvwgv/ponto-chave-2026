@@ -24,7 +24,9 @@ import {
   Building2,
   Landmark,
   CheckCheck,
-  Layers
+  Layers,
+  Undo2,
+  AlertTriangle
 } from 'lucide-react';
 import { BankAccount, FinancialCategory, FinancialTransaction } from '../../types';
 import { parseBankStatement, ParsedOFXTransaction, parseLedgerBalance, LedgerBalance } from './ofxParser';
@@ -192,6 +194,7 @@ interface ReconciliacaoTabProps {
   onAddTransactions: (txs: Omit<FinancialTransaction, "id" | "companyId" | "createdAt">[]) => void;
   onUpdateStatus: (id: string, status: 'PENDENTE' | 'CONCILIADO' | 'IGNORADO') => void;
   onUpdateTransactions: (items: { id: string, updates: Partial<FinancialTransaction> }[]) => void;
+  onDeleteTransactions?: (ids: string[]) => void;
   onUnconfirmedCountChange?: (count: number) => void;
   resetTrigger?: number;
 }
@@ -204,6 +207,7 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
   onAddTransactions,
   onUpdateStatus,
   onUpdateTransactions,
+  onDeleteTransactions,
   onUnconfirmedCountChange,
   resetTrigger
 }) => {
@@ -239,6 +243,7 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
   const [showSearchForFitId, setShowSearchForFitId] = useState<Record<string, boolean>>({});
   const [activeSearchFitId, setActiveSearchFitId] = useState<string | null>(null);
   const [selectedCandidatesByFitId, setSelectedCandidatesByFitId] = useState<Record<string, Record<string, number>>>({});
+  const [unreconcileConfirmItem, setUnreconcileConfirmItem] = useState<{ fitId: string; txIds: string[]; description: string } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -829,6 +834,20 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
   const handleIgnore = (fitId: string) => {
     setIgnoredIds(prev => [...prev, fitId]);
     toast.info("Transação marcada como ignorada.");
+  };
+
+  const handleConfirmUnreconcile = () => {
+    if (!unreconcileConfirmItem) return;
+    const { fitId, txIds } = unreconcileConfirmItem;
+    
+    if (txIds.length > 0 && onDeleteTransactions) {
+      onDeleteTransactions(txIds);
+    }
+    
+    setConciliatedIds(prev => prev.filter(id => id !== fitId));
+    setIgnoredIds(prev => prev.filter(id => id !== fitId));
+    setUnreconcileConfirmItem(null);
+    toast.success("Lançamento desfeito com sucesso! O item do extrato foi reaberto para conciliação.");
   };
 
   const handleCreateAndConciliate = (imported: AutoParsedOFXTransaction) => {
@@ -1818,15 +1837,31 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                                       </div>
                                     ))}
                                   </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => setUnreconcileConfirmItem({ fitId: item.fitId, txIds: ledgerTxsForFitId.map(t => t.id), description: item.description })}
+                                    className="w-full mt-2 py-1.5 px-3 bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+                                  >
+                                    <Undo2 className="w-3.5 h-3.5" /> Desfazer e reabrir
+                                  </button>
                                 </div>
                               ) : (
-                                <div className="bg-slate-100 border border-slate-200/80 rounded-2xl p-3 text-left w-full md:w-80">
-                                  <span className="text-[8px] font-black uppercase tracking-wider text-slate-500 block">
-                                    Dispositivo de Segurança contra Duplicata
-                                  </span>
-                                  <span className="text-[10px] text-slate-500 font-semibold block leading-tight mt-1">
-                                    Lançamento com mesmo FITID ou hash de dados já existe no sistema para esta mesma conta bancária.
-                                  </span>
+                                <div className="bg-slate-100 border border-slate-200/80 rounded-2xl p-3 text-left w-full md:w-80 space-y-2">
+                                  <div>
+                                    <span className="text-[8px] font-black uppercase tracking-wider text-slate-500 block">
+                                      Dispositivo de Segurança contra Duplicata
+                                    </span>
+                                    <span className="text-[10px] text-slate-500 font-semibold block leading-tight mt-1">
+                                      Lançamento com mesmo FITID ou hash de dados já existe no sistema para esta mesma conta bancária.
+                                    </span>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => setUnreconcileConfirmItem({ fitId: item.fitId, txIds: ledgerTxsForFitId.map(t => t.id), description: item.description })}
+                                    className="w-full py-1.5 px-3 bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+                                  >
+                                    <Undo2 className="w-3.5 h-3.5" /> Desfazer e reabrir
+                                  </button>
                                 </div>
                               )
                             ) : isCrossAccount ? (
@@ -2573,6 +2608,47 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                 </div>
               );
             })()}
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmação para Desfazer e Reabrir */}
+      {unreconcileConfirmItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div 
+            className="absolute inset-0 bg-slate-900/50 backdrop-blur-xs animate-fadeIn"
+            onClick={() => setUnreconcileConfirmItem(null)}
+          />
+          <div className="relative bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-100 p-6 animate-fadeIn text-center space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center mx-auto shadow-2xs">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+
+            <div className="space-y-2">
+              <h3 className="text-base font-black text-slate-900">
+                Desfazer Lançamento e Reabrir Extrato
+              </h3>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Isso vai <strong>excluir o(s) lançamento(s)</strong> criado(s) no sistema para <em>"{unreconcileConfirmItem.description}"</em> e permitir processar este item do extrato novamente. Confirmar?
+              </p>
+            </div>
+
+            <div className="pt-2 flex flex-col sm:flex-row gap-2">
+              <button
+                type="button"
+                onClick={() => setUnreconcileConfirmItem(null)}
+                className="flex-1 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold uppercase tracking-wider text-xs transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmUnreconcile}
+                className="flex-1 py-2.5 px-4 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold uppercase tracking-wider text-xs shadow-xs transition-colors cursor-pointer"
+              >
+                Sim, desfazer e reabrir
+              </button>
+            </div>
           </div>
         </div>
       )}

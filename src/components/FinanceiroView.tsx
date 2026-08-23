@@ -969,6 +969,7 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
               onAddTransactions={handleCreateTransactions}
               onUpdateStatus={handleUpdateTransactionStatus}
               onUpdateTransactions={handleUpdateTransactions}
+              onDeleteTransactions={handleDeleteMultipleTransactions}
               onUnconfirmedCountChange={setUnconfirmedReconciliationCount}
               resetTrigger={reconcileResetTrigger}
             />
