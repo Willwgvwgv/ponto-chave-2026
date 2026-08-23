@@ -468,8 +468,29 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
         return t.date >= startDateStr && t.date <= endDateStr;
       })();
 
-      const matchSearch = t.description.toLowerCase().includes(searchTerm.toLowerCase()) || 
-        (t.notes && t.notes.toLowerCase().includes(searchTerm.toLowerCase()));
+      const q = searchTerm.toLowerCase().trim();
+      const matchText = t.description.toLowerCase().includes(q) || 
+        (t.notes && t.notes.toLowerCase().includes(q));
+
+      // Busca por valor: compara tanto como string formatada quanto como sequência de dígitos pura
+      const matchAmount = (() => {
+        if (!q) return false;
+        const cleanQueryDigits = q.replace(/[^\d]/g, '');
+        if (!cleanQueryDigits) return false;
+
+        const absAmount = Math.abs(t.amount);
+        const amountStrDot = absAmount.toFixed(2); // ex: "1065.61"
+        const amountStrComma = amountStrDot.replace('.', ','); // ex: "1065,61"
+        const amountDigits = amountStrDot.replace(/[^\d]/g, ''); // ex: "106561"
+        const rawAmountIntDigits = String(Math.floor(absAmount)); // ex: "1065"
+
+        return amountDigits.includes(cleanQueryDigits) ||
+               rawAmountIntDigits.includes(cleanQueryDigits) ||
+               amountStrDot.includes(q.replace(/\s+/g, '').replace(/^r\$\s*/i, '')) ||
+               amountStrComma.includes(q.replace(/\s+/g, '').replace(/^r\$\s*/i, ''));
+      })();
+
+      const matchSearch = matchText || matchAmount;
       const matchAccount = selectedAccount === 'all' || t.accountId === selectedAccount;
       const matchCategory = selectedCategory === 'all' || t.categoryId === selectedCategory;
       const matchType = selectedType === 'all' || t.type === selectedType;
@@ -1261,7 +1282,12 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        {t.categoryName ? (
+                        {(t.type === 'TRANSFERENCIA' || t.isTransfer) ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 font-bold text-[10px] uppercase tracking-wider">
+                            <ArrowLeftRight className="w-3 h-3 text-slate-400" />
+                            Transferência
+                          </span>
+                        ) : t.categoryName ? (
                           <span className="inline-flex items-center gap-1 font-bold text-slate-600">
                             <Tag className="w-3.5 h-3.5 text-slate-300" />
                             {t.categoryName}
