@@ -321,5 +321,19 @@ export const DEFAULT_FINANCIAL_CATEGORIES: Omit<FinancialCategory, "id" | "compa
     color: "#9333ea",
     icon: "Tag",
     isDefault: true
+  },
+  {
+    name: "Adiantamento a Corretor (Recuperável)",
+    nome: "Adiantamento a Corretor (Recuperável)",
+    type: "DESPESA",
+    natureza: "saida",
+    group: "Caixa",
+    grupo: "caixa",
+    comportamento: "variavel",
+    origem: "locacao",
+    color: "#6366f1",
+    icon: "Tag",
+    isDefault: true,
+    excludeFromDRE: true
   }
 ];

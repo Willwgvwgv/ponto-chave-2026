@@ -262,6 +262,12 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
   const [isBulkCategorizeOpen, setIsBulkCategorizeOpen] = useState(false);
   const [bulkCategoryId, setBulkCategoryId] = useState('');
 
+  // Estados de Mover para outra Conta em massa
+  const [isBulkMoveAccountOpen, setIsBulkMoveAccountOpen] = useState(false);
+  const [bulkAccountId, setBulkAccountId] = useState('');
+  const [bulkMoveRecurrenceScope, setBulkMoveRecurrenceScope] = useState<'SELECTED_ONLY' | 'INCLUDE_FUTURE'>('SELECTED_ONLY');
+  const [isProcessingBulk, setIsProcessingBulk] = useState(false);
+
   const handleApplyBulkCategorize = async (catId: string) => {
     if (!catId) {
       toast.error("Selecione uma categoria");
@@ -290,6 +296,86 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
     } catch (err) {
       console.error(err);
       toast.error("Erro ao realizar categorização em massa");
+    }
+  };
+
+  // Identifica se há lançamentos recorrentes na seleção atual
+  const hasRecurrentInSelection = useMemo(() => {
+    return Array.from(selectedTxIds).some(id => {
+      const tx = transactions.find(t => t.id === id);
+      return Boolean(tx?.recurrenceGroupId);
+    });
+  }, [selectedTxIds, transactions]);
+
+  // Mover em massa para outra conta (preservando o tipo original RECEITA/DESPESA)
+  const handleApplyBulkMoveAccount = async () => {
+    if (!bulkAccountId) {
+      toast.error("Selecione a conta de destino");
+      return;
+    }
+    const targetAccount = accounts.find(a => a.id === bulkAccountId);
+    if (!targetAccount) {
+      toast.error("Conta de destino não encontrada");
+      return;
+    }
+
+    const isTargetCard = targetAccount.accountType === 'CREDITO';
+    setIsProcessingBulk(true);
+
+    try {
+      const selectedTxs = transactions.filter(t => selectedTxIds.has(t.id));
+      const allTargetTxIds = new Set<string>(selectedTxIds);
+
+      // Se optou por incluir parcelas futuras das séries recorrentes envolvidas
+      if (hasRecurrentInSelection && bulkMoveRecurrenceScope === 'INCLUDE_FUTURE') {
+        selectedTxs.forEach(tx => {
+          if (tx.recurrenceGroupId) {
+            transactions
+              .filter(t => t.recurrenceGroupId === tx.recurrenceGroupId && t.date >= tx.date)
+              .forEach(t => allTargetTxIds.add(t.id));
+          }
+        });
+      }
+
+      const itemsToUpdate = Array.from(allTargetTxIds).map(id => {
+        const tx = transactions.find(t => t.id === id);
+        const date = tx?.date || new Date().toISOString().split('T')[0];
+
+        if (isTargetCard) {
+          const cardStatus = getInitialCreditCardStatus(date, targetAccount.closingDay || 10);
+          const cardMonth = getCardStatementMonth(date, targetAccount.closingDay || 10);
+          return {
+            id,
+            updates: {
+              accountId: bulkAccountId,
+              // Mantém o tipo original (RECEITA permanece RECEITA, DESPESA permanece DESPESA)
+              creditCardStatus: cardStatus,
+              creditCardMonth: cardMonth
+            }
+          };
+        } else {
+          return {
+            id,
+            updates: {
+              accountId: bulkAccountId,
+              creditCardStatus: null,
+              creditCardMonth: null
+            }
+          };
+        }
+      });
+
+      await onUpdateTransactions(itemsToUpdate);
+      toast.success(`${itemsToUpdate.length} lançamentos movidos para "${targetAccount.name}"`);
+      setSelectedTxIds(new Set());
+      setIsBulkMoveAccountOpen(false);
+      setBulkAccountId('');
+      setBulkMoveRecurrenceScope('SELECTED_ONLY');
+    } catch (err) {
+      console.error("Erro ao mover lançamentos em massa:", err);
+      toast.error("Erro ao mover lançamentos para outra conta");
+    } finally {
+      setIsProcessingBulk(false);
     }
   };
 
@@ -1156,6 +1242,7 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
           <div className="flex items-center gap-2">
             <button
               type="button"
+              id="bulk-btn-clear-selection"
               onClick={() => setSelectedTxIds(new Set())}
               className="px-3 py-1.5 bg-white border border-rose-200 text-rose-700 hover:bg-rose-100 rounded-xl font-bold text-xs transition-colors"
             >
@@ -1163,6 +1250,7 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
             </button>
             <button
               type="button"
+              id="bulk-btn-categorize"
               onClick={() => setIsBulkCategorizeOpen(true)}
               className="flex items-center gap-1.5 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs transition-colors shadow-sm cursor-pointer"
             >
@@ -1171,6 +1259,16 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
             </button>
             <button
               type="button"
+              id="bulk-btn-move-account"
+              onClick={() => setIsBulkMoveAccountOpen(true)}
+              className="flex items-center gap-1.5 px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs transition-colors shadow-sm cursor-pointer"
+            >
+              <Building className="w-3.5 h-3.5" />
+              Mover para outra conta
+            </button>
+            <button
+              type="button"
+              id="bulk-btn-delete"
               onClick={handleBulkDelete}
               className="flex items-center gap-1.5 px-4 py-1.5 bg-rose-600 text-white hover:bg-rose-700 rounded-xl font-bold text-xs transition-colors shadow-sm cursor-pointer"
             >
@@ -1227,6 +1325,7 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
                       <td className="px-4 py-4 text-center">
                         <input
                           type="checkbox"
+                          id={`chk-tx-${t.id}`}
                           checked={selectedTxIds.has(t.id)}
                           onChange={() => handleSelectTxToggle(t.id)}
                           className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
@@ -1453,6 +1552,102 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
                 className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs transition-colors cursor-pointer"
               >
                 Aplicar Categoria
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Mover para Outra Conta em Massa */}
+      {isBulkMoveAccountOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => !isProcessingBulk && setIsBulkMoveAccountOpen(false)} />
+          <div className="relative bg-white w-full max-w-md rounded-[28px] shadow-2xl border border-slate-100 flex flex-col p-6 animate-fadeIn">
+            <h3 className="text-base font-black text-slate-800 uppercase tracking-tight mb-2 flex items-center gap-2">
+              <Building className="w-4 h-4 text-indigo-600" />
+              Mover para Outra Conta
+            </h3>
+            
+            <p className="text-xs text-slate-500 mb-4 font-semibold">
+              Selecione a nova conta bancária ou cartão para <strong className="text-indigo-600">{selectedTxIds.size} lançamento(s)</strong> selecionado(s):
+            </p>
+
+            <div className="space-y-4 mb-6">
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Conta de Destino</label>
+                <select
+                  id="bulk-account-select"
+                  value={bulkAccountId}
+                  onChange={(e) => setBulkAccountId(e.target.value)}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer"
+                >
+                  <option value="">Selecione uma conta...</option>
+                  {accounts.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name} {a.accountType === 'CREDITO' ? '[CARTÃO DE CRÉDITO]' : `[${a.accountType || 'CORRENTE'}]`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {hasRecurrentInSelection && (
+                <div className="p-3.5 bg-amber-50 border border-amber-200/80 rounded-2xl space-y-2">
+                  <span className="text-[11px] font-extrabold text-amber-900 flex items-center gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                    Lançamentos Recorrentes Detectados
+                  </span>
+                  <p className="text-[11px] text-amber-800 font-medium leading-snug">
+                    Um ou mais lançamentos selecionados fazem parte de séries recorrentes. Como deseja proceder?
+                  </p>
+                  <div className="space-y-1.5 pt-1">
+                    <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="recurrenceScope"
+                        value="SELECTED_ONLY"
+                        checked={bulkMoveRecurrenceScope === 'SELECTED_ONLY'}
+                        onChange={() => setBulkMoveRecurrenceScope('SELECTED_ONLY')}
+                        className="text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                      />
+                      Mover apenas os lançamentos selecionados
+                    </label>
+                    <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="recurrenceScope"
+                        value="INCLUDE_FUTURE"
+                        checked={bulkMoveRecurrenceScope === 'INCLUDE_FUTURE'}
+                        onChange={() => setBulkMoveRecurrenceScope('INCLUDE_FUTURE')}
+                        className="text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                      />
+                      Mover selecionados e todas as parcelas futuras da série
+                    </label>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                id="bulk-move-cancel-btn"
+                disabled={isProcessingBulk}
+                onClick={() => {
+                  setIsBulkMoveAccountOpen(false);
+                  setBulkAccountId('');
+                }}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-xl font-bold text-slate-600 text-xs transition-colors cursor-pointer disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                id="bulk-move-confirm-btn"
+                disabled={!bulkAccountId || isProcessingBulk}
+                onClick={handleApplyBulkMoveAccount}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs transition-colors cursor-pointer shadow-md disabled:opacity-50 flex items-center gap-2"
+              >
+                {isProcessingBulk ? 'Movendo...' : 'Mover Lançamentos'}
               </button>
             </div>
           </div>

@@ -56,18 +56,22 @@ export const DRETab: React.FC<DRETabProps> = ({ categories, transactions, onShow
     transactions.forEach(t => {
       if (t.status === 'IGNORADO') return;
       if (t.type === 'TRANSFERENCIA' || t.isTransfer) return;
+
+      // Tenta encontrar a categoria por ID ou por Nome
+      let matchedCat: FinancialCategory | undefined;
+      if (t.categoryId && catById.has(t.categoryId)) {
+        matchedCat = catById.get(t.categoryId);
+      } else if (t.categoryName && catByName.has(t.categoryName.trim().toLowerCase())) {
+        matchedCat = catByName.get(t.categoryName.trim().toLowerCase());
+      }
+
+      // Exclui transações cuja categoria tenha excludeFromDRE === true
+      if (matchedCat?.excludeFromDRE) return;
+
       const tDate = new Date(t.date + 'T00:00:00');
       if (tDate.getFullYear() === selectedYear) {
         const monthIndex = tDate.getMonth();
         if (monthIndex < 0 || monthIndex >= 12) return;
-
-        // Tenta encontrar a categoria por ID ou por Nome
-        let matchedCat: FinancialCategory | undefined;
-        if (t.categoryId && catById.has(t.categoryId)) {
-          matchedCat = catById.get(t.categoryId);
-        } else if (t.categoryName && catByName.has(t.categoryName.trim().toLowerCase())) {
-          matchedCat = catByName.get(t.categoryName.trim().toLowerCase());
-        }
 
         if (matchedCat && matrix[matchedCat.id]) {
           matrix[matchedCat.id][monthIndex] += Math.abs(t.amount);
@@ -94,7 +98,7 @@ export const DRETab: React.FC<DRETabProps> = ({ categories, transactions, onShow
   // Calculations for Locacoes Entradas (Faturamento de Locações)
   const monthlyLocacoesEntrada = useMemo(() => {
     const totals = new Array(12).fill(0);
-    categories.filter(c => c.grupo === 'locacao' && c.natureza === 'entrada').forEach(c => {
+    categories.filter(c => !c.excludeFromDRE && c.grupo === 'locacao' && c.natureza === 'entrada').forEach(c => {
       const row = dreMatrix[c.id] || [];
       for (let i = 0; i < 12; i++) {
         totals[i] += row[i] || 0;
@@ -106,7 +110,7 @@ export const DRETab: React.FC<DRETabProps> = ({ categories, transactions, onShow
   // Deduções Operacionais (Soma de saídas de locação)
   const monthlyLocacoesSaida = useMemo(() => {
     const totals = new Array(12).fill(0);
-    categories.filter(c => c.grupo === 'locacao' && c.natureza === 'saida').forEach(c => {
+    categories.filter(c => !c.excludeFromDRE && c.grupo === 'locacao' && c.natureza === 'saida').forEach(c => {
       const row = dreMatrix[c.id] || [];
       for (let i = 0; i < 12; i++) {
         totals[i] += row[i] || 0;
@@ -127,7 +131,7 @@ export const DRETab: React.FC<DRETabProps> = ({ categories, transactions, onShow
   // Receitas de Caixa (Entradas do Caixa)
   const monthlyCaixaEntras = useMemo(() => {
     const totals = new Array(12).fill(0);
-    categories.filter(c => c.grupo === 'caixa' && c.natureza === 'entrada').forEach(c => {
+    categories.filter(c => !c.excludeFromDRE && c.grupo === 'caixa' && c.natureza === 'entrada').forEach(c => {
       const row = dreMatrix[c.id] || [];
       for (let i = 0; i < 12; i++) {
         totals[i] += row[i] || 0;
@@ -148,7 +152,7 @@ export const DRETab: React.FC<DRETabProps> = ({ categories, transactions, onShow
   // Despesas Operacionais Fixas
   const monthlyDespesasFixas = useMemo(() => {
     const totals = new Array(12).fill(0);
-    categories.filter(c => c.grupo === 'caixa' && c.natureza === 'saida' && c.comportamento === 'fixo').forEach(c => {
+    categories.filter(c => !c.excludeFromDRE && c.grupo === 'caixa' && c.natureza === 'saida' && c.comportamento === 'fixo').forEach(c => {
       const row = dreMatrix[c.id] || [];
       for (let i = 0; i < 12; i++) {
         totals[i] += row[i] || 0;
@@ -160,7 +164,7 @@ export const DRETab: React.FC<DRETabProps> = ({ categories, transactions, onShow
   // Despesas Operacionais Variáveis
   const monthlyDespesasVariaveis = useMemo(() => {
     const totals = new Array(12).fill(0);
-    categories.filter(c => c.grupo === 'caixa' && c.natureza === 'saida' && c.comportamento === 'variavel').forEach(c => {
+    categories.filter(c => !c.excludeFromDRE && c.grupo === 'caixa' && c.natureza === 'saida' && c.comportamento === 'variavel').forEach(c => {
       const row = dreMatrix[c.id] || [];
       for (let i = 0; i < 12; i++) {
         totals[i] += row[i] || 0;
@@ -210,11 +214,11 @@ export const DRETab: React.FC<DRETabProps> = ({ categories, transactions, onShow
       return;
     }
 
-    const locacoesEntradaCats = categories.filter(c => c.grupo === 'locacao' && c.natureza === 'entrada');
-    const locacoesSaidaCats = categories.filter(c => c.grupo === 'locacao' && c.natureza === 'saida');
-    const caixaEntradaCats = categories.filter(c => c.grupo === 'caixa' && c.natureza === 'entrada');
-    const caixaSaidaFixaCats = categories.filter(c => c.grupo === 'caixa' && c.natureza === 'saida' && c.comportamento === 'fixo');
-    const caixaSaidaVariavelCats = categories.filter(c => c.grupo === 'caixa' && c.natureza === 'saida' && c.comportamento === 'variavel');
+    const locacoesEntradaCats = categories.filter(c => !c.excludeFromDRE && c.grupo === 'locacao' && c.natureza === 'entrada');
+    const locacoesSaidaCats = categories.filter(c => !c.excludeFromDRE && c.grupo === 'locacao' && c.natureza === 'saida');
+    const caixaEntradaCats = categories.filter(c => !c.excludeFromDRE && c.grupo === 'caixa' && c.natureza === 'entrada');
+    const caixaSaidaFixaCats = categories.filter(c => !c.excludeFromDRE && c.grupo === 'caixa' && c.natureza === 'saida' && c.comportamento === 'fixo');
+    const caixaSaidaVariavelCats = categories.filter(c => !c.excludeFromDRE && c.grupo === 'caixa' && c.natureza === 'saida' && c.comportamento === 'variavel');
 
     const generateRows = (cats: FinancialCategory[], indentClass = 'pl-8') => {
       return cats.map(cat => `
@@ -483,7 +487,7 @@ export const DRETab: React.FC<DRETabProps> = ({ categories, transactions, onShow
               </tr>
 
               {/* Detalhamento de locações entradas */}
-              {categories.filter(c => c.grupo === 'locacao' && c.natureza === 'entrada').map(cat => (
+              {categories.filter(c => !c.excludeFromDRE && c.grupo === 'locacao' && c.natureza === 'entrada').map(cat => (
                 <tr key={cat.id} className="hover:bg-slate-55/40 text-slate-500 font-medium">
                   <td className="px-5 py-2 pl-10 flex items-center gap-2">
                     <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: cat.color }} />
@@ -515,7 +519,7 @@ export const DRETab: React.FC<DRETabProps> = ({ categories, transactions, onShow
               </tr>
 
               {/* Detalhamento de locações saidas */}
-              {categories.filter(c => c.grupo === 'locacao' && c.natureza === 'saida').map(cat => (
+              {categories.filter(c => !c.excludeFromDRE && c.grupo === 'locacao' && c.natureza === 'saida').map(cat => (
                 <tr key={cat.id} className="hover:bg-slate-55/40 text-slate-500 font-medium">
                   <td className="px-5 py-2 pl-10 flex items-center gap-2">
                     <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: cat.color }} />
@@ -558,7 +562,7 @@ export const DRETab: React.FC<DRETabProps> = ({ categories, transactions, onShow
               </tr>
 
               {/* Detalhamento de caixa entradas */}
-              {categories.filter(c => c.grupo === 'caixa' && c.natureza === 'entrada').map(cat => (
+              {categories.filter(c => !c.excludeFromDRE && c.grupo === 'caixa' && c.natureza === 'entrada').map(cat => (
                 <tr key={cat.id} className="hover:bg-slate-55/40 text-slate-500 font-medium">
                   <td className="px-5 py-2 pl-10 flex items-center gap-2">
                     <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: cat.color }} />
@@ -601,7 +605,7 @@ export const DRETab: React.FC<DRETabProps> = ({ categories, transactions, onShow
               </tr>
 
               {/* Detalhamento de caixa despesas fixas */}
-              {categories.filter(c => c.grupo === 'caixa' && c.natureza === 'saida' && c.comportamento === 'fixo').map(cat => (
+              {categories.filter(c => !c.excludeFromDRE && c.grupo === 'caixa' && c.natureza === 'saida' && c.comportamento === 'fixo').map(cat => (
                 <tr key={cat.id} className="hover:bg-slate-55/40 text-slate-500 font-medium">
                   <td className="px-5 py-2 pl-10 flex items-center gap-2">
                     <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: cat.color }} />
@@ -633,7 +637,7 @@ export const DRETab: React.FC<DRETabProps> = ({ categories, transactions, onShow
               </tr>
 
               {/* Detalhamento de caixa despesas variaveis */}
-              {categories.filter(c => c.grupo === 'caixa' && c.natureza === 'saida' && c.comportamento === 'variavel').map(cat => (
+              {categories.filter(c => !c.excludeFromDRE && c.grupo === 'caixa' && c.natureza === 'saida' && c.comportamento === 'variavel').map(cat => (
                 <tr key={cat.id} className="hover:bg-slate-55/40 text-slate-500 font-medium">
                   <td className="px-5 py-2 pl-10 flex items-center gap-2">
                     <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: cat.color }} />

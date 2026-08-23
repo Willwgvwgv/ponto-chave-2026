@@ -27,7 +27,8 @@ interface CategoriasTabProps {
     grupo: 'locacao' | 'caixa',
     natureza: 'entrada' | 'saida',
     comportamento: 'fixo' | 'variavel' | 'nao_aplicavel',
-    origem: 'locacao' | 'venda' | 'administracao' | 'servicos' | 'outros'
+    origem: 'locacao' | 'venda' | 'administracao' | 'servicos' | 'outros',
+    excludeFromDRE?: boolean
   ) => void;
   onDeleteCategory: (id: string) => void;
   onUpdateCategory?: (
@@ -38,7 +39,8 @@ interface CategoriasTabProps {
     grupo: 'locacao' | 'caixa',
     natureza: 'entrada' | 'saida',
     comportamento: 'fixo' | 'variavel' | 'nao_aplicavel',
-    origem: 'locacao' | 'venda' | 'administracao' | 'servicos' | 'outros'
+    origem: 'locacao' | 'venda' | 'administracao' | 'servicos' | 'outros',
+    excludeFromDRE?: boolean
   ) => void;
 }
 
@@ -71,6 +73,7 @@ export const CategoriasTab: React.FC<CategoriasTabProps> = ({
   const [comportamentoForm, setComportamentoForm] = useState<'fixo' | 'variavel' | 'nao_aplicavel'>('nao_aplicavel');
   const [origemForm, setOrigemForm] = useState<'locacao' | 'venda' | 'administracao' | 'servicos' | 'outros'>('locacao');
   const [colorForm, setColorForm] = useState('#059669');
+  const [excludeFromDREForm, setExcludeFromDREForm] = useState(false);
 
   // Base state for editing category
   const [editNome, setEditNome] = useState('');
@@ -79,6 +82,7 @@ export const CategoriasTab: React.FC<CategoriasTabProps> = ({
   const [editComportamento, setEditComportamento] = useState<'fixo' | 'variavel' | 'nao_aplicavel'>('nao_aplicavel');
   const [editOrigem, setEditOrigem] = useState<'locacao' | 'venda' | 'administracao' | 'servicos' | 'outros'>('locacao');
   const [editColor, setEditColor] = useState('#059669');
+  const [editExcludeFromDRE, setEditExcludeFromDRE] = useState(false);
 
   const sampleColors = [
     '#059669', // Verde Esmeralda (Locações/Receita)
@@ -135,11 +139,13 @@ export const CategoriasTab: React.FC<CategoriasTabProps> = ({
       grupoForm,
       naturezaForm,
       comportamentoForm,
-      origemForm
+      origemForm,
+      excludeFromDREForm
     );
 
     // Reset Form
     setNomeForm('');
+    setExcludeFromDREForm(false);
     setIsAddOpen(false);
   };
 
@@ -158,7 +164,8 @@ export const CategoriasTab: React.FC<CategoriasTabProps> = ({
         editGrupo,
         editNatureza,
         editComportamento,
-        editOrigem
+        editOrigem,
+        editExcludeFromDRE
       );
     }
     setEditingCategory(null);
@@ -206,6 +213,11 @@ export const CategoriasTab: React.FC<CategoriasTabProps> = ({
       </div>
 
       <div className="flex items-center gap-2">
+        {cat.excludeFromDRE && (
+          <span className="px-1.5 py-0.5 bg-slate-100 border border-slate-200 text-slate-600 font-black text-[8px] uppercase tracking-wider rounded-md">
+            Fora do DRE
+          </span>
+        )}
         {cat.comportamento && cat.comportamento !== 'nao_aplicavel' && (
           <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider ${cat.comportamento === 'fixo' ? 'bg-amber-100 text-amber-800' : 'bg-purple-100 text-purple-800'}`}>
             {cat.comportamento === 'fixo' ? 'FIXO' : 'VARIÁVEL'}
@@ -226,6 +238,7 @@ export const CategoriasTab: React.FC<CategoriasTabProps> = ({
                 setEditComportamento(cat.comportamento || 'nao_aplicavel');
                 setEditOrigem(cat.origem || 'locacao');
                 setEditColor(cat.color || '#059669');
+                setEditExcludeFromDRE(Boolean(cat.excludeFromDRE));
               }}
               className="p-1 text-slate-400 hover:text-blue-600 rounded transition-colors"
               title="Editar"
@@ -501,6 +514,26 @@ export const CategoriasTab: React.FC<CategoriasTabProps> = ({
                   </select>
                 </div>
 
+                {/* Não afeta o DRE Checkbox (Criação) */}
+                <div className="pt-1">
+                  <label className="flex items-start gap-3 p-3.5 bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-2xl cursor-pointer transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={excludeFromDREForm}
+                      onChange={(e) => setExcludeFromDREForm(e.target.checked)}
+                      className="mt-0.5 w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 cursor-pointer"
+                    />
+                    <div className="flex flex-col">
+                      <span className="text-xs font-bold text-slate-800">
+                        Não afeta o DRE
+                      </span>
+                      <span className="text-[11px] text-slate-500 font-medium leading-snug mt-0.5">
+                        Para adiantamentos e empréstimos a corretores que serão recuperados/descontados depois
+                      </span>
+                    </div>
+                  </label>
+                </div>
+
                 {/* Cores */}
                 <div>
                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1">
@@ -651,6 +684,26 @@ export const CategoriasTab: React.FC<CategoriasTabProps> = ({
                     <option value="servicos">Serviços e Consultorias</option>
                     <option value="outros">Outros Financiamentos</option>
                   </select>
+                </div>
+
+                {/* Não afeta o DRE Checkbox (Edição) */}
+                <div className="pt-1">
+                  <label className="flex items-start gap-3 p-3.5 bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-2xl cursor-pointer transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={editExcludeFromDRE}
+                      onChange={(e) => setEditExcludeFromDRE(e.target.checked)}
+                      className="mt-0.5 w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 cursor-pointer"
+                    />
+                    <div className="flex flex-col">
+                      <span className="text-xs font-bold text-slate-800">
+                        Não afeta o DRE
+                      </span>
+                      <span className="text-[11px] text-slate-500 font-medium leading-snug mt-0.5">
+                        Para adiantamentos e empréstimos a corretores que serão recuperados/descontados depois
+                      </span>
+                    </div>
+                  </label>
                 </div>
 
                 {/* Cores */}

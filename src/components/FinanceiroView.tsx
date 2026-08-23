@@ -184,7 +184,8 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
           grupo: grupoVal,
           natureza: naturezaVal,
           comportamento: comportamentoVal,
-          origem: origemVal
+          origem: origemVal,
+          excludeFromDRE: Boolean(cat.excludeFromDRE)
         } as FinancialCategory;
       });
 
@@ -414,7 +415,8 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
     grupo: 'locacao' | 'caixa',
     natureza: 'entrada' | 'saida',
     comportamento: 'fixo' | 'variavel' | 'nao_aplicavel',
-    origem: 'locacao' | 'venda' | 'administracao' | 'servicos' | 'outros'
+    origem: 'locacao' | 'venda' | 'administracao' | 'servicos' | 'outros',
+    excludeFromDRE: boolean = false
   ) => {
     try {
       const id = `cat_${Date.now()}`;
@@ -430,6 +432,7 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
         natureza,
         comportamento,
         origem,
+        excludeFromDRE: Boolean(excludeFromDRE),
         isDefault: false,
         createdAt: serverTimestamp()
       });
@@ -456,7 +459,8 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
     grupo: 'locacao' | 'caixa',
     natureza: 'entrada' | 'saida',
     comportamento: 'fixo' | 'variavel' | 'nao_aplicavel',
-    origem: 'locacao' | 'venda' | 'administracao' | 'servicos' | 'outros'
+    origem: 'locacao' | 'venda' | 'administracao' | 'servicos' | 'outros',
+    excludeFromDRE: boolean = false
   ) => {
     try {
       await updateDoc(doc(db, "financial_categories", id), {
@@ -467,7 +471,8 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
         grupo,
         natureza,
         comportamento,
-        origem
+        origem,
+        excludeFromDRE: Boolean(excludeFromDRE)
       });
       toast.success("Categoria atualizada com sucesso!");
     } catch (err) {

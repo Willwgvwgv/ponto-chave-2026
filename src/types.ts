@@ -411,6 +411,7 @@ export interface FinancialCategory {
   comportamento: 'fixo' | 'variavel' | 'nao_aplicavel';
   origem: 'locacao' | 'venda' | 'administracao' | 'servicos' | 'outros';
   agencyId?: string;
+  excludeFromDRE?: boolean;
 }
 
 export interface FinancialTransaction {
