@@ -551,6 +551,18 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
         setSearchQueries({});
         setShowSearchForFitId({});
         setActiveSearchFitId(null);
+
+        // DIAGNÓSTICO TEMPORÁRIO
+        console.log(`[DEBUG CONCILIAÇÃO] importedTxs.length = ${enriched.length}`);
+        const protecaoItems = enriched.filter(t => (t.description || '').toLowerCase().includes('proteção perda ou roubo') || (t.description || '').toLowerCase().includes('protecao perda ou roubo'));
+        console.log(`[DEBUG CONCILIAÇÃO] Itens de Proteção encontrados (${protecaoItems.length}):`, protecaoItems.map(p => ({
+          fitId: p.fitId,
+          description: p.description,
+          amount: p.amount,
+          date: p.date,
+          type: p.type
+        })));
+
         toast.success(`Sucesso! Importadas ${parsed.length} transações do extrato.`);
       } catch (err) {
         toast.error("Erro ao analisar arquivo. Verifique a codificação.");
@@ -1440,9 +1452,14 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                             <div className="flex-1 min-w-0 space-y-1.5">
                               {/* Badges */}
                               <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-wider ${
+                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-wider ${
                                   item.type === 'CREDIT' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'
                                 }`}>
+                                  {item.type === 'CREDIT' ? (
+                                    <ArrowUpRight className="w-3 h-3 text-emerald-600 shrink-0" />
+                                  ) : (
+                                    <ArrowDownRight className="w-3 h-3 text-rose-600 shrink-0" />
+                                  )}
                                   {item.type === 'CREDIT' ? 'ENTRADA' : 'SAÍDA'}
                                 </span>
 
@@ -1478,9 +1495,14 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
 
                             {/* Coluna direita — valor destacado + data */}
                             <div className="text-right shrink-0">
-                              <p className={`font-mono font-black text-lg leading-none ${
+                              <p className={`font-mono font-black text-lg leading-none flex items-center justify-end gap-1 ${
                                 item.type === 'CREDIT' ? 'text-emerald-600' : 'text-slate-900'
                               }`}>
+                                {item.type === 'CREDIT' ? (
+                                  <ArrowUpRight className="w-4 h-4 text-emerald-600 shrink-0" />
+                                ) : (
+                                  <ArrowDownRight className="w-4 h-4 text-rose-500 shrink-0" />
+                                )}
                                 {formatCurrency(item.amount)}
                               </p>
                               <p className="text-[10px] text-slate-400 font-mono mt-1">
@@ -1762,6 +1784,11 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                               <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-wider ${
                                 item.type === 'CREDIT' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'
                               }`}>
+                                {item.type === 'CREDIT' ? (
+                                  <ArrowUpRight className="w-3 h-3 text-emerald-600 shrink-0" />
+                                ) : (
+                                  <ArrowDownRight className="w-3 h-3 text-rose-600 shrink-0" />
+                                )}
                                 {item.type === 'CREDIT' ? 'ENTRADA' : 'SAÍDA'}
                               </span>
 
@@ -1811,7 +1838,14 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                               </p>
                             )}
                             <p className="text-[10px] font-black text-slate-500">
-                              Valor extrato: <span className="font-mono text-slate-900 font-black">{formatCurrency(item.amount)}</span>
+                              Valor extrato: <span className="font-mono text-slate-900 font-black inline-flex items-center gap-1">
+                                {item.type === 'CREDIT' ? (
+                                  <ArrowUpRight className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                ) : (
+                                  <ArrowDownRight className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                                )}
+                                {formatCurrency(item.amount)}
+                              </span>
                             </p>
                           </div>
 

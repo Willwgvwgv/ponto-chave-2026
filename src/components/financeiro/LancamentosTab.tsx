@@ -23,7 +23,9 @@ import {
   TrendingDown,
   Scale,
   X,
-  AlertTriangle
+  AlertTriangle,
+  ArrowUpRight,
+  ArrowDownRight
 } from 'lucide-react';
 import { BankAccount, FinancialCategory, FinancialTransaction } from '../../types';
 import { db, doc, deleteDoc } from '../../firebase';
@@ -1296,8 +1298,15 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
                           <span className="text-slate-350 italic">Sem Categoria</span>
                         )}
                       </td>
-                      <td className={`px-6 py-4 text-right font-black ${t.type === 'RECEITA' ? 'text-teal-600' : 'text-rose-500'}`}>
-                        {t.type === 'RECEITA' ? '+' : '-'} {formatCurrency(Math.abs(t.amount))}
+                      <td className="px-6 py-4 text-right">
+                        <div className={`inline-flex items-center justify-end gap-1 font-black font-mono tabular-nums ${t.type === 'RECEITA' ? 'text-teal-600' : 'text-rose-500'}`}>
+                          {t.type === 'RECEITA' ? (
+                            <ArrowUpRight className="w-4 h-4 text-teal-600 shrink-0" />
+                          ) : (
+                            <ArrowDownRight className="w-4 h-4 text-rose-500 shrink-0" />
+                          )}
+                          <span>{t.type === 'RECEITA' ? '+' : '-'} {formatCurrency(Math.abs(t.amount))}</span>
+                        </div>
                       </td>
                       <td className="px-6 py-4 text-center">
                         {t.creditCardStatus ? (
