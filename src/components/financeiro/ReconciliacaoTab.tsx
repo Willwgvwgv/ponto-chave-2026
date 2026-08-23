@@ -1353,6 +1353,20 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                   </div>
                 </div>
 
+                {/* DIAGNÓSTICO DE RENDERIZAÇÃO */}
+                {(() => {
+                  console.log(`[DEBUG RENDER] visibleImported.length = ${visibleImported.length}`);
+                  const protecaoVis = visibleImported.filter(i => (i.description || '').toLowerCase().includes('proteção perda ou roubo') || (i.description || '').toLowerCase().includes('protecao perda ou roubo'));
+                  console.log(`[DEBUG RENDER] Proteção em visibleImported (${protecaoVis.length}):`, protecaoVis.map(p => ({
+                    fitId: p.fitId,
+                    description: p.description,
+                    amount: p.amount,
+                    date: p.date,
+                    type: p.type
+                  })));
+                  return null;
+                })()}
+
                 {visibleImported.length === 0 ? (
                   <div className="bg-emerald-50 border border-emerald-100 rounded-3xl p-8 text-center text-emerald-700 animate-fadeIn">
                     <CheckCircle2 className="w-12 h-12 mx-auto mb-3 text-emerald-500" />
