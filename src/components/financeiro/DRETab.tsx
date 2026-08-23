@@ -55,6 +55,7 @@ export const DRETab: React.FC<DRETabProps> = ({ categories, transactions, onShow
     // Preenche com os valores das transações
     transactions.forEach(t => {
       if (t.status === 'IGNORADO') return;
+      if (t.type === 'TRANSFERENCIA' || t.isTransfer) return;
       const tDate = new Date(t.date + 'T00:00:00');
       if (tDate.getFullYear() === selectedYear) {
         const monthIndex = tDate.getMonth();

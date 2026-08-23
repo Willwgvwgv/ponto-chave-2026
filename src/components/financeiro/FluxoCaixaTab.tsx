@@ -72,6 +72,8 @@ export const FluxoCaixaTab: React.FC<FluxoCaixaTabProps> = ({
 
       // 2. Transações agendadas do próprio financeiro (status === PENDENTE ou AGENDADO)
       transactions.forEach(t => {
+        if (t.status === 'IGNORADO' || t.status === 'CANCELADO') return;
+        if (t.type === 'TRANSFERENCIA' || t.isTransfer) return;
         if ((t.status === 'PENDENTE' || t.status === 'AGENDADO') && t.date === dateStr) {
           if (t.type === 'RECEITA') {
             inflow += Math.abs(t.amount);

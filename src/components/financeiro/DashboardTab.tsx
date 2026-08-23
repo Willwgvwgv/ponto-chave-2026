@@ -206,6 +206,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
     transactions.forEach(t => {
       if (t.status === 'IGNORADO') return;
+      if (t.type === 'TRANSFERENCIA' || t.isTransfer) return;
       
       // Calculate current month's revenues and expenses
       const tDate = new Date(t.date + 'T00:00:00');
@@ -251,6 +252,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
     transactions.forEach(t => {
       if (t.status === 'IGNORADO') return;
+      if (t.type === 'TRANSFERENCIA' || t.isTransfer) return;
       const tDate = new Date(t.date + 'T00:00:00');
       if (tDate.getFullYear() === currentYear) {
         const monthIndex = tDate.getMonth();
@@ -278,6 +280,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
     transactions.forEach(t => {
       if (t.status === 'IGNORADO') return;
+      if (t.type === 'TRANSFERENCIA' || t.isTransfer) return;
       const catName = t.categoryName || 'Indefinido';
       const key = `${t.type}_${catName}`;
 
