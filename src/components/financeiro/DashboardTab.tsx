@@ -28,7 +28,8 @@ import {
   HelpCircle, 
   ArrowRightCircle, 
   CalendarPlus,
-  Undo2
+  Undo2,
+  RotateCcw
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -599,8 +600,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
       const updates: Partial<FinancialTransaction> = {
         creditCardMonth: previousMonth,
-        movedAt: historyCopy.length > 0 ? historyCopy[historyCopy.length - 1].movedAt : undefined,
-        movedFromMonth: historyCopy.length > 0 ? tx.movedFromMonth : undefined,
+        movedAt: historyCopy.length > 0 ? historyCopy[historyCopy.length - 1].movedAt : null,
+        movedFromMonth: historyCopy.length > 0 ? (tx.movedFromMonth || null) : null,
         movedHistory: historyCopy.length > 0 ? historyCopy : []
       };
 
@@ -611,6 +612,58 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     } catch (err: any) {
       console.error("Erro ao desfazer movimentação:", err);
       toast.error("Erro ao desfazer movimentação da fatura.");
+    } finally {
+      setIsMovingTx(false);
+    }
+  };
+
+  const handleRestoreToOriginal = async (tx: FinancialTransaction, isSeries: boolean = false) => {
+    if (!onUpdateTransactions) {
+      toast.error("Função de atualização de transações não disponível.");
+      return;
+    }
+    try {
+      setIsMovingTx(true);
+      const updatesPayload: { id: string; updates: Partial<FinancialTransaction> }[] = [];
+
+      // 1. Restaurar lançamento alvo
+      const originalMonth = tx.movedFromMonth || tx.date.substring(0, 7);
+      updatesPayload.push({
+        id: tx.id,
+        updates: {
+          creditCardMonth: originalMonth,
+          movedAt: null,
+          movedFromMonth: null,
+          movedHistory: []
+        }
+      });
+
+      // 2. Se for série, restaurar ocorrências subsequentes também
+      if (isSeries && recurrentOccurrences.length > 0) {
+        recurrentOccurrences.forEach(subTx => {
+          const subOriginalMonth = subTx.movedFromMonth || subTx.date.substring(0, 7);
+          updatesPayload.push({
+            id: subTx.id,
+            updates: {
+              creditCardMonth: subOriginalMonth,
+              movedAt: null,
+              movedFromMonth: null,
+              movedHistory: []
+            }
+          });
+        });
+      }
+
+      await onUpdateTransactions(updatesPayload);
+      toast.success(isSeries && updatesPayload.length > 1
+        ? `${updatesPayload.length} lançamentos da série foram restaurados para as faturas originais!`
+        : `Lançamento restaurado para a fatura original (${formatMonthName(originalMonth)})!`
+      );
+      setTxToMove(null);
+      setRecurrentOccurrences([]);
+    } catch (err: any) {
+      console.error("Erro ao restaurar para fatura original:", err);
+      toast.error("Erro ao restaurar lançamentos para a fatura original.");
     } finally {
       setIsMovingTx(false);
     }
@@ -2141,15 +2194,30 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
               {/* Botão de Desfazer Movimentação (se o lançamento já foi movido antes) */}
               {txToMove.movedHistory && txToMove.movedHistory.length > 0 && (
-                <button
-                  type="button"
-                  disabled={isMovingTx}
-                  onClick={() => handleRevertMove(txToMove)}
-                  className="w-full py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-2xl font-bold uppercase tracking-wider text-xs flex items-center justify-center gap-2 transition-all disabled:opacity-50"
-                >
-                  <Undo2 className="w-3.5 h-3.5" />
-                  Desfazer última movimentação (Voltar para {formatMonthShort(txToMove.movedHistory[txToMove.movedHistory.length - 1]?.fromMonth || txToMove.movedFromMonth || txToMove.date.substring(0, 7))})
-                </button>
+                <div className="flex flex-col gap-2 pt-1 border-t border-slate-200">
+                  <button
+                    type="button"
+                    disabled={isMovingTx}
+                    onClick={() => handleRevertMove(txToMove)}
+                    className="w-full py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-2xl font-bold uppercase tracking-wider text-xs flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                  >
+                    <Undo2 className="w-3.5 h-3.5 text-amber-600" />
+                    Desfazer última movimentação (Voltar para {formatMonthShort(txToMove.movedHistory[txToMove.movedHistory.length - 1]?.fromMonth || txToMove.movedFromMonth || txToMove.date.substring(0, 7))})
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={isMovingTx}
+                    onClick={() => handleRestoreToOriginal(txToMove, recurrentOccurrences.length > 0)}
+                    className="w-full py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-2xl font-bold uppercase tracking-wider text-[11px] flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 text-rose-600" />
+                    {recurrentOccurrences.length > 0
+                      ? `Restaurar série inteira à fatura original (${formatMonthShort(txToMove.movedFromMonth || txToMove.date.substring(0, 7))})`
+                      : `Restaurar à fatura original (${formatMonthShort(txToMove.movedFromMonth || txToMove.date.substring(0, 7))})`
+                    }
+                  </button>
+                </div>
               )}
 
               <button

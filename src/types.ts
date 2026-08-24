@@ -436,8 +436,8 @@ export interface FinancialTransaction {
   originalDescription?: string;
   creditCardStatus?: 'FATURA_ABERTA' | 'FATURA_FECHADA' | 'FATURA_PAGA';
   creditCardMonth?: string; // YYYY-MM
-  movedFromMonth?: string; // YYYY-MM original
-  movedAt?: string;
+  movedFromMonth?: string | null; // YYYY-MM original
+  movedAt?: string | null;
   movedHistory?: {
     fromMonth: string;
     toMonth: string;
