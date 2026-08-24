@@ -33,8 +33,8 @@ import { ReconciliacaoTab } from './financeiro/ReconciliacaoTab';
 import { DRETab } from './financeiro/DRETab';
 import { FluxoCaixaTab } from './financeiro/FluxoCaixaTab';
 import { CategoriasTab } from './financeiro/CategoriasTab';
-import { AuditCresolCardModal } from './financeiro/AuditCresolCardModal';
 import { DEFAULT_FINANCIAL_CATEGORIES } from './financeiro/DefaultCategories';
+import { RawFirestoreDiagnosticModal } from './financeiro/RawFirestoreDiagnosticModal';
 import { toast } from 'sonner';
 
 import { 
@@ -46,7 +46,7 @@ import {
   Tag, 
   Landmark, 
   AlertTriangle, 
-  ShieldCheck,
+  Terminal,
   X 
 } from 'lucide-react';
 
@@ -68,7 +68,7 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
   const [activeSubTab, setActiveSubTab] = useState<'dashboard' | 'lancamentos' | 'conciliacao' | 'dre' | 'fluxo' | 'categorias'>('dashboard');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [pendingCategoryFilterIds, setPendingCategoryFilterIds] = useState<string[] | null>(null);
-  const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
+  const [isRawDiagnosticOpen, setIsRawDiagnosticOpen] = useState(false);
 
   // Proteção contra perda de dados na Conciliação Bancária
   const [unconfirmedReconciliationCount, setUnconfirmedReconciliationCount] = useState<number>(0);
@@ -997,14 +997,14 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
           )}
         </div>
 
-        {/* Botão de Auditoria Cartão Cresol (Julho/2026) */}
+        {/* Botão Temporário de Diagnóstico Bruto (Somente Leitura) */}
         <button
-          onClick={() => setIsAuditModalOpen(true)}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200/80 shadow-xs cursor-pointer ml-1"
-          title="Ver auditoria detalhada dos lançamentos do Cartão Cresol em Julho/2026"
+          onClick={() => setIsRawDiagnosticOpen(true)}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-mono font-bold transition-all whitespace-nowrap bg-amber-50 text-amber-900 hover:bg-amber-100 border border-amber-300 shadow-xs cursor-pointer ml-2"
+          title="Abrir dados brutos (JSON) do Firestore"
         >
-          <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
-          <span>Auditoria Cresol Julho</span>
+          <Terminal className="w-3.5 h-3.5 text-amber-600" />
+          <span>[Debug Firestore Bruto]</span>
         </button>
       </div>
 
@@ -1129,12 +1129,12 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
         </div>
       )}
 
-      {/* Modal de Auditoria do Cartão Cresol */}
-      <AuditCresolCardModal
-        isOpen={isAuditModalOpen}
-        onClose={() => setIsAuditModalOpen(false)}
-        transactions={transactions}
+      {/* Modal de Diagnóstico Firestore (Temporário - Somente Leitura) */}
+      <RawFirestoreDiagnosticModal
+        isOpen={isRawDiagnosticOpen}
+        onClose={() => setIsRawDiagnosticOpen(false)}
         accounts={accounts}
+        transactions={transactions}
       />
     </div>
   );
