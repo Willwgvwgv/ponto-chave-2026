@@ -26,7 +26,8 @@ import {
   CheckCheck,
   Layers,
   Undo2,
-  AlertTriangle
+  AlertTriangle,
+  CreditCard
 } from 'lucide-react';
 import { BankAccount, FinancialCategory, FinancialTransaction } from '../../types';
 import { parseBankStatement, ParsedOFXTransaction, parseLedgerBalance, LedgerBalance } from './ofxParser';
@@ -75,8 +76,10 @@ function getCardStatementMonth(dateStr: string, closingDay: number): string {
   return `${year}-${month.toString().padStart(2, '0')}`;
 }
 
-function getInitialCreditCardStatus(dateStr: string, closingDay: number): 'FATURA_ABERTA' | 'FATURA_FECHADA' {
-  const statementYm = getCardStatementMonth(dateStr, closingDay);
+function getInitialCreditCardStatus(dateOrMonthStr: string, closingDay: number): 'FATURA_ABERTA' | 'FATURA_FECHADA' {
+  const statementYm = dateOrMonthStr.length === 7 
+    ? dateOrMonthStr 
+    : getCardStatementMonth(dateOrMonthStr, closingDay);
   const [stmtY, stmtM] = statementYm.split('-').map(Number);
   const closingDate = new Date(stmtY, stmtM - 1, closingDay, 23, 59, 59);
   const today = new Date();
@@ -217,6 +220,12 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
   const [ignoredIds, setIgnoredIds] = useState<string[]>([]);
   const [conciliatedIds, setConciliatedIds] = useState<string[]>([]);
   const [acknowledgedIds, setAcknowledgedIds] = useState<string[]>([]);
+  
+  // Competência da fatura do cartão para importação (apenas quando a conta for CREDITO)
+  const [importInvoiceMonth, setImportInvoiceMonth] = useState<string>(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
+  });
   
   // Configuração da Conciliação Inteligente
   const [searchScope, setSearchScope] = useState<'ALL_ACCOUNTS' | 'CURRENT_ACCOUNT'>('ALL_ACCOUNTS');
@@ -719,8 +728,8 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
       const isCross = candidate && candidate.accountId !== selectedAccountId;
       const origAcc = candidate ? accountsMap.get(candidate.accountId) : undefined;
 
-      const cardStatus = isTargetCard ? getInitialCreditCardStatus(imported.date, targetAccount?.closingDay || 10) : undefined;
-      const cardMonth = isTargetCard ? getCardStatementMonth(imported.date, targetAccount?.closingDay || 10) : undefined;
+      const cardMonth = isTargetCard ? (importInvoiceMonth || getCardStatementMonth(imported.date, targetAccount?.closingDay || 10)) : undefined;
+      const cardStatus = (isTargetCard && cardMonth) ? getInitialCreditCardStatus(cardMonth, targetAccount?.closingDay || 10) : undefined;
 
       const updates: Partial<FinancialTransaction> = {
         status: 'CONCILIADO',
@@ -764,8 +773,8 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
     const targetAccount = accountsMap.get(selectedAccountId);
 
     const isTargetCard = targetAccount?.accountType === 'CREDITO';
-    const cardStatus = isTargetCard ? getInitialCreditCardStatus(imported.date, targetAccount?.closingDay || 10) : undefined;
-    const cardMonth = isTargetCard ? getCardStatementMonth(imported.date, targetAccount?.closingDay || 10) : undefined;
+    const cardMonth = isTargetCard ? (importInvoiceMonth || getCardStatementMonth(imported.date, targetAccount?.closingDay || 10)) : undefined;
+    const cardStatus = (isTargetCard && cardMonth) ? getInitialCreditCardStatus(cardMonth, targetAccount?.closingDay || 10) : undefined;
 
     const updates: Partial<FinancialTransaction> = {
       status: 'CONCILIADO',
@@ -817,8 +826,8 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
           const isCross = matchObj.isCrossAccount;
           if (isCross) crossCount++;
 
-          const cardStatus = isTargetCard ? getInitialCreditCardStatus(item.date, targetAccount?.closingDay || 10) : undefined;
-          const cardMonth = isTargetCard ? getCardStatementMonth(item.date, targetAccount?.closingDay || 10) : undefined;
+          const cardMonth = isTargetCard ? (importInvoiceMonth || getCardStatementMonth(item.date, targetAccount?.closingDay || 10)) : undefined;
+          const cardStatus = (isTargetCard && cardMonth) ? getInitialCreditCardStatus(cardMonth, targetAccount?.closingDay || 10) : undefined;
 
           const updates: Partial<FinancialTransaction> = {
             status: 'CONCILIADO',
@@ -909,8 +918,8 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
       const splitGroupId = `split_rec_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       const account = accounts.find(a => a.id === selectedAccountId);
       const isCard = account?.accountType === 'CREDITO';
-      const cardStatus = isCard ? getInitialCreditCardStatus(imported.date, account?.closingDay || 10) : undefined;
-      const cardMonth = isCard ? getCardStatementMonth(imported.date, account?.closingDay || 10) : undefined;
+      const cardMonth = isCard ? (importInvoiceMonth || getCardStatementMonth(imported.date, account?.closingDay || 10)) : undefined;
+      const cardStatus = (isCard && cardMonth) ? getInitialCreditCardStatus(cardMonth, account?.closingDay || 10) : undefined;
       const totalParts = splitParts.length;
 
       const newTransactions = splitParts.map((p, idx) => {
@@ -1001,8 +1010,8 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
       
       const account = accounts.find(a => a.id === selectedAccountId);
       const isCard = account?.accountType === 'CREDITO';
-      const cardStatus = isCard ? getInitialCreditCardStatus(imported.date, account?.closingDay || 10) : undefined;
-      const cardMonth = isCard ? getCardStatementMonth(imported.date, account?.closingDay || 10) : undefined;
+      const cardMonth = isCard ? (importInvoiceMonth || getCardStatementMonth(imported.date, account?.closingDay || 10)) : undefined;
+      const cardStatus = (isCard && cardMonth) ? getInitialCreditCardStatus(cardMonth, account?.closingDay || 10) : undefined;
       const instInfo = `${installmentNumber}/${installmentCount}`;
 
       onAddTransaction({
@@ -1038,8 +1047,8 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
     
     const account = accounts.find(a => a.id === selectedAccountId);
     const isCard = account?.accountType === 'CREDITO';
-    const cardStatus = isCard ? getInitialCreditCardStatus(imported.date, account?.closingDay || 10) : undefined;
-    const cardMonth = isCard ? getCardStatementMonth(imported.date, account?.closingDay || 10) : undefined;
+    const cardMonth = isCard ? (importInvoiceMonth || getCardStatementMonth(imported.date, account?.closingDay || 10)) : undefined;
+    const cardStatus = (isCard && cardMonth) ? getInitialCreditCardStatus(cardMonth, account?.closingDay || 10) : undefined;
 
     // Cria um novo lançamento vinculando o ID da transação (fitId) e concilia
     onAddTransaction({
@@ -1093,6 +1102,26 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                 ))}
               </select>
             </div>
+
+            {/* Seletor de Competência da Fatura de Destino (Exclusivo para Cartões de Crédito) */}
+            {accountsMap.get(selectedAccountId)?.accountType === 'CREDITO' && (
+              <div className="bg-blue-50/60 border border-blue-200/80 rounded-2xl p-3.5 space-y-1.5 animate-fadeIn">
+                <label className="text-[10px] font-black text-blue-900 uppercase tracking-wider flex items-center gap-1.5">
+                  <CreditCard className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                  <span>Fatura de Destino:</span>
+                </label>
+                <input
+                  type="month"
+                  value={importInvoiceMonth}
+                  onChange={(e) => setImportInvoiceMonth(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-blue-200 rounded-xl text-xs font-black text-blue-950 focus:outline-none focus:ring-2 focus:ring-blue-500/20 shadow-2xs"
+                  title="Todos os lançamentos do extrato serão vinculados a esta fatura, independente da data original da compra."
+                />
+                <p className="text-[9px] text-blue-700/80 font-semibold leading-tight">
+                  Lançamentos do extrato entrarão nesta fatura, preservando a data histórica original da compra.
+                </p>
+              </div>
+            )}
 
             {visibleImported.length > 0 ? (
               <div className="pt-1">
@@ -1921,8 +1950,16 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                               </span>
                             </div>
 
-                            <h4 className="text-xs font-black text-slate-800 uppercase tracking-tight mt-1 leading-snug">
-                              {item.description}
+                            <h4 className="text-xs font-black text-slate-800 uppercase tracking-tight mt-1 leading-snug flex items-center flex-wrap gap-1.5">
+                              <span>{item.description}</span>
+                              {accountsMap.get(selectedAccountId)?.accountType === 'CREDITO' && item.date && !item.date.startsWith(importInvoiceMonth) && (
+                                <span 
+                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 text-[9px] font-bold tracking-tight"
+                                  title={`Data original da compra: ${item.date}. O lançamento será alocado na fatura ${importInvoiceMonth}.`}
+                                >
+                                  Compra em {item.date.split('-').reverse().slice(0, 2).join('/')} ➔ Fatura {importInvoiceMonth.split('-').reverse().join('/')}
+                                </span>
+                              )}
                             </h4>
                             {item.originalDescription && item.originalDescription !== item.description && (
                               <p className="text-[10px] text-slate-400/85 font-semibold italic leading-tight">

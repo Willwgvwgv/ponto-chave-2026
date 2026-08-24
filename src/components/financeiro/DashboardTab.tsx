@@ -27,7 +27,8 @@ import {
   Clock, 
   HelpCircle, 
   ArrowRightCircle, 
-  CalendarPlus 
+  CalendarPlus,
+  Undo2
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -579,6 +580,40 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     const subsequent = findSubsequentRecurrentOccurrences(tx, transactions);
     setTxToMove(tx);
     setRecurrentOccurrences(subsequent);
+  };
+
+  const handleRevertMove = async (tx: FinancialTransaction) => {
+    if (!onUpdateTransactions) {
+      toast.error("Função de atualização de transações não disponível.");
+      return;
+    }
+    if (!tx.movedHistory || tx.movedHistory.length === 0) {
+      toast.info("Este lançamento não possui movimentações anteriores para desfazer.");
+      return;
+    }
+    try {
+      setIsMovingTx(true);
+      const historyCopy = [...tx.movedHistory];
+      const lastEntry = historyCopy.pop(); // Remove o último registro
+      const previousMonth = lastEntry?.fromMonth || tx.movedFromMonth || tx.date.substring(0, 7);
+
+      const updates: Partial<FinancialTransaction> = {
+        creditCardMonth: previousMonth,
+        movedAt: historyCopy.length > 0 ? historyCopy[historyCopy.length - 1].movedAt : undefined,
+        movedFromMonth: historyCopy.length > 0 ? tx.movedFromMonth : undefined,
+        movedHistory: historyCopy.length > 0 ? historyCopy : []
+      };
+
+      await onUpdateTransactions([{ id: tx.id, updates }]);
+      toast.success(`Movimentação desfeita! Retornado para a fatura de ${formatMonthName(previousMonth)}.`);
+      setTxToMove(null);
+      setRecurrentOccurrences([]);
+    } catch (err: any) {
+      console.error("Erro ao desfazer movimentação:", err);
+      toast.error("Erro ao desfazer movimentação da fatura.");
+    } finally {
+      setIsMovingTx(false);
+    }
   };
 
   const handleExecuteMoveSingle = async (tx: FinancialTransaction) => {
@@ -1997,6 +2032,22 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 </div>
               </div>
 
+              {/* Re-move Warning (Guardrail contra duplo disparo/movimentação acidental) */}
+              {txToMove.movedHistory && txToMove.movedHistory.length > 0 && (
+                <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-900 space-y-1.5 animate-fadeIn">
+                  <div className="font-bold flex items-center gap-1.5 text-rose-700">
+                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                    <span>Atenção: Este lançamento já foi movido {txToMove.movedHistory.length} vez(es) anteriormente.</span>
+                  </div>
+                  <p className="text-[11px] text-rose-800">
+                    Fatura original: <strong>{formatMonthShort(txToMove.movedFromMonth || txToMove.date.substring(0, 7))}</strong> · Fatura atual: <strong>{formatMonthShort(txToMove.creditCardMonth || selectedInvoiceMonth)}</strong>.
+                  </p>
+                  <p className="text-[10px] text-rose-700 font-semibold">
+                    Caso tenha sido movido por engano, você pode desfazer e retorná-lo para a fatura anterior.
+                  </p>
+                </div>
+              )}
+
               {/* Destination Preview */}
               <div className="flex items-center justify-between px-4 py-3 bg-blue-50/70 border border-blue-100 rounded-2xl text-xs">
                 <div className="flex items-center gap-2 text-slate-600 font-bold">
@@ -2085,6 +2136,19 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                     <CheckCircle2 className="w-4 h-4" />
                   )}
                   Confirmar e Mover para {formatMonthName(getNextStatementMonth(txToMove.creditCardMonth || selectedInvoiceMonth))}
+                </button>
+              )}
+
+              {/* Botão de Desfazer Movimentação (se o lançamento já foi movido antes) */}
+              {txToMove.movedHistory && txToMove.movedHistory.length > 0 && (
+                <button
+                  type="button"
+                  disabled={isMovingTx}
+                  onClick={() => handleRevertMove(txToMove)}
+                  className="w-full py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-2xl font-bold uppercase tracking-wider text-xs flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                >
+                  <Undo2 className="w-3.5 h-3.5" />
+                  Desfazer última movimentação (Voltar para {formatMonthShort(txToMove.movedHistory[txToMove.movedHistory.length - 1]?.fromMonth || txToMove.movedFromMonth || txToMove.date.substring(0, 7))})
                 </button>
               )}
 
