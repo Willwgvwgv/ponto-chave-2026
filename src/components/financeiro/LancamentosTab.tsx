@@ -113,7 +113,7 @@ const isFutureDate = (dateStr: string): boolean => {
   return new Date(dateStr) > today;
 };
 
-function getCardStatementMonth(dateStr: string, closingDay: number): string {
+function getCardStatementMonth(dateStr: string, closingDay: number = 30): string {
   const parts = dateStr.split('-');
   let year = parseInt(parts[0], 10);
   let month = parseInt(parts[1], 10);
@@ -512,6 +512,7 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
   const [editStatus, setEditStatus] = useState<'PENDENTE' | 'CONCILIADO' | 'IGNORADO' | 'AGENDADO' | 'CANCELADO'>('PENDENTE');
   const [editTfFrom, setEditTfFrom] = useState('');
   const [editTfTo, setEditTfTo] = useState('');
+  const [editCreditCardMonth, setEditCreditCardMonth] = useState('');
 
   // Modal de perguntas de recorrência (Editar / Excluir)
   const [recurrencePromptOpen, setRecurrencePromptOpen] = useState(false);
@@ -525,6 +526,20 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
   const [tfAmount, setTfAmount] = useState('');
   const [tfDate, setTfDate] = useState(new Date().toISOString().split('T')[0]);
   const [tfDesc, setTfDesc] = useState('Transferência entre contas');
+
+  // Opções de competência para o seletor (12 meses anteriores até 12 meses futuros)
+  const invoiceMonthOptions = useMemo(() => {
+    const options: { value: string; label: string }[] = [];
+    const now = new Date();
+    for (let offset = -12; offset <= 12; offset++) {
+      const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+      const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const rawLabel = d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+      const label = rawLabel.charAt(0).toUpperCase() + rawLabel.slice(1);
+      options.push({ value: ym, label });
+    }
+    return options;
+  }, []);
 
   // Filtra categorias baseadas no tipo de lançamento sendo criado
   const filteredCategoriesAdd = useMemo(() => {
@@ -729,9 +744,18 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
         item => item.recurrenceGroupId === editingTx.recurrenceGroupId && item.date >= editingTx.date
       );
       
+      const closingDay = account?.closingDay || 30;
+      const originalMonth = editingTx.creditCardMonth || (editingTx.date ? getCardStatementMonth(editingTx.date, closingDay) : '');
+      const isTargetMonthChanged = isCard && editCreditCardMonth && editCreditCardMonth !== originalMonth;
+
       const itemsToUpdate = upcomingInGroup.map(item => {
-        const dStatus = isCard ? getInitialCreditCardStatus(item.date, account?.closingDay || 10) : null;
-        const dMonth = isCard ? getCardStatementMonth(item.date, account?.closingDay || 10) : null;
+        const dStatus = isCard ? getInitialCreditCardStatus(item.date, closingDay) : null;
+        const isTarget = item.id === editingTx.id;
+        // Preserva estritamente creditCardMonth de parcelas que não são o lançamento editado
+        const finalMonth = isCard 
+          ? (isTarget ? (editCreditCardMonth || originalMonth) : (item.creditCardMonth ?? null))
+          : null;
+
         return {
           id: item.id,
           updates: {
@@ -744,15 +768,21 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
             notes: editNotes || null,
             status: isCard ? 'CONCILIADO' : editStatus,
             creditCardStatus: dStatus || null,
-            creditCardMonth: dMonth || null
+            creditCardMonth: finalMonth,
+            movedFromMonth: (isTarget && isTargetMonthChanged) ? (originalMonth || null) : (item.movedFromMonth ?? null),
+            movedAt: (isTarget && isTargetMonthChanged) ? new Date().toISOString() : (item.movedAt ?? null)
           }
         };
       });
       
       onUpdateTransactions(itemsToUpdate);
     } else {
-      const cardStatus = isCard ? getInitialCreditCardStatus(editDate, account?.closingDay || 10) : null;
-      const cardMonth = isCard ? getCardStatementMonth(editDate, account?.closingDay || 10) : null;
+      const closingDay = account?.closingDay || 30;
+      const cardStatus = isCard ? getInitialCreditCardStatus(editDate, closingDay) : null;
+      const originalMonth = editingTx.creditCardMonth || (editingTx.date ? getCardStatementMonth(editingTx.date, closingDay) : '');
+      const finalCardMonth = isCard ? (editCreditCardMonth || originalMonth) : null;
+      const isMonthChanged = isCard && finalCardMonth && finalCardMonth !== originalMonth;
+
       onUpdateTransactions([{
         id: editingTx.id,
         updates: {
@@ -766,7 +796,9 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
           notes: editNotes || null,
           status: isCard ? 'CONCILIADO' : editStatus,
           creditCardStatus: cardStatus || null,
-          creditCardMonth: cardMonth || null
+          creditCardMonth: finalCardMonth,
+          movedFromMonth: isMonthChanged ? (originalMonth || null) : (editingTx.movedFromMonth ?? null),
+          movedAt: isMonthChanged ? new Date().toISOString() : (editingTx.movedAt ?? null)
         }
       }]);
     }
@@ -805,6 +837,8 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
 
     if (t.recurrenceGroupId) {
       setSelectedRecurrenceTx(t);
+      const acc = accounts.find(a => a.id === t.accountId);
+      const cMonth = t.creditCardMonth || (t.date ? getCardStatementMonth(t.date, acc?.closingDay || 30) : '');
       // prefill variables
       setEditType(t.type);
       setEditAmount(Math.abs(t.amount).toString());
@@ -814,11 +848,14 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
       setEditDesc(t.description);
       setEditNotes(t.notes || '');
       setEditStatus(t.status);
+      setEditCreditCardMonth(cMonth);
 
       setRecurrencePromptType('EDIT');
       setRecurrencePromptOpen(true);
     } else {
       setEditingTx(t);
+      const acc = accounts.find(a => a.id === t.accountId);
+      const cMonth = t.creditCardMonth || (t.date ? getCardStatementMonth(t.date, acc?.closingDay || 30) : '');
       setEditScope('SINGLE');
       setEditType(t.type);
       setEditAmount(Math.abs(t.amount).toString());
@@ -828,6 +865,7 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
       setEditDesc(t.description);
       setEditNotes(t.notes || '');
       setEditStatus(t.status);
+      setEditCreditCardMonth(cMonth);
       setEditTfFrom('');
       setEditTfTo('');
       setIsEditOpen(true);
@@ -2375,6 +2413,24 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
                     <option value="CANCELADO">CANCELADO</option>
                   </select>
                 </div>
+
+                {accounts.find(a => a.id === editAccountId)?.accountType === 'CREDITO' && (
+                  <div className="animate-fadeIn">
+                    <label className="block text-[10px] font-black text-blue-700 uppercase tracking-widest mb-1.5 flex items-center justify-between">
+                      <span>Competência da Fatura</span>
+                      <span className="text-[9px] font-bold text-slate-400 normal-case tracking-normal">Mês de vencimento</span>
+                    </label>
+                    <select
+                      value={editCreditCardMonth}
+                      onChange={(e) => setEditCreditCardMonth(e.target.value)}
+                      className="w-full px-4 py-3 bg-blue-50/50 border border-blue-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-xs font-bold text-slate-800 cursor-pointer"
+                    >
+                      {invoiceMonthOptions.map(opt => (
+                        <option key={opt.value} value={opt.value}>{opt.label} ({opt.value})</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Observações / Notas</label>
