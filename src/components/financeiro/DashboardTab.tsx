@@ -124,6 +124,24 @@ const colorPresets = [
   { name: 'Outros', color: '#334155' }
 ];
 
+function getCardStatementMonth(dateStr: string, closingDay: number = 30): string {
+  if (!dateStr) return '';
+  const parts = dateStr.split('-');
+  if (parts.length < 2) return '';
+  let year = parseInt(parts[0], 10);
+  let month = parseInt(parts[1], 10);
+  const day = parts[2] ? parseInt(parts[2], 10) : 1;
+  
+  if (day > closingDay) {
+    month += 1;
+    if (month > 12) {
+      month = 1;
+      year += 1;
+    }
+  }
+  return `${year}-${month.toString().padStart(2, '0')}`;
+}
+
 export const DashboardTab: React.FC<DashboardTabProps> = ({ 
   accounts, 
   transactions, 
@@ -405,8 +423,17 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
   const uniqueInvoiceMonths = useMemo(() => {
     if (!selectedCardForInvoice) return [];
-    const cardTxs = transactions.filter(t => t.accountId === selectedCardForInvoice.id && t.creditCardMonth);
-    const monthsSet = new Set(cardTxs.map(t => t.creditCardMonth!));
+    const closingDay = selectedCardForInvoice.closingDay || 30;
+    const cardTxs = transactions.filter(
+      t => t.accountId === selectedCardForInvoice.id && 
+           t.status !== 'IGNORADO' && 
+           t.status !== 'CANCELADO'
+    );
+    const monthsSet = new Set<string>();
+    cardTxs.forEach(t => {
+      const m = t.creditCardMonth || (t.date ? getCardStatementMonth(t.date, closingDay) : '');
+      if (m) monthsSet.add(m);
+    });
     // Always include the current vigent month in the options list
     monthsSet.add(currentMonthYM);
     return Array.from(monthsSet).sort().reverse();
@@ -424,11 +451,13 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
   const invoiceTransactions = useMemo(() => {
     if (!selectedCardForInvoice || !selectedInvoiceMonth) return [];
-    return transactions.filter(
-      t => t.accountId === selectedCardForInvoice.id && 
-           t.creditCardMonth === selectedInvoiceMonth && 
-           t.status !== 'IGNORADO'
-    );
+    const closingDay = selectedCardForInvoice.closingDay || 30;
+    return transactions.filter(t => {
+      if (t.accountId !== selectedCardForInvoice.id) return false;
+      if (t.status === 'IGNORADO' || t.status === 'CANCELADO') return false;
+      const txMonth = t.creditCardMonth || (t.date ? getCardStatementMonth(t.date, closingDay) : '');
+      return txMonth === selectedInvoiceMonth;
+    });
   }, [selectedCardForInvoice, selectedInvoiceMonth, transactions]);
 
   const filteredInvoiceTransactions = useMemo(() => {
