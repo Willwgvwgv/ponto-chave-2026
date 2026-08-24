@@ -7,24 +7,27 @@ import {
   PlusCircle, 
   Building2, 
   PiggyBank, 
-  Wallet,
-  ArrowRight,
-  ChevronRight,
-  Sparkles,
-  MoreVertical,
-  Pencil,
-  Trash,
-  AlertCircle,
-  FileText,
-  CheckCircle2,
-  Calendar,
-  X,
-  Repeat,
-  History,
-  Clock,
-  HelpCircle,
-  ArrowRightCircle,
-  CalendarPlus
+  Wallet, 
+  ArrowRight, 
+  ChevronRight, 
+  Sparkles, 
+  MoreVertical, 
+  Pencil, 
+  Trash, 
+  Trash2, 
+  Search, 
+  AlertCircle, 
+  AlertTriangle,
+  FileText, 
+  CheckCircle2, 
+  Calendar, 
+  X, 
+  Repeat, 
+  History, 
+  Clock, 
+  HelpCircle, 
+  ArrowRightCircle, 
+  CalendarPlus 
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -37,6 +40,9 @@ import {
   Cell 
 } from 'recharts';
 import { BankAccount, FinancialTransaction } from '../../types';
+import { db, doc, deleteDoc, updateDoc } from '../../firebase';
+import { ConfirmModal } from '../ui/ConfirmModal';
+import { CurrencyInput } from '../ui/CurrencyInput';
 import { toast } from 'sonner';
 
 interface DashboardTabProps {
@@ -75,10 +81,12 @@ interface DashboardTabProps {
     statementMonth: string,
     sourceBankAccountId: string,
     paymentDate: string,
-    totalAmount: number,
-    cardTxIds: string[]
+    paidAmount: number,
+    cardTxIds: string[],
+    totalInvoiceAmount?: number
   ) => Promise<void>;
   onUpdateTransactions?: (items: { id: string; updates: Partial<FinancialTransaction> }[]) => Promise<void>;
+  onDeleteTransaction?: (id: string) => Promise<void> | void;
 }
 
 const bankPresetColors: Record<string, string> = {
@@ -121,7 +129,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   onUpdateAccount,
   onDeleteAccount,
   onPayCreditCardInvoice,
-  onUpdateTransactions
+  onUpdateTransactions,
+  onDeleteTransaction
 }) => {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<BankAccount | null>(null);
@@ -151,6 +160,18 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   const [isPayingInvoiceOpen, setIsPayingInvoiceOpen] = useState(false);
   const [paymentSourceAccountId, setPaymentSourceAccountId] = useState('');
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
+
+  // Search & Delete states inside Credit Card Invoices Modal
+  const [invoiceSearchTerm, setInvoiceSearchTerm] = useState('');
+  const [deleteConfirmState, setDeleteConfirmState] = useState<{
+    open: boolean;
+    txId: string;
+    txDesc: string;
+  }>({
+    open: false,
+    txId: '',
+    txDesc: ''
+  });
 
   // States for Moving Invoices & Recurrence Dialog
   const [txToMove, setTxToMove] = useState<FinancialTransaction | null>(null);
@@ -395,6 +416,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       setSelectedInvoiceMonth(currentMonthYM);
     } else {
       setSelectedInvoiceMonth('');
+      setInvoiceSearchTerm('');
     }
   }, [selectedCardForInvoice?.id, currentMonthYM]);
 
@@ -406,6 +428,16 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
            t.status !== 'IGNORADO'
     );
   }, [selectedCardForInvoice, selectedInvoiceMonth, transactions]);
+
+  const filteredInvoiceTransactions = useMemo(() => {
+    if (!invoiceSearchTerm.trim()) return invoiceTransactions;
+    const q = invoiceSearchTerm.toLowerCase().trim();
+    return invoiceTransactions.filter(t => {
+      const matchDesc = t.description?.toLowerCase().includes(q);
+      const matchCat = t.categoryName?.toLowerCase().includes(q);
+      return matchDesc || matchCat;
+    });
+  }, [invoiceTransactions, invoiceSearchTerm]);
 
   const invoiceTotal = useMemo(() => {
     return invoiceTransactions.reduce((acc, t) => acc + Math.abs(t.amount), 0);
@@ -651,6 +683,34 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       toast.error("Erro ao mover as ocorrências da série recorrente.");
     } finally {
       setIsMovingTx(false);
+    }
+  };
+
+  const handleConfirmDeleteTx = async () => {
+    const { txId } = deleteConfirmState;
+    if (!txId) return;
+    setDeleteConfirmState({ open: false, txId: '', txDesc: '' });
+
+    try {
+      if (onDeleteTransaction) {
+        await onDeleteTransaction(txId);
+      } else {
+        const tx = transactions.find(t => t.id === txId);
+        if (tx && tx.status === 'CONCILIADO' && tx.accountId) {
+          const account = accounts.find(a => a.id === tx.accountId);
+          if (account) {
+            const adjustment = tx.type === 'RECEITA' ? -Math.abs(tx.amount) : Math.abs(tx.amount);
+            await updateDoc(doc(db, "bank_accounts", tx.accountId), {
+              balance: account.balance + adjustment
+            });
+          }
+        }
+        await deleteDoc(doc(db, "financial_transactions", txId));
+      }
+      toast.success("Lançamento excluído com sucesso.");
+    } catch (err) {
+      console.error("Erro ao excluir lançamento:", err);
+      toast.error("Erro ao excluir lançamento.");
     }
   };
 
@@ -1634,8 +1694,31 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                     Lançamentos da Competência
                   </span>
                   <span className="text-[11px] text-slate-400 font-medium tabular-nums">
-                    {invoiceTransactions.length} {invoiceTransactions.length === 1 ? 'item' : 'itens'}
+                    {invoiceSearchTerm.trim() 
+                      ? `${filteredInvoiceTransactions.length} de ${invoiceTransactions.length} itens` 
+                      : `${invoiceTransactions.length} ${invoiceTransactions.length === 1 ? 'item' : 'itens'}`}
                   </span>
+                </div>
+
+                {/* Campo de Busca / Filtro em Tempo Real */}
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={invoiceSearchTerm}
+                    onChange={(e) => setInvoiceSearchTerm(e.target.value)}
+                    placeholder="Buscar por descrição ou categoria..."
+                    className="w-full pl-8 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition-all"
+                  />
+                  {invoiceSearchTerm && (
+                    <button
+                      type="button"
+                      onClick={() => setInvoiceSearchTerm('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-slate-600 rounded-md cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
 
                 <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-2xs">
@@ -1659,14 +1742,16 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {invoiceTransactions.length === 0 ? (
+                        {filteredInvoiceTransactions.length === 0 ? (
                           <tr>
                             <td colSpan={5} className="px-4 py-8 text-center text-slate-400 font-medium italic">
-                              Nenhum lançamento registrado para esta fatura mensal.
+                              {invoiceSearchTerm.trim() 
+                                ? `Nenhum lançamento encontrado para "${invoiceSearchTerm}".` 
+                                : 'Nenhum lançamento registrado para esta fatura mensal.'}
                             </td>
                           </tr>
                         ) : (
-                          invoiceTransactions.map(t => {
+                          filteredInvoiceTransactions.map(t => {
                             const isMenuOpen = activeTxMenuId === t.id;
                             return (
                               <tr key={t.id} className="hover:bg-slate-50/70 transition-colors">
@@ -1701,7 +1786,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                                   </span>
                                 </td>
                                 <td className="px-3.5 py-2 text-right font-bold text-rose-600 whitespace-nowrap font-mono tabular-nums text-xs">
-                                  - {formatCurrency(t.amount)}
+                                  - {formatCurrency(Math.abs(t.amount))}
                                 </td>
                                 <td className="px-3.5 py-2 text-center whitespace-nowrap">
                                   <div className="inline-block">
@@ -1715,7 +1800,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                                         } else {
                                           const rect = e.currentTarget.getBoundingClientRect();
                                           const spaceBelow = window.innerHeight - rect.bottom;
-                                          const menuHeight = 90; // altura aproximada do menu
+                                          const menuHeight = 120; // altura aproximada do menu
                                           const top = spaceBelow < menuHeight ? rect.top - menuHeight : rect.bottom + 4;
                                           const right = Math.max(12, window.innerWidth - rect.right);
                                           setActiveTxMenuPos({ top, right });
@@ -1742,36 +1827,56 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                                         />
                                         <div 
                                           style={{ top: `${activeTxMenuPos.top}px`, right: `${activeTxMenuPos.right}px` }}
-                                          className="fixed w-48 bg-white rounded-xl shadow-xl border border-slate-200 py-1 z-50 text-left animate-fadeIn"
+                                          className="fixed w-52 bg-white rounded-xl shadow-xl border border-slate-200 py-1 z-50 text-left animate-fadeIn divide-y divide-slate-100"
                                           onClick={(e) => e.stopPropagation()}
                                         >
-                                          <button
-                                            type="button"
-                                            onClick={() => {
-                                              setActiveTxMenuId(null);
-                                              setActiveTxMenuPos(null);
-                                              handleInitiateMove(t);
-                                            }}
-                                            className="w-full px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-2 transition-colors cursor-pointer"
-                                          >
-                                            <CalendarPlus className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                                            Mover para próxima fatura
-                                          </button>
-                                          
-                                          {t.movedHistory && t.movedHistory.length > 0 && (
+                                          <div className="py-0.5">
                                             <button
                                               type="button"
                                               onClick={() => {
                                                 setActiveTxMenuId(null);
                                                 setActiveTxMenuPos(null);
-                                                setViewHistoryTx(t);
+                                                handleInitiateMove(t);
                                               }}
-                                              className="w-full px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors border-t border-slate-100 cursor-pointer"
+                                              className="w-full px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-2 transition-colors cursor-pointer"
                                             >
-                                              <History className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                                              Ver histórico de faturas
+                                              <CalendarPlus className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                                              Mover para próxima fatura
                                             </button>
-                                          )}
+                                            
+                                            {t.movedHistory && t.movedHistory.length > 0 && (
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  setActiveTxMenuId(null);
+                                                  setActiveTxMenuPos(null);
+                                                  setViewHistoryTx(t);
+                                                }}
+                                                className="w-full px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors cursor-pointer"
+                                              >
+                                                <History className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                                                Ver histórico de faturas
+                                              </button>
+                                            )}
+                                          </div>
+                                          <div className="py-0.5">
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setActiveTxMenuId(null);
+                                                setActiveTxMenuPos(null);
+                                                setDeleteConfirmState({
+                                                  open: true,
+                                                  txId: t.id,
+                                                  txDesc: t.description
+                                                });
+                                              }}
+                                              className="w-full px-3 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 flex items-center gap-2 transition-colors cursor-pointer"
+                                            >
+                                              <Trash2 className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                                              Excluir lançamento
+                                            </button>
+                                          </div>
                                         </div>
                                       </>
                                     )}
@@ -1888,7 +1993,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 <div className="text-sm font-black text-slate-800">{txToMove.description}</div>
                 <div className="flex items-center justify-between pt-2 border-t border-slate-200 text-xs">
                   <span className="text-slate-500 font-bold">{txToMove.categoryName || 'Gerais'}</span>
-                  <span className="font-black text-rose-500">- {formatCurrency(txToMove.amount)}</span>
+                  <span className="font-black text-rose-500">- {formatCurrency(Math.abs(txToMove.amount))}</span>
                 </div>
               </div>
 
@@ -2126,6 +2231,16 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
           </div>
         </div>
       )}
+
+      {/* Modal de Confirmação de Exclusão de Lançamento */}
+      <ConfirmModal
+        isOpen={deleteConfirmState.open}
+        title="Excluir lançamento"
+        message={`Deseja realmente excluir o lançamento "${deleteConfirmState.txDesc}"? Esta ação removerá a despesa desta fatura e não poderá ser desfeita.`}
+        confirmColor="red"
+        onConfirm={handleConfirmDeleteTx}
+        onCancel={() => setDeleteConfirmState({ open: false, txId: '', txDesc: '' })}
+      />
     </div>
   );
 };

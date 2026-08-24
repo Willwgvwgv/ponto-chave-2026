@@ -216,6 +216,7 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
   const [ledgerBalance, setLedgerBalance] = useState<LedgerBalance | null>(null);
   const [ignoredIds, setIgnoredIds] = useState<string[]>([]);
   const [conciliatedIds, setConciliatedIds] = useState<string[]>([]);
+  const [acknowledgedIds, setAcknowledgedIds] = useState<string[]>([]);
   
   // Configuração da Conciliação Inteligente
   const [searchScope, setSearchScope] = useState<'ALL_ACCOUNTS' | 'CURRENT_ACCOUNT'>('ALL_ACCOUNTS');
@@ -251,8 +252,8 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
 
   // Rastreia e notifica a contagem de itens não confirmados para alertar sobre perda de progresso
   const unconfirmedCount = useMemo(() => {
-    return importedTxs.filter(tx => !conciliatedIds.includes(tx.internalId) && !ignoredIds.includes(tx.internalId)).length;
-  }, [importedTxs, conciliatedIds, ignoredIds]);
+    return importedTxs.filter(tx => !conciliatedIds.includes(tx.internalId) && !ignoredIds.includes(tx.internalId) && !acknowledgedIds.includes(tx.internalId)).length;
+  }, [importedTxs, conciliatedIds, ignoredIds, acknowledgedIds]);
 
   useEffect(() => {
     onUnconfirmedCountChange?.(unconfirmedCount);
@@ -263,6 +264,7 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
       setImportedTxs([]);
       setConciliatedIds([]);
       setIgnoredIds([]);
+      setAcknowledgedIds([]);
       setLedgerBalance(null);
     }
   }, [resetTrigger]);
@@ -289,7 +291,11 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
 
   // Proteção contra duplicação: verifica se já existe lançamento ID ou hash no banco para esta conta
   const isAlreadyImported = (imported: ParsedOFXTransaction) => {
-    return transactions.some(t => t.accountId === selectedAccountId && t.fitId === imported.fitId);
+    return Boolean(getExistingImportedTransaction(imported));
+  };
+
+  const getExistingImportedTransaction = (imported: ParsedOFXTransaction): FinancialTransaction | undefined => {
+    return transactions.find(t => t.accountId === selectedAccountId && t.fitId === imported.fitId);
   };
 
   // Avaliação inteligente detalhada de match:
@@ -429,12 +435,12 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
     });
 
     return { total, withMatch, withCrossAccountMatch, noMatch, alreadyImported };
-  }, [importedTxs, transactions, selectedAccountId, searchScope, dateToleranceDays, valueTolerance, conciliatedIds, ignoredIds]);
+  }, [importedTxs, transactions, selectedAccountId, searchScope, dateToleranceDays, valueTolerance, conciliatedIds, ignoredIds, acknowledgedIds]);
 
-  // Transações visíveis (remove locais conciliadas e ignoradas)
+  // Transações visíveis (remove locais conciliadas, ignoradas e duplicatas reconhecidas)
   const visibleImported = useMemo(() => {
-    return importedTxs.filter(tx => !ignoredIds.includes(tx.internalId) && !conciliatedIds.includes(tx.internalId));
-  }, [importedTxs, ignoredIds, conciliatedIds]);
+    return importedTxs.filter(tx => !ignoredIds.includes(tx.internalId) && !conciliatedIds.includes(tx.internalId) && !acknowledgedIds.includes(tx.internalId));
+  }, [importedTxs, ignoredIds, conciliatedIds, acknowledgedIds]);
 
   const selectedAccount = useMemo(() => {
     return accounts.find(a => a.id === selectedAccountId);
@@ -563,6 +569,7 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
           setImportedTxs(enriched);
           setIgnoredIds([]);
           setConciliatedIds([]);
+          setAcknowledgedIds([]);
           setSearchQueries({});
           setShowSearchForFitId({});
           setActiveSearchId(null);
@@ -857,6 +864,11 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
     toast.info("Transação marcada como ignorada.");
   };
 
+  const handleAcknowledge = (internalId: string) => {
+    setAcknowledgedIds(prev => [...prev, internalId]);
+    toast.info("Item já importado reconhecido no lote.");
+  };
+
   const handleConfirmUnreconcile = () => {
     if (!unreconcileConfirmItem) return;
     const { internalId, fitId, txIds } = unreconcileConfirmItem;
@@ -867,6 +879,7 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
     
     setConciliatedIds(prev => prev.filter(id => id !== internalId));
     setIgnoredIds(prev => prev.filter(id => id !== internalId));
+    setAcknowledgedIds(prev => prev.filter(id => id !== internalId));
     setUnreconcileConfirmItem(null);
     toast.success("Lançamento desfeito com sucesso! O item do extrato foi reaberto para conciliação.");
   };
@@ -1068,6 +1081,7 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                   setImportedTxs([]);
                   setIgnoredIds([]);
                   setConciliatedIds([]);
+                  setAcknowledgedIds([]);
                   setLedgerBalance(null);
                 }}
                 className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-xs font-bold text-slate-700 cursor-pointer"
@@ -1153,6 +1167,7 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                   setImportedTxs([]);
                   setIgnoredIds([]);
                   setConciliatedIds([]);
+                  setAcknowledgedIds([]);
                   setLedgerBalance(null);
                   setSearchQueries({});
                   setShowSearchForFitId({});
@@ -1383,10 +1398,57 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                 </div>
 
                 {visibleImported.length === 0 ? (
-                  <div className="bg-emerald-50 border border-emerald-100 rounded-3xl p-8 text-center text-emerald-700 animate-fadeIn">
-                    <CheckCircle2 className="w-12 h-12 mx-auto mb-3 text-emerald-500" />
-                    <p className="text-xs font-bold">Parabéns! Tudo conciliado</p>
-                    <p className="text-[10px] font-semibold text-emerald-600 mt-1">Todas as transações deste extrato foram conciliadas ou gerenciadas com sucesso.</p>
+                  <div className="bg-emerald-50/70 border border-emerald-200 rounded-3xl p-8 text-center text-emerald-800 animate-fadeIn space-y-4">
+                    <div className="w-14 h-14 rounded-full bg-emerald-100 border border-emerald-300 text-emerald-600 flex items-center justify-center mx-auto shadow-xs">
+                      <CheckCircle2 className="w-8 h-8" />
+                    </div>
+                    <div className="space-y-1">
+                      <h4 className="text-sm font-black uppercase tracking-tight text-emerald-900">
+                        Importação Concluída com Sucesso!
+                      </h4>
+                      <p className="text-xs font-semibold text-emerald-700 max-w-md mx-auto">
+                        Todas as transações deste arquivo foram devidamente processadas, vinculadas ou reconhecidas.
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 max-w-xl mx-auto pt-2 text-left">
+                      <div className="bg-white/90 p-3 rounded-2xl border border-emerald-200/80">
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Total Arquivo</p>
+                        <p className="text-base font-black text-slate-800 mt-0.5">{importedTxs.length}</p>
+                      </div>
+                      <div className="bg-white/90 p-3 rounded-2xl border border-emerald-200/80">
+                        <p className="text-[9px] font-black text-emerald-600 uppercase tracking-wider">Conciliados</p>
+                        <p className="text-base font-black text-emerald-700 mt-0.5">{conciliatedIds.length}</p>
+                      </div>
+                      <div className="bg-white/90 p-3 rounded-2xl border border-emerald-200/80">
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Ignorados</p>
+                        <p className="text-base font-black text-slate-700 mt-0.5">{ignoredIds.length}</p>
+                      </div>
+                      <div className="bg-white/90 p-3 rounded-2xl border border-emerald-200/80">
+                        <p className="text-[9px] font-black text-purple-600 uppercase tracking-wider">Reconhecidos</p>
+                        <p className="text-base font-black text-purple-700 mt-0.5">{acknowledgedIds.length}</p>
+                      </div>
+                    </div>
+
+                    <div className="pt-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setImportedTxs([]);
+                          setIgnoredIds([]);
+                          setConciliatedIds([]);
+                          setAcknowledgedIds([]);
+                          setLedgerBalance(null);
+                          setSearchQueries({});
+                          setShowSearchForFitId({});
+                          setActiveSearchId(null);
+                          toast.success("Lote finalizado e limpo com sucesso!");
+                        }}
+                        className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all shadow-md hover:scale-[1.02] cursor-pointer inline-flex items-center gap-2"
+                      >
+                        <CheckCheck className="w-4 h-4" /> Concluir e Limpar Lote
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   visibleImported.map(item => {
@@ -1394,7 +1456,8 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                     const match = matchDetails?.candidate;
                     const isCrossAccount = matchDetails?.isCrossAccount;
                     const sourceAccount = matchDetails?.sourceAccount;
-                    const duplicate = isAlreadyImported(item);
+                    const existingTx = getExistingImportedTransaction(item);
+                    const duplicate = Boolean(existingTx);
                     const isEditing = editingTxId === item.internalId;
                     const isSearchOpen = showSearchForFitId[item.internalId];
                     const query = searchQueries[item.internalId] || '';
@@ -1882,9 +1945,9 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                           <div className="shrink-0 flex items-stretch md:items-center justify-end gap-2 text-right">
                             {duplicate ? (
                               isSplitTransaction ? (
-                                <div className="bg-purple-50/70 border border-purple-200/80 rounded-2xl p-3.5 space-y-2 text-left w-full md:w-80">
+                                <div className="bg-purple-50/70 border border-purple-200/80 rounded-2xl p-3.5 space-y-2 text-left w-full md:w-[420px]">
                                   <div className="flex items-center justify-between text-[9px] font-black uppercase tracking-wider text-purple-700 border-b border-purple-200/60 pb-1.5">
-                                    <span>Partes da Divisão</span>
+                                    <span className="flex items-center gap-1"><Layers className="w-3 h-3 text-purple-600" /> Partes da Divisão (Split)</span>
                                     <span>Total: {formatCurrency(ledgerTxsForFitId.reduce((acc, t) => acc + Math.abs(t.amount), 0))}</span>
                                   </div>
                                   <div className="space-y-1.5 max-h-36 overflow-y-auto">
@@ -1900,31 +1963,81 @@ export const ReconciliacaoTab: React.FC<ReconciliacaoTabProps> = ({
                                       </div>
                                     ))}
                                   </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => setUnreconcileConfirmItem({ internalId: item.internalId, fitId: item.fitId, txIds: ledgerTxsForFitId.map(t => t.id), description: item.description })}
-                                    className="w-full mt-2 py-1.5 px-3 bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
-                                  >
-                                    <Undo2 className="w-3.5 h-3.5" /> Desfazer e reabrir
-                                  </button>
+                                  <div className="flex items-center gap-2 pt-1 border-t border-purple-200/60">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleAcknowledge(item.internalId)}
+                                      className="flex-1 py-1.5 px-3 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1 cursor-pointer shadow-2xs"
+                                    >
+                                      <Check className="w-3.5 h-3.5" /> Reconhecer
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setUnreconcileConfirmItem({ internalId: item.internalId, fitId: item.fitId, txIds: ledgerTxsForFitId.map(t => t.id), description: item.description })}
+                                      className="py-1.5 px-3 bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-colors flex items-center justify-center gap-1 cursor-pointer shadow-2xs"
+                                    >
+                                      <Undo2 className="w-3.5 h-3.5" /> Desfazer
+                                    </button>
+                                  </div>
                                 </div>
                               ) : (
-                                <div className="bg-slate-100 border border-slate-200/80 rounded-2xl p-3 text-left w-full md:w-80 space-y-2">
-                                  <div>
-                                    <span className="text-[8px] font-black uppercase tracking-wider text-slate-500 block">
-                                      Dispositivo de Segurança contra Duplicata
+                                <div className="bg-slate-100 border border-slate-200/80 rounded-2xl p-3.5 text-left w-full md:w-[440px] space-y-2.5">
+                                  <div className="flex items-center justify-between border-b border-slate-200/70 pb-1.5">
+                                    <span className="text-[9px] font-black uppercase tracking-wider text-slate-600 flex items-center gap-1">
+                                      <AlertTriangle className="w-3 h-3 text-amber-500" /> Comparação de Lançamento Duplicado
                                     </span>
-                                    <span className="text-[10px] text-slate-500 font-semibold block leading-tight mt-1">
-                                      Lançamento com mesmo FITID ou hash de dados já existe no sistema para esta mesma conta bancária.
+                                    <span className="text-[9px] font-black uppercase text-purple-700 bg-purple-100 px-2 py-0.5 rounded-md">
+                                      FITID: {item.fitId}
                                     </span>
                                   </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => setUnreconcileConfirmItem({ internalId: item.internalId, fitId: item.fitId, txIds: ledgerTxsForFitId.map(t => t.id), description: item.description })}
-                                    className="w-full py-1.5 px-3 bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
-                                  >
-                                    <Undo2 className="w-3.5 h-3.5" /> Desfazer e reabrir
-                                  </button>
+
+                                  {/* Grid de Comparação Visual Lado a Lado */}
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                                    {/* Bloco Extrato */}
+                                    <div className="bg-white p-2.5 rounded-xl border border-slate-200/80 shadow-2xs space-y-1">
+                                      <span className="text-[8px] font-black uppercase tracking-widest text-slate-400 block">
+                                        Dados do Extrato
+                                      </span>
+                                      <p className="text-[11px] font-bold text-slate-800 truncate" title={item.description}>{item.description}</p>
+                                      <p className="text-[10px] font-mono text-slate-500">
+                                        {new Date(item.date + 'T00:00:00').toLocaleDateString('pt-BR')} · <strong className="text-slate-900">{formatCurrency(item.amount)}</strong>
+                                      </p>
+                                    </div>
+
+                                    {/* Bloco Sistema */}
+                                    <div className="bg-white p-2.5 rounded-xl border border-purple-200/80 shadow-2xs space-y-1">
+                                      <span className="text-[8px] font-black uppercase tracking-widest text-purple-600 block">
+                                        Já no Sistema
+                                      </span>
+                                      <p className="text-[11px] font-bold text-slate-800 truncate" title={existingTx?.description || 'N/A'}>
+                                        {existingTx?.description || 'N/A'}
+                                      </p>
+                                      <p className="text-[10px] font-mono text-slate-500">
+                                        {existingTx?.date ? new Date(existingTx.date + 'T00:00:00').toLocaleDateString('pt-BR') : ''} · <strong className="text-slate-900">{formatCurrency(existingTx?.amount || 0)}</strong>
+                                      </p>
+                                      <div className="flex items-center justify-between text-[9px] pt-0.5 text-purple-700 font-bold">
+                                        <span>{existingTx?.categoryName || 'Sem Categoria'}</span>
+                                        <span className="bg-purple-50 text-purple-700 px-1.5 rounded">{existingTx?.status || 'REGISTRADO'}</span>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center gap-2 pt-1 border-t border-slate-200/60">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleAcknowledge(item.internalId)}
+                                      className="flex-1 py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1 cursor-pointer shadow-2xs"
+                                    >
+                                      <Check className="w-3.5 h-3.5" /> Reconhecer
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setUnreconcileConfirmItem({ internalId: item.internalId, fitId: item.fitId, txIds: ledgerTxsForFitId.map(t => t.id), description: item.description })}
+                                      className="py-1.5 px-3 bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-colors flex items-center justify-center gap-1 cursor-pointer shadow-2xs"
+                                    >
+                                      <Undo2 className="w-3.5 h-3.5" /> Desfazer
+                                    </button>
+                                  </div>
                                 </div>
                               )
                             ) : isCrossAccount ? (

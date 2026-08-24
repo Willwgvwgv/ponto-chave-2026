@@ -11,6 +11,12 @@ import { getAuth as getAdminAuth } from "firebase-admin/auth";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Clean string helper
+const cleanStr = (val: any): string => {
+  if (!val || typeof val !== 'string') return '';
+  return val.replace(/[\r\n\s\t]/g, '').replace(/^['"]|['"]$/g, '').replace(/,$/, '').replace(/["']/g, '');
+};
+
 // Initialize Firebase Admin for iCal Feed and Token Verification
 const configPath = path.join(__dirname, "firebase-applet-config.json");
 let adminDb: any = null;
@@ -18,10 +24,14 @@ let adminAuthInstance: any = null;
 
 try {
   let adminConfig: any = {};
+  let dbId = cleanStr(process.env.VITE_FIREBASE_DATABASE_ID);
+
   if (fs.existsSync(configPath)) {
     const firebaseConfig = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-    adminConfig.projectId = firebaseConfig.projectId;
-    var databaseId = firebaseConfig.firestoreDatabaseId;
+    adminConfig.projectId = cleanStr(firebaseConfig.projectId);
+    if (!dbId && firebaseConfig.firestoreDatabaseId) {
+      dbId = cleanStr(firebaseConfig.firestoreDatabaseId);
+    }
   }
   
   if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
@@ -30,7 +40,7 @@ try {
         ? JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON)
         : process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
       adminConfig.credential = cert(sa);
-      if (sa.project_id) adminConfig.projectId = sa.project_id;
+      if (sa.project_id) adminConfig.projectId = cleanStr(sa.project_id);
     } catch (e) {
       console.warn("Error parsing FIREBASE_SERVICE_ACCOUNT_JSON from env:", e);
     }
@@ -39,9 +49,9 @@ try {
   if (getApps().length === 0) {
     initAdminApp(adminConfig);
   }
-  adminDb = getFirestore(databaseId || "(default)");
+  adminDb = getFirestore(dbId || "(default)");
   adminAuthInstance = getAdminAuth();
-  console.log("Firebase Admin SDK initialized successfully.");
+  console.log("Firebase Admin SDK initialized successfully with dbId:", dbId || "(default)");
 } catch (err) {
   console.warn("Could not initialize Firebase Admin DB/Auth:", err);
 }

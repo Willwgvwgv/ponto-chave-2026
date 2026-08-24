@@ -33,6 +33,7 @@ import { ReconciliacaoTab } from './financeiro/ReconciliacaoTab';
 import { DRETab } from './financeiro/DRETab';
 import { FluxoCaixaTab } from './financeiro/FluxoCaixaTab';
 import { CategoriasTab } from './financeiro/CategoriasTab';
+import { AuditCresolCardModal } from './financeiro/AuditCresolCardModal';
 import { DEFAULT_FINANCIAL_CATEGORIES } from './financeiro/DefaultCategories';
 import { toast } from 'sonner';
 
@@ -42,10 +43,11 @@ import {
   ArrowRightLeft, 
   BarChart3, 
   CalendarDays, 
-  Tag,
-  Landmark,
-  AlertTriangle,
-  X
+  Tag, 
+  Landmark, 
+  AlertTriangle, 
+  ShieldCheck,
+  X 
 } from 'lucide-react';
 
 interface FinanceiroViewProps {
@@ -66,6 +68,7 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
   const [activeSubTab, setActiveSubTab] = useState<'dashboard' | 'lancamentos' | 'conciliacao' | 'dre' | 'fluxo' | 'categorias'>('dashboard');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [pendingCategoryFilterIds, setPendingCategoryFilterIds] = useState<string[] | null>(null);
+  const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
 
   // Proteção contra perda de dados na Conciliação Bancária
   const [unconfirmedReconciliationCount, setUnconfirmedReconciliationCount] = useState<number>(0);
@@ -352,24 +355,33 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
     statementMonth: string,
     sourceBankAccountId: string,
     paymentDate: string,
-    totalAmount: number,
-    cardTxIds: string[]
+    paidAmount: number,
+    cardTxIds: string[],
+    totalInvoiceAmount?: number
   ) => {
     try {
+      const total = totalInvoiceAmount !== undefined ? totalInvoiceAmount : paidAmount;
+      const isPartial = paidAmount < total - 0.009;
+      const remainingAmount = isPartial ? Math.max(0, total - paidAmount) : 0;
+
       // 1. Create a "DESPESA" transaction in the selected bank account (sourceBankAccountId)
       const txId = `tx_${Date.now()}`;
       await setDoc(doc(db, "financial_transactions", txId), {
         companyId,
         accountId: sourceBankAccountId,
         type: 'DESPESA',
-        amount: totalAmount,
+        amount: paidAmount,
         date: paymentDate,
-        description: `Pagamento Fatura Cartão - Competência ${statementMonth}`,
+        description: isPartial
+          ? `Pagamento Parcial Fatura Cartão - Competência ${statementMonth}`
+          : `Pagamento Fatura Cartão - Competência ${statementMonth}`,
         categoryName: 'Pagamento de Fatura de Cartão',
         status: 'CONCILIADO',
         origin: 'MANUAL',
         createdAt: serverTimestamp(),
-        notes: `Pagamento de fatura referindo-se a ${cardTxIds.length} transações.`
+        notes: isPartial
+          ? `Pagamento parcial de fatura (R$ ${paidAmount.toFixed(2)} de R$ ${total.toFixed(2)}). Saldo rotativo de R$ ${remainingAmount.toFixed(2)} transferido para a fatura seguinte.`
+          : `Pagamento de fatura referindo-se a ${cardTxIds.length} transações.`
       });
 
       // 2. Update the status of all transactions in this invoice to 'FATURA_PAGA'
@@ -379,13 +391,16 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
         });
       }
 
-      // 3. Increment the card balance by totalAmount (restore available limit)
+      // 3. Increment the card balance by paidAmount (restore available limit for what was actually paid)
       const cardRef = doc(db, "bank_accounts", cardAccountId);
       const cardSnap = await getDoc(cardRef);
+      let cardClosingDay = 10;
       if (cardSnap.exists()) {
-        const currentBalance = cardSnap.data().balance || 0;
+        const cardData = cardSnap.data();
+        const currentBalance = cardData.balance || 0;
+        cardClosingDay = cardData.closingDay || 10;
         await updateDoc(cardRef, {
-          balance: currentBalance + totalAmount
+          balance: currentBalance + paidAmount
         });
       }
 
@@ -395,11 +410,65 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
       if (srcSnap.exists()) {
         const currentBalance = srcSnap.data().balance || 0;
         await updateDoc(srcRef, {
-          balance: currentBalance - totalAmount
+          balance: currentBalance - paidAmount
         });
       }
 
-      toast.success("Fatura paga com sucesso!");
+      // 5. If partial payment, create a new transaction for the next statement month (Saldo Rotativo)
+      if (isPartial && remainingAmount > 0) {
+        const [yearStr, mStr] = statementMonth.split('-');
+        let nextYear = parseInt(yearStr, 10);
+        let nextMonth = parseInt(mStr, 10) + 1;
+        if (nextMonth > 12) {
+          nextMonth = 1;
+          nextYear += 1;
+        }
+        const nextStatementMonth = `${nextYear}-${nextMonth.toString().padStart(2, '0')}`;
+
+        const monthsPortuguese = [
+          'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+          'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+        ];
+        const monthNum = parseInt(mStr, 10);
+        const previousMonthFormatted = `${monthsPortuguese[monthNum - 1]} / ${yearStr}`;
+
+        const matchingCat = categories.find(c => 
+          c.name.toLowerCase().includes('taxas cartão') || 
+          c.name.toLowerCase().includes('taxas de cartão') ||
+          c.name.toLowerCase().includes('taxa') || 
+          c.name.toLowerCase().includes('juros') || 
+          c.name.toLowerCase().includes('cartão') ||
+          c.name.toLowerCase().includes('bancár')
+        );
+
+        const closingDate = new Date(nextYear, nextMonth - 1, cardClosingDay, 23, 59, 59);
+        const today = new Date();
+        const initialCardStatus = today > closingDate ? 'FATURA_FECHADA' : 'FATURA_ABERTA';
+
+        const rotativoTxId = `tx_${Date.now()}_rotativo_${Math.random().toString(36).substring(2, 6)}`;
+        await setDoc(doc(db, "financial_transactions", rotativoTxId), {
+          companyId,
+          accountId: cardAccountId,
+          type: 'DESPESA',
+          amount: remainingAmount,
+          date: paymentDate,
+          description: `Saldo Rotativo - Fatura ${previousMonthFormatted} (não paga integralmente)`,
+          categoryName: matchingCat ? matchingCat.name : 'Taxas cartão de crédito',
+          categoryId: matchingCat ? matchingCat.id : null,
+          status: 'CONCILIADO',
+          origin: 'MANUAL',
+          creditCardMonth: nextStatementMonth,
+          creditCardStatus: initialCardStatus,
+          createdAt: serverTimestamp(),
+          notes: `Lançamento de saldo rotativo referente à fatura de ${previousMonthFormatted}. Valor total: R$ ${total.toFixed(2)}, Pago: R$ ${paidAmount.toFixed(2)}, Saldo restante transferido: R$ ${remainingAmount.toFixed(2)}.`
+        });
+      }
+
+      if (isPartial) {
+        toast.success(`Pagamento parcial registrado! R$ ${remainingAmount.toFixed(2).replace('.', ',')} transferido para a próxima fatura.`);
+      } else {
+        toast.success("Fatura liquidada com sucesso!");
+      }
     } catch (err) {
       console.error(err);
       toast.error("Erro ao pagar fatura.");
@@ -927,6 +996,16 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
             </>
           )}
         </div>
+
+        {/* Botão de Auditoria Cartão Cresol (Julho/2026) */}
+        <button
+          onClick={() => setIsAuditModalOpen(true)}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200/80 shadow-xs cursor-pointer ml-1"
+          title="Ver auditoria detalhada dos lançamentos do Cartão Cresol em Julho/2026"
+        >
+          <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
+          <span>Auditoria Cresol Julho</span>
+        </button>
       </div>
 
       {loading ? (
@@ -945,6 +1024,7 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
               onDeleteAccount={handleDeleteAccount}
               onPayCreditCardInvoice={handlePayCreditCardInvoice}
               onUpdateTransactions={handleUpdateTransactions}
+              onDeleteTransaction={handleDeleteTransaction}
             />
           )}
 
@@ -1048,6 +1128,14 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Modal de Auditoria do Cartão Cresol */}
+      <AuditCresolCardModal
+        isOpen={isAuditModalOpen}
+        onClose={() => setIsAuditModalOpen(false)}
+        transactions={transactions}
+        accounts={accounts}
+      />
     </div>
   );
 };
