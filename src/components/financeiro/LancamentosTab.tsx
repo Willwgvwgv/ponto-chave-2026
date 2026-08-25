@@ -137,6 +137,16 @@ function getInitialCreditCardStatus(dateStr: string, closingDay: number): 'FATUR
   return today > closingDate ? 'FATURA_FECHADA' : 'FATURA_ABERTA';
 }
 
+function formatMonthName(yearYm: string): string {
+  if (!yearYm) return '';
+  const [year, month] = yearYm.split('-');
+  const monthsPortuguese = [
+    'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+    'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+  ];
+  return `${monthsPortuguese[parseInt(month, 10) - 1]} / ${year}`;
+}
+
 export const LancamentosTab: React.FC<LancamentosTabProps> = ({
   accounts,
   categories,
@@ -823,6 +833,31 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
           movedAt: isMonthChanged ? new Date().toISOString() : (editingTx.movedAt ?? null)
         }
       }]);
+
+      if (isMonthChanged && finalCardMonth) {
+        const targetYear = parseInt(finalCardMonth.substring(0, 4), 10);
+        const targetMonth = parseInt(finalCardMonth.substring(5, 7), 10) - 1;
+        const formattedTargetName = formatMonthName(finalCardMonth);
+
+        toast.custom((t) => (
+          <div className="flex items-center justify-between gap-3 w-full bg-white border border-blue-200 shadow-xl rounded-xl p-3">
+            <span className="text-xs font-medium text-slate-800">
+              Lançamento movido para a fatura de <strong>{formattedTargetName}</strong>.
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setCurrentPeriodDate(new Date(targetYear, targetMonth, 1));
+                setFilterMode('MONTH');
+                toast.dismiss(t);
+              }}
+              className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold rounded-lg transition-colors whitespace-nowrap shadow-sm cursor-pointer"
+            >
+              Ver aqui →
+            </button>
+          </div>
+        ), { duration: 6000 });
+      }
     }
 
     setIsEditOpen(false);

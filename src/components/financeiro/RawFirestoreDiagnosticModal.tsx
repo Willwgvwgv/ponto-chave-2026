@@ -17,7 +17,7 @@ export const RawFirestoreDiagnosticModal: React.FC<RawFirestoreDiagnosticModalPr
   transactions
 }) => {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
-  const [activeView, setActiveView] = useState<'cresol_account' | 'five_txs' | 'july_card' | 'manutencao' | 'all_accounts'>('cresol_account');
+  const [activeView, setActiveView] = useState<'cresol_account' | 'marketing_180seguros' | 'five_txs' | 'july_card' | 'manutencao' | 'all_accounts'>('marketing_180seguros');
 
   // 1. Identificar Contas Cresol (Cartão e Corrente)
   const cresolCardAccount = useMemo(() => {
@@ -70,6 +70,32 @@ export const RawFirestoreDiagnosticModal: React.FC<RawFirestoreDiagnosticModalPr
     ).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
   }, [transactions]);
 
+  // 5. Diagnóstico Específico: Marketing Digital & As 3 Séries de 180 Seguros
+  const marketingTransactions = useMemo(() => {
+    return transactions.filter(t => {
+      const desc = (t.description || '').toUpperCase();
+      return desc.includes('MARKETING DIGITAL') || desc.includes('MJ MARKETING') || desc.includes('MJ MARKETING DIGI') || desc.includes('ZP*MJ');
+    }).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  }, [transactions]);
+
+  const seg180TargetRecurrenceIds = [
+    'rec_1787162941027_r66qa0vyy',
+    'rec_1787163098108_2p68mzxwq',
+    'rec_1787163007219_3gff31ws8'
+  ];
+
+  const seg180Transactions = useMemo(() => {
+    return transactions.filter(t => {
+      const desc = (t.description || '').toUpperCase();
+      const is180Desc = desc.includes('180 SEGUROS') || desc.includes('180SEGUROS') || desc.includes('VINDI *180') || desc.includes('180SEGURO');
+      const isTargetRec = t.recurrenceGroupId && seg180TargetRecurrenceIds.includes(t.recurrenceGroupId);
+      if (!is180Desc && !isTargetRec) return false;
+
+      const ccMonth = t.creditCardMonth || (t.date ? t.date.substring(0, 7) : '');
+      return ccMonth >= '2026-06' && ccMonth <= '2026-10';
+    }).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  }, [transactions]);
+
   if (!isOpen) return null;
 
   const copyData = (key: string, data: any) => {
@@ -89,6 +115,11 @@ export const RawFirestoreDiagnosticModal: React.FC<RawFirestoreDiagnosticModalPr
       cresolAccounts: {
         cardAccount: cresolCardAccount || null,
         checkingAccount: cresolCheckingAccount || null
+      },
+      task4_marketingDigital: marketingTransactions,
+      task4_seg180Series: {
+        total: seg180Transactions.length,
+        items: seg180Transactions
       },
       task2_fiveTransactions: fiveTransactions,
       task1_cardJulyTransactions: {
@@ -144,8 +175,18 @@ export const RawFirestoreDiagnosticModal: React.FC<RawFirestoreDiagnosticModalPr
         {/* Sub-navegação */}
         <div className="flex items-center gap-2 px-6 py-2.5 border-b border-slate-800 bg-slate-950/30 overflow-x-auto text-xs font-mono">
           <button
+            onClick={() => setActiveView('marketing_180seguros')}
+            className={`px-3 py-1.5 rounded-lg font-bold transition-all whitespace-nowrap ${
+              activeView === 'marketing_180seguros'
+                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+            }`}
+          >
+            ★ Marketing & 180 Seguros ({marketingTransactions.length + seg180Transactions.length})
+          </button>
+          <button
             onClick={() => setActiveView('cresol_account')}
-            className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
+            className={`px-3 py-1.5 rounded-lg font-bold transition-all whitespace-nowrap ${
               activeView === 'cresol_account'
                 ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
@@ -155,7 +196,7 @@ export const RawFirestoreDiagnosticModal: React.FC<RawFirestoreDiagnosticModalPr
           </button>
           <button
             onClick={() => setActiveView('five_txs')}
-            className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
+            className={`px-3 py-1.5 rounded-lg font-bold transition-all whitespace-nowrap ${
               activeView === 'five_txs'
                 ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
@@ -165,7 +206,7 @@ export const RawFirestoreDiagnosticModal: React.FC<RawFirestoreDiagnosticModalPr
           </button>
           <button
             onClick={() => setActiveView('july_card')}
-            className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
+            className={`px-3 py-1.5 rounded-lg font-bold transition-all whitespace-nowrap ${
               activeView === 'july_card'
                 ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
@@ -175,7 +216,7 @@ export const RawFirestoreDiagnosticModal: React.FC<RawFirestoreDiagnosticModalPr
           </button>
           <button
             onClick={() => setActiveView('manutencao')}
-            className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
+            className={`px-3 py-1.5 rounded-lg font-bold transition-all whitespace-nowrap ${
               activeView === 'manutencao'
                 ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
@@ -185,7 +226,7 @@ export const RawFirestoreDiagnosticModal: React.FC<RawFirestoreDiagnosticModalPr
           </button>
           <button
             onClick={() => setActiveView('all_accounts')}
-            className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
+            className={`px-3 py-1.5 rounded-lg font-bold transition-all whitespace-nowrap ${
               activeView === 'all_accounts'
                 ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
@@ -197,6 +238,125 @@ export const RawFirestoreDiagnosticModal: React.FC<RawFirestoreDiagnosticModalPr
 
         {/* Content Area */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
+
+          {/* VIEW 0: Marketing Digital & 180 Seguros */}
+          {activeView === 'marketing_180seguros' && (
+            <div className="space-y-6">
+              {/* SEÇÃO 1: Marketing Digital */}
+              <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <div>
+                    <h4 className="text-sm font-black text-amber-400 font-mono uppercase">
+                      1. MARKETING DIGITAL ({marketingTransactions.length} encontrados)
+                    </h4>
+                    <p className="text-xs text-slate-400 font-mono mt-0.5">
+                      Todos os documentos contendo "MARKETING DIGITAL" / "MJ MARKETING"
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => copyData('marketing_all', marketingTransactions)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-mono transition-all border border-slate-700 cursor-pointer"
+                  >
+                    {copiedKey === 'marketing_all' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>Copiar Marketing (JSON)</span>
+                  </button>
+                </div>
+
+                {marketingTransactions.length === 0 ? (
+                  <p className="text-xs text-slate-500 font-mono py-2">Nenhum documento encontrado com a descrição MARKETING DIGITAL.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {marketingTransactions.map((tx, idx) => (
+                      <div key={tx.id} className="p-3 bg-slate-900 border border-slate-800/80 rounded-xl space-y-2 font-mono text-xs">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-amber-300">#{idx + 1} - {tx.description}</span>
+                          <span className="text-slate-400 text-[11px]">ID: {tx.id}</span>
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] text-slate-300">
+                          <div><span className="text-slate-500 block">date</span>{tx.date}</div>
+                          <div><span className="text-slate-500 block">amount</span>R$ {tx.amount}</div>
+                          <div><span className="text-slate-500 block">creditCardMonth</span><strong className="text-emerald-400">{tx.creditCardMonth || '(null)'}</strong></div>
+                          <div><span className="text-slate-500 block">movedFromMonth</span>{tx.movedFromMonth || '(null)'}</div>
+                        </div>
+                        <pre className="p-2.5 bg-slate-950 border border-slate-800 rounded text-[10px] text-slate-300 overflow-x-auto">
+                          {JSON.stringify({
+                            id: tx.id,
+                            description: tx.description,
+                            amount: tx.amount,
+                            date: tx.date,
+                            creditCardMonth: tx.creditCardMonth,
+                            movedFromMonth: tx.movedFromMonth,
+                            movedAt: tx.movedAt,
+                            movedHistory: tx.movedHistory,
+                            recurrenceGroupId: tx.recurrenceGroupId,
+                            status: tx.status,
+                            creditCardStatus: tx.creditCardStatus
+                          }, null, 2)}
+                        </pre>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* SEÇÃO 2: As 3 Séries de 180 Seguros */}
+              <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <div>
+                    <h4 className="text-sm font-black text-amber-400 font-mono uppercase">
+                      2. As 3 Séries "180 SEGUROS" ({seg180Transactions.length} ocorrências entre 2026-06 e 2026-10)
+                    </h4>
+                    <p className="text-xs text-slate-400 font-mono mt-0.5">
+                      Séries rec_1787162941027_r66qa0vyy, rec_1787163098108_2p68mzxwq, rec_1787163007219_3gff31ws8
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => copyData('seg180_all', seg180Transactions)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-mono transition-all border border-slate-700 cursor-pointer"
+                  >
+                    {copiedKey === 'seg180_all' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>Copiar 180 Seguros (JSON)</span>
+                  </button>
+                </div>
+
+                {seg180Transactions.length === 0 ? (
+                  <p className="text-xs text-slate-500 font-mono py-2">Nenhuma ocorrência encontrada para 180 Seguros no período.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {seg180Transactions.map((tx, idx) => (
+                      <div key={tx.id} className="p-3 bg-slate-900 border border-slate-800/80 rounded-xl space-y-2 font-mono text-xs">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-blue-300">#{idx + 1} - {tx.description} (R$ {tx.amount})</span>
+                          <span className="text-slate-400 text-[11px]">ID: {tx.id}</span>
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] text-slate-300">
+                          <div><span className="text-slate-500 block">recurrenceGroupId</span><strong className="text-amber-400">{tx.recurrenceGroupId || '(null)'}</strong></div>
+                          <div><span className="text-slate-500 block">date</span>{tx.date}</div>
+                          <div><span className="text-slate-500 block">creditCardMonth</span><strong className="text-emerald-400">{tx.creditCardMonth || '(null)'}</strong></div>
+                          <div><span className="text-slate-500 block">movedFromMonth</span>{tx.movedFromMonth || '(null)'}</div>
+                        </div>
+                        <pre className="p-2.5 bg-slate-950 border border-slate-800 rounded text-[10px] text-slate-300 overflow-x-auto">
+                          {JSON.stringify({
+                            id: tx.id,
+                            recurrenceGroupId: tx.recurrenceGroupId,
+                            description: tx.description,
+                            amount: tx.amount,
+                            date: tx.date,
+                            creditCardMonth: tx.creditCardMonth,
+                            movedFromMonth: tx.movedFromMonth,
+                            movedAt: tx.movedAt,
+                            movedHistory: tx.movedHistory,
+                            status: tx.status,
+                            creditCardStatus: tx.creditCardStatus
+                          }, null, 2)}
+                        </pre>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* VIEW 1: Conta Cartão Cresol */}
           {activeView === 'cresol_account' && (
