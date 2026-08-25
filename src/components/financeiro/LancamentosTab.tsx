@@ -563,10 +563,32 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
         });
     }
 
+    const accountMap = new Map<string, BankAccount>(accounts.map(a => [a.id, a]));
+
     return transactions.filter(t => {
       // Filtro de data / período do mês ou datas personalizadas
       const matchPeriod = (() => {
         if (filterMode === 'ALL') return true;
+
+        const acc = accountMap.get(t.accountId);
+        const isCreditCard = acc?.accountType === 'CREDITO';
+
+        // Para lançamentos de CARTÃO DE CRÉDITO com creditCardMonth preenchido,
+        // a competência da fatura decide em qual mês ele aparece na lista
+        if (isCreditCard && t.creditCardMonth) {
+          const monthStr = t.creditCardMonth; // Formato YYYY-MM
+          if (filterMode === 'MONTH') {
+            const selectedMonthStr = startDateStr.substring(0, 7);
+            return monthStr === selectedMonthStr;
+          } else {
+            // Modo RANGE
+            const startMonth = startDateStr.substring(0, 7);
+            const endMonth = endDateStr.substring(0, 7);
+            return monthStr >= startMonth && monthStr <= endMonth;
+          }
+        }
+
+        // Para conta corrente ou cartão sem creditCardMonth, mantém o filtro por date
         if (!t.date) return false;
         return t.date >= startDateStr && t.date <= endDateStr;
       })();
@@ -605,7 +627,7 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
       const bTime = b.date ? new Date(b.date + 'T00:00:00').getTime() : 0;
       return sortAscending ? aTime - bTime : bTime - aTime;
     });
-  }, [transactions, searchTerm, selectedAccount, selectedCategory, selectedType, selectedStatus, sortAscending, startDateStr, endDateStr, filterMode, initialFilterIds]);
+  }, [transactions, accounts, searchTerm, selectedAccount, selectedCategory, selectedType, selectedStatus, sortAscending, startDateStr, endDateStr, filterMode, initialFilterIds]);
 
   const { entradasSum, saidasSum, saldoSum } = useMemo(() => {
     let entradas = 0;
