@@ -38,7 +38,7 @@ import {
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, auth, storage, createUploadDiagnostics } from '../firebase';
-import { Vistoria, ComodoVistoria, ItemVistoria, CompanySettings } from '../types';
+import { Vistoria, ComodoVistoria, ItemVistoria, CompanySettings, LocatarioVistoria } from '../types';
 import { cn } from '../lib/utils';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -172,18 +172,67 @@ export const VistoriaView = ({ isAdmin, user, profile, companySettings }: { isAd
   
   // Form State
   const [formStep, setFormStep] = useState(0);
-  const [locatario, setLocatario] = useState({
+  const DEFAULT_LOCATARIO: LocatarioVistoria = {
     nome: '',
     cpf: '',
     rg: '',
     nacionalidade: 'BRASILEIRO(A)',
     dataNascimento: '',
     naturalidade: '',
+    filiacao: '',
     endereco: '',
     cep: '',
     email: '',
     telefone: ''
-  });
+  };
+
+  const [locatarios, setLocatarios] = useState<LocatarioVistoria[]>([{ ...DEFAULT_LOCATARIO }]);
+
+  const handleAddLocatario = () => {
+    const prev = locatarios[locatarios.length - 1];
+    setLocatarios(prevLocs => [
+      ...prevLocs,
+      {
+        ...DEFAULT_LOCATARIO,
+        endereco: prev?.endereco || '',
+        cep: prev?.cep || ''
+      }
+    ]);
+    toast.success(`Inquilino ${locatarios.length + 1} adicionado!`);
+  };
+
+  const handleRemoveLocatario = (idx: number) => {
+    if (locatarios.length <= 1) {
+      toast.error("A vistoria precisa ter pelo menos 1 inquilino.");
+      return;
+    }
+    setLocatarios(prev => prev.filter((_, i) => i !== idx));
+    toast.info("Inquilino removido.");
+  };
+
+  const handleUpdateLocatario = (idx: number, field: keyof LocatarioVistoria, value: string) => {
+    setLocatarios(prev => {
+      const next = [...prev];
+      next[idx] = { ...next[idx], [field]: value };
+      return next;
+    });
+  };
+
+  const handleCopyAddressFromFirst = (idx: number) => {
+    const first = locatarios[0];
+    if (!first) return;
+    setLocatarios(prev => {
+      const next = [...prev];
+      next[idx] = {
+        ...next[idx],
+        endereco: first.endereco || '',
+        cep: first.cep || ''
+      };
+      return next;
+    });
+    toast.success("Endereço e CEP copiados do 1º inquilino!");
+  };
+
   const [textoContrato, setTextoContrato] = useState('');
   const [textoLaudo, setTextoLaudo] = useState('');
   const [styleContrato, setStyleContrato] = useState({ fontSize: 9, textAlign: 'justify' as const, isBold: false });
@@ -243,6 +292,7 @@ export const VistoriaView = ({ isAdmin, user, profile, companySettings }: { isAd
 
   const handleSave = async (e: React.FormEvent) => {
     try {
+      const primaryLocatario = locatarios[0] || DEFAULT_LOCATARIO;
       const data = {
         corretorId: user?.uid || 'anonymous',
         corretorNome: user?.displayName || profile?.displayName || 'Corretor',
@@ -254,7 +304,8 @@ export const VistoriaView = ({ isAdmin, user, profile, companySettings }: { isAd
         textoLaudo,
         styleContrato,
         styleLaudo,
-        locatario,
+        locatario: primaryLocatario,
+        locatarios,
         imovel,
         locador,
         comodos,
@@ -289,18 +340,7 @@ export const VistoriaView = ({ isAdmin, user, profile, companySettings }: { isAd
     setFormStep(0);
     setStyleContrato({ fontSize: 9, textAlign: 'justify', isBold: false });
     setStyleLaudo({ fontSize: 9, textAlign: 'justify', isBold: false });
-    setLocatario({ 
-      nome: '', 
-      cpf: '', 
-      rg: '', 
-      nacionalidade: 'BRASILEIRO(A)', 
-      dataNascimento: '', 
-      naturalidade: '', 
-      endereco: '', 
-      cep: '', 
-      email: '', 
-      telefone: '' 
-    });
+    setLocatarios([{ ...DEFAULT_LOCATARIO }]);
     setLocador({
       nome: brandName || companySettings?.name || 'FIDELITÉ NEGÓCIOS IMOBILIÁRIOS LTDA',
       cnpj: brandCnpj || companySettings?.cnpj || '',
@@ -326,7 +366,13 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
 
   const handleEdit = (v: Vistoria) => {
     setEditingVistoria(v);
-    setLocatario(v.locatario);
+    if (v.locatarios && Array.isArray(v.locatarios) && v.locatarios.length > 0) {
+      setLocatarios(v.locatarios.map(l => ({ ...DEFAULT_LOCATARIO, ...l })));
+    } else if (v.locatario) {
+      setLocatarios([{ ...DEFAULT_LOCATARIO, ...v.locatario }]);
+    } else {
+      setLocatarios([{ ...DEFAULT_LOCATARIO }]);
+    }
     setTextoContrato(v.textoContrato || `O(A) LOCATÁRIO(A), acima qualificado(a), declara, para os devidos fins, que nesta data recebeu as chaves do imóvel locado, passando a ter a posse do referido bem.
 
 Declara, ainda, que teve ciência das condições do imóvel, conforme laudo de vistoria elaborado pela imobiliária, o qual foi devidamente apresentado, acompanhado e conferido, concordando integralmente com seu estado de conservação no ato da entrega.
@@ -489,8 +535,11 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
   };
 
   const filteredVistorias = vistorias.filter(v => {
-    const matchesSearch = v.locatario.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          v.imovel.endereco.toLowerCase().includes(searchTerm.toLowerCase());
+    const tenantNames = (v.locatarios && v.locatarios.length > 0)
+      ? v.locatarios.map(l => l.nome || '').join(' ')
+      : (v.locatario?.nome || '');
+    const matchesSearch = tenantNames.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          (v.imovel?.endereco || '').toLowerCase().includes(searchTerm.toLowerCase());
     const matchedStatus = selectedStatusFilter === "Todos" || (v.status || "Agendada") === selectedStatusFilter;
     return matchesSearch && matchedStatus;
   });
@@ -622,23 +671,39 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
     };
 
     // DADOS DO LOCATÁRIO
-    y = drawSectionHeader('DADOS DO LOCATÁRIO', y);
+    const locatariosList: LocatarioVistoria[] = (vistoria.locatarios && vistoria.locatarios.length > 0)
+      ? vistoria.locatarios
+      : (vistoria.locatario ? [vistoria.locatario] : [{ ...DEFAULT_LOCATARIO }]);
+
+    const sectionTitle = locatariosList.length > 1 ? 'DADOS DOS LOCATÁRIOS' : 'DADOS DO LOCATÁRIO';
+    y = drawSectionHeader(sectionTitle, y);
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(9);
     
-    const locatarioInfo = [
-      `LOCATÁRIO: ${(vistoria.locatario.nome || '').toUpperCase()}`,
-      `NATURALIDADE: ${vistoria.locatario.naturalidade || ''} | NASC: ${vistoria.locatario.dataNascimento || ''}`,
-      `CPF: ${vistoria.locatario.cpf || ''}  |  RG: ${vistoria.locatario.rg || ''}`,
-      `ENDEREÇO: ${vistoria.locatario.endereco || ''}  -  CEP: ${vistoria.locatario.cep || ''}`,
-      `E-MAIL: ${vistoria.locatario.email || ''}  |  TEL: ${vistoria.locatario.telefone || ''}`
-    ];
-    
-    locatarioInfo.forEach(line => {
-      const splitLine = pdf.splitTextToSize(line, 170);
-      y = checkPageBreak(y, splitLine.length * 5);
-      pdf.text(splitLine, 20, y);
-      y += (splitLine.length * 5);
+    locatariosList.forEach((loc, idx) => {
+      const prefix = locatariosList.length > 1 ? `LOCATÁRIO ${idx + 1}: ` : 'LOCATÁRIO: ';
+      const locatarioInfo = [
+        `${prefix}${(loc.nome || '').toUpperCase()}`,
+        `NATURALIDADE: ${loc.naturalidade || ''} | NASC: ${loc.dataNascimento || ''}`,
+        `CPF: ${loc.cpf || ''}  |  RG: ${loc.rg || ''}${loc.nacionalidade ? ` | NACIONALIDADE: ${loc.nacionalidade}` : ''}`,
+        `ENDEREÇO: ${loc.endereco || ''}  -  CEP: ${loc.cep || ''}`,
+        `E-MAIL: ${loc.email || ''}  |  TEL: ${loc.telefone || ''}`
+      ];
+      
+      locatarioInfo.forEach(line => {
+        const splitLine = pdf.splitTextToSize(line, 170);
+        y = checkPageBreak(y, splitLine.length * 5);
+        pdf.text(splitLine, 20, y);
+        y += (splitLine.length * 5);
+      });
+
+      if (idx < locatariosList.length - 1) {
+        y += 2;
+        pdf.setDrawColor(220, 220, 220);
+        pdf.setLineWidth(0.1);
+        pdf.line(20, y, 190, y);
+        y += 4;
+      }
     });
 
     // DADOS DO LOCADOR
@@ -828,12 +893,38 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
     pdf.line(115, y, 190, y);
     pdf.text('IMOBILIÁRIA (LOCADOR)', 152, y + 5, { align: 'center' });
     
-    y += 40;
-    // Locatário (Inquilino)
-    pdf.line(65, y, 145, y);
-    pdf.text('LOCATÁRIO (INQUILINO)', 105, y + 5, { align: 'center' });
+    y += 35;
+    if (locatariosList.length === 1) {
+      y = checkPageBreak(y, 25);
+      pdf.line(65, y, 145, y);
+      const locName = locatariosList[0]?.nome ? `LOCATÁRIO: ${locatariosList[0].nome.toUpperCase()}` : 'LOCATÁRIO (INQUILINO)';
+      pdf.text(locName, 105, y + 5, { align: 'center' });
+    } else if (locatariosList.length === 2) {
+      y = checkPageBreak(y, 25);
+      pdf.line(20, y, 95, y);
+      pdf.text(`LOCATÁRIO 1: ${(locatariosList[0]?.nome || 'INQUILINO 1').toUpperCase()}`, 57, y + 5, { align: 'center' });
 
-    const fileName = `Vistoria_${(vistoria.locatario.nome || 'Doc').replace(/\s/g, '_')}.pdf`;
+      pdf.line(115, y, 190, y);
+      pdf.text(`LOCATÁRIO 2: ${(locatariosList[1]?.nome || 'INQUILINO 2').toUpperCase()}`, 152, y + 5, { align: 'center' });
+    } else {
+      for (let i = 0; i < locatariosList.length; i += 2) {
+        y = checkPageBreak(y, 30);
+        const loc1 = locatariosList[i];
+        const loc2 = locatariosList[i + 1];
+
+        pdf.line(20, y, 95, y);
+        pdf.text(`LOCATÁRIO ${i + 1}: ${(loc1?.nome || '').toUpperCase()}`, 57, y + 5, { align: 'center' });
+
+        if (loc2) {
+          pdf.line(115, y, 190, y);
+          pdf.text(`LOCATÁRIO ${i + 2}: ${(loc2?.nome || '').toUpperCase()}`, 152, y + 5, { align: 'center' });
+        }
+        y += 28;
+      }
+    }
+
+    const primaryTenantName = locatariosList[0]?.nome || vistoria.locatario?.nome || 'Doc';
+    const fileName = `Vistoria_${primaryTenantName.replace(/\s/g, '_')}.pdf`;
     
     // Output as Blob to open in new window
     const blob = pdf.output('blob');
@@ -897,125 +988,197 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
         >
           {formStep === 0 && (
             <div className="grid gap-6">
+              {/* Card de Locatários / Inquilinos */}
               <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-6">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-8 h-8 rounded-xl bg-blue-50 flex items-center justify-center">
-                    <User className="w-4 h-4 text-blue-600" />
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-xl bg-blue-50 flex items-center justify-center">
+                      <User className="w-4 h-4 text-blue-600" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-slate-900">
+                        {locatarios.length > 1 ? "Dados dos Inquilinos / Locatários" : "Dados do Inquilino / Locatário"}
+                      </h3>
+                      <p className="text-xs text-slate-400 font-medium">
+                        {locatarios.length === 1 ? "1 inquilino cadastrado" : `${locatarios.length} inquilinos cadastrados`}
+                      </p>
+                    </div>
                   </div>
-                  <h3 className="font-bold text-slate-900">Dados do Locatário</h3>
+                  <button
+                    type="button"
+                    onClick={handleAddLocatario}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm shadow-blue-500/20 active:scale-95 cursor-pointer"
+                    title="Adicionar mais um inquilino"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Adicionar Inquilino</span>
+                  </button>
                 </div>
                 
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Nome Completo</label>
-                    <input 
-                      type="text" 
-                      value={locatario.nome}
-                      onChange={e => setLocatario({...locatario, nome: e.target.value})}
-                      className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 transition-all"
-                      placeholder="Nome do inquilino"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">CPF</label>
-                    <input 
-                      type="text" 
-                      value={locatario.cpf}
-                      onChange={e => setLocatario({...locatario, cpf: e.target.value})}
-                      className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 transition-all"
-                      placeholder="000.000.000-00"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Data Nascimento</label>
-                    <input 
-                      type="text" 
-                      value={locatario.dataNascimento}
-                      onChange={e => setLocatario({...locatario, dataNascimento: e.target.value})}
-                      className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 transition-all"
-                      placeholder="DD/MM/AAAA"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Naturalidade</label>
-                    <input 
-                      type="text" 
-                      value={locatario.naturalidade}
-                      onChange={e => setLocatario({...locatario, naturalidade: e.target.value})}
-                      className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 transition-all"
-                      placeholder="Cidade/Estado"
-                    />
-                  </div>
-                  <div className="space-y-1.5 md:col-span-2">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Filiação</label>
-                    <input 
-                      type="text" 
-                      value={locatario.filiacao}
-                      onChange={e => setLocatario({...locatario, filiacao: e.target.value})}
-                      className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 transition-all"
-                      placeholder="Nome dos pais"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">E-mail</label>
-                    <input 
-                      type="email" 
-                      value={locatario.email}
-                      onChange={e => setLocatario({...locatario, email: e.target.value})}
-                      className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 transition-all"
-                      placeholder="email@exemplo.com"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Telefone</label>
-                    <input 
-                      type="text" 
-                      value={locatario.telefone}
-                      onChange={e => setLocatario({...locatario, telefone: e.target.value})}
-                      className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 transition-all"
-                      placeholder="(00) 00000-0000"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">RG</label>
-                    <input 
-                      type="text" 
-                      value={locatario.rg}
-                      onChange={e => setLocatario({...locatario, rg: e.target.value})}
-                      className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 transition-all"
-                      placeholder="RG"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Nacionalidade</label>
-                    <input 
-                      type="text" 
-                      value={locatario.nacionalidade}
-                      onChange={e => setLocatario({...locatario, nacionalidade: e.target.value})}
-                      className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 transition-all"
-                      placeholder="BRASILEIRO(A)"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Endereço Residencial</label>
-                    <input 
-                      type="text" 
-                      value={locatario.endereco}
-                      onChange={e => setLocatario({...locatario, endereco: e.target.value})}
-                      className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 transition-all"
-                      placeholder="Rua, Número, Bairro..."
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">CEP</label>
-                    <input 
-                      type="text" 
-                      value={locatario.cep}
-                      onChange={e => setLocatario({...locatario, cep: e.target.value})}
-                      className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 transition-all"
-                      placeholder="00000-000"
-                    />
-                  </div>
+                <div className="space-y-6">
+                  {locatarios.map((loc, idx) => (
+                    <div 
+                      key={idx} 
+                      className="p-5 rounded-2xl bg-slate-50/70 border border-slate-200/70 relative transition-all hover:border-blue-200"
+                    >
+                      <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-200/60">
+                        <div className="flex items-center gap-2">
+                          <span className="px-2.5 py-1 bg-slate-900 text-white text-[10px] font-black uppercase tracking-wider rounded-lg">
+                            {idx === 0 ? "Inquilino 1 (Principal)" : `Inquilino ${idx + 1}`}
+                          </span>
+                          {loc.nome && (
+                            <span className="text-xs font-bold text-slate-600 truncate max-w-[200px] md:max-w-md">
+                              {loc.nome}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {idx > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => handleCopyAddressFromFirst(idx)}
+                              className="text-[10px] font-bold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
+                              title="Copiar mesmo endereço do Inquilino 1"
+                            >
+                              Copiar Endereço do 1º
+                            </button>
+                          )}
+                          {locatarios.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveLocatario(idx)}
+                              className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all cursor-pointer"
+                              title={`Remover Inquilino ${idx + 1}`}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="grid md:grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Nome Completo</label>
+                          <input 
+                            type="text" 
+                            value={loc.nome}
+                            onChange={e => handleUpdateLocatario(idx, 'nome', e.target.value)}
+                            className="w-full px-4 py-3 bg-white border border-slate-200/80 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
+                            placeholder="Nome do inquilino"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">CPF</label>
+                          <input 
+                            type="text" 
+                            value={loc.cpf}
+                            onChange={e => handleUpdateLocatario(idx, 'cpf', e.target.value)}
+                            className="w-full px-4 py-3 bg-white border border-slate-200/80 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
+                            placeholder="000.000.000-00"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Data Nascimento</label>
+                          <input 
+                            type="text" 
+                            value={loc.dataNascimento}
+                            onChange={e => handleUpdateLocatario(idx, 'dataNascimento', e.target.value)}
+                            className="w-full px-4 py-3 bg-white border border-slate-200/80 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
+                            placeholder="DD/MM/AAAA"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Naturalidade</label>
+                          <input 
+                            type="text" 
+                            value={loc.naturalidade}
+                            onChange={e => handleUpdateLocatario(idx, 'naturalidade', e.target.value)}
+                            className="w-full px-4 py-3 bg-white border border-slate-200/80 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
+                            placeholder="Cidade/Estado"
+                          />
+                        </div>
+                        <div className="space-y-1.5 md:col-span-2">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Filiação</label>
+                          <input 
+                            type="text" 
+                            value={loc.filiacao || ''}
+                            onChange={e => handleUpdateLocatario(idx, 'filiacao', e.target.value)}
+                            className="w-full px-4 py-3 bg-white border border-slate-200/80 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
+                            placeholder="Nome dos pais"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">E-mail</label>
+                          <input 
+                            type="email" 
+                            value={loc.email}
+                            onChange={e => handleUpdateLocatario(idx, 'email', e.target.value)}
+                            className="w-full px-4 py-3 bg-white border border-slate-200/80 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
+                            placeholder="email@exemplo.com"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Telefone</label>
+                          <input 
+                            type="text" 
+                            value={loc.telefone}
+                            onChange={e => handleUpdateLocatario(idx, 'telefone', e.target.value)}
+                            className="w-full px-4 py-3 bg-white border border-slate-200/80 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
+                            placeholder="(00) 00000-0000"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">RG</label>
+                          <input 
+                            type="text" 
+                            value={loc.rg}
+                            onChange={e => handleUpdateLocatario(idx, 'rg', e.target.value)}
+                            className="w-full px-4 py-3 bg-white border border-slate-200/80 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
+                            placeholder="RG"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Nacionalidade</label>
+                          <input 
+                            type="text" 
+                            value={loc.nacionalidade}
+                            onChange={e => handleUpdateLocatario(idx, 'nacionalidade', e.target.value)}
+                            className="w-full px-4 py-3 bg-white border border-slate-200/80 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
+                            placeholder="BRASILEIRO(A)"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Endereço Residencial</label>
+                          <input 
+                            type="text" 
+                            value={loc.endereco}
+                            onChange={e => handleUpdateLocatario(idx, 'endereco', e.target.value)}
+                            className="w-full px-4 py-3 bg-white border border-slate-200/80 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
+                            placeholder="Rua, Número, Bairro..."
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">CEP</label>
+                          <input 
+                            type="text" 
+                            value={loc.cep}
+                            onChange={e => handleUpdateLocatario(idx, 'cep', e.target.value)}
+                            className="w-full px-4 py-3 bg-white border border-slate-200/80 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
+                            placeholder="00000-000"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                  <button
+                    type="button"
+                    onClick={handleAddLocatario}
+                    className="w-full py-3.5 border-2 border-dashed border-blue-200 hover:border-blue-400 bg-blue-50/50 hover:bg-blue-50 text-blue-600 rounded-2xl text-xs font-bold transition-all flex items-center justify-center gap-2 group cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                    <span>Adicionar Outro Inquilino</span>
+                  </button>
                 </div>
               </div>
 
@@ -1423,8 +1586,17 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
 
               <div className="grid grid-cols-2 gap-4 text-left p-6 bg-slate-50 rounded-3xl">
                 <div>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Locatário</p>
-                  <p className="text-sm font-bold text-slate-900">{locatario.nome || 'Não informado'}</p>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                    {locatarios.length > 1 ? `Inquilinos / Locatários (${locatarios.length})` : 'Inquilino / Locatário'}
+                  </p>
+                  <div className="space-y-1 mt-0.5">
+                    {locatarios.map((loc, idx) => (
+                      <p key={idx} className="text-sm font-bold text-slate-900">
+                        {loc.nome || `Inquilino ${idx + 1} (Não informado)`}
+                        {loc.cpf ? <span className="text-xs font-normal text-slate-500 ml-1.5">({loc.cpf})</span> : null}
+                      </p>
+                    ))}
+                  </div>
                 </div>
                 <div>
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Imóvel</p>
@@ -1449,7 +1621,7 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <button
                   onClick={handleSave}
-                  className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-slate-800 transition-all shadow-xl shadow-slate-200 flex items-center justify-center gap-2"
+                  className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-slate-800 transition-all shadow-xl shadow-slate-200 flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <Save className="w-5 h-5" />
                   Salvar Vistoria
@@ -1465,7 +1637,8 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
                       textoLaudo,
                       styleContrato,
                       styleLaudo,
-                      locatario,
+                      locatario: locatarios[0] || DEFAULT_LOCATARIO,
+                      locatarios: locatarios,
                       imovel,
                       locador,
                       comodos,
@@ -1478,7 +1651,7 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
                     };
                     generatePDF(tempVistoria);
                   }}
-                  className="w-full py-4 bg-blue-50 text-blue-600 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-blue-100 transition-all flex items-center justify-center gap-2 border-2 border-blue-100"
+                  className="w-full py-4 bg-blue-50 text-blue-600 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-blue-100 transition-all flex items-center justify-center gap-2 border-2 border-blue-100 cursor-pointer"
                 >
                   <Printer className="w-5 h-5" />
                   Visualizar PDF
@@ -1634,8 +1807,15 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
               <div className="space-y-3 mb-6">
                 <div>
                   <h4 className="text-lg font-black text-slate-900 leading-tight group-hover:text-blue-600 transition-all">
-                    {vistoria.locatario.nome}
+                    {vistoria.locatarios && vistoria.locatarios.length > 0
+                      ? vistoria.locatarios.map(l => l.nome).filter(Boolean).join(' • ') || vistoria.locatario?.nome || 'Sem nome'
+                      : (vistoria.locatario?.nome || 'Sem nome')}
                   </h4>
+                  {vistoria.locatarios && vistoria.locatarios.length > 1 && (
+                    <span className="inline-block mt-1 px-2 py-0.5 bg-blue-50 text-blue-600 text-[10px] font-black rounded-md">
+                      {vistoria.locatarios.length} inquilinos
+                    </span>
+                  )}
                   <div className="flex items-center gap-1.5 mt-1 text-slate-400">
                     <MapPin className="w-3 h-3 shrink-0" />
                     <span className="text-[10px] font-bold leading-none truncate">{vistoria.imovel.endereco}</span>

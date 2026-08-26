@@ -239,6 +239,20 @@ export interface Comissao {
   contaBancariaRecebimento?: string;
 }
 
+export interface LocatarioVistoria {
+  nome: string;
+  cpf: string;
+  rg: string;
+  nacionalidade: string;
+  dataNascimento: string;
+  naturalidade: string;
+  filiacao?: string;
+  endereco: string;
+  cep: string;
+  email: string;
+  telefone: string;
+}
+
 export interface Vistoria {
   id: string;
   companyId: string;
@@ -259,18 +273,8 @@ export interface Vistoria {
   };
   corretorId: string;
   corretorNome: string;
-  locatario: {
-    nome: string;
-    cpf: string;
-    rg: string;
-    nacionalidade: string;
-    dataNascimento: string;
-    naturalidade: string;
-    endereco: string;
-    cep: string;
-    email: string;
-    telefone: string;
-  };
+  locatario: LocatarioVistoria;
+  locatarios?: LocatarioVistoria[];
   imovel: {
     endereco: string;
   };
