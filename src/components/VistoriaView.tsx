@@ -24,12 +24,9 @@ import {
   Upload,
   Settings
 } from 'lucide-react';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { 
   db, 
   auth, 
-  storage, 
-  createUploadDiagnostics,
   collection, 
   query, 
   where, 
@@ -296,6 +293,12 @@ export const VistoriaView = ({ isAdmin, user, profile, companySettings }: { isAd
   const handleSave = async (e: React.FormEvent) => {
     try {
       const primaryLocatario = locatarios[0] || DEFAULT_LOCATARIO;
+      // Fotos são usadas exclusivamente em memória durante a sessão para geração do PDF
+      const sanitizedComodos = comodos.map(c => ({
+        ...c,
+        fotos: []
+      }));
+
       const data = {
         corretorId: user?.uid || 'anonymous',
         corretorNome: user?.displayName || profile?.displayName || 'Corretor',
@@ -311,7 +314,7 @@ export const VistoriaView = ({ isAdmin, user, profile, companySettings }: { isAd
         locatarios,
         imovel,
         locador,
-        comodos,
+        comodos: sanitizedComodos,
         status: statusVistoria,
         data: dataVistoria,
         companyCity: vistoriaCity,
@@ -400,104 +403,54 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    if (!user) {
-      toast.error("Você precisa estar logado para enviar fotos.");
-      return;
-    }
-
     const fileList = Array.from(files) as File[];
     const toastId = "uploading-photo";
-    toast.loading(`Processando ${fileList.length} foto(s)...`, { id: toastId });
+    toast.loading(`Processando e otimizando ${fileList.length} foto(s)...`, { id: toastId });
 
     try {
-      const uploadPromises = fileList.map(async (file) => {
-        const diagnostics = createUploadDiagnostics();
-        try {
-          // 1. Process/Compress local image before upload directly to Blob (sem fetch para respeitar CSP)
-          const blob = await new Promise<Blob>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.readAsDataURL(file);
-            reader.onload = (event) => {
-              const img = new Image();
-              img.src = event.target?.result as string;
-              img.onload = () => {
-                const canvas = document.createElement('canvas');
-                const MAX_WIDTH = 1000; // Resolução ideal balanceada
-                let width = img.width;
-                let height = img.height;
+      const processPromises = fileList.map(async (file) => {
+        return new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.readAsDataURL(file);
+          reader.onload = (event) => {
+            const img = new Image();
+            img.src = event.target?.result as string;
+            img.onload = () => {
+              const canvas = document.createElement('canvas');
+              const MAX_WIDTH = 1000; // Resolução otimizada para PDF
+              let width = img.width;
+              let height = img.height;
 
-                if (width > MAX_WIDTH) {
-                  height *= MAX_WIDTH / width;
-                  width = MAX_WIDTH;
-                }
+              if (width > MAX_WIDTH) {
+                height *= MAX_WIDTH / width;
+                width = MAX_WIDTH;
+              }
 
-                canvas.width = width;
-                canvas.height = height;
-                const ctx = canvas.getContext('2d');
-                ctx?.drawImage(img, 0, 0, width, height);
+              canvas.width = width;
+              canvas.height = height;
+              const ctx = canvas.getContext('2d');
+              ctx?.drawImage(img, 0, 0, width, height);
 
-                // canvas.toBlob gera o Blob diretamente, sem chamar fetch() e sem violar CSP
-                canvas.toBlob(
-                  (b) => {
-                    if (b) {
-                      resolve(b);
-                    } else {
-                      // Fallback manual seguro com atob + Uint8Array (sem fetch)
-                      try {
-                        const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
-                        const byteString = atob(dataUrl.split(',')[1]);
-                        const mimeString = dataUrl.split(',')[0].split(':')[1].split(';')[0];
-                        const ab = new ArrayBuffer(byteString.length);
-                        const ia = new Uint8Array(ab);
-                        for (let i = 0; i < byteString.length; i++) {
-                          ia[i] = byteString.charCodeAt(i);
-                        }
-                        resolve(new Blob([ab], { type: mimeString }));
-                      } catch (e) {
-                        reject(new Error("Erro ao converter imagem"));
-                      }
-                    }
-                  },
-                  'image/jpeg',
-                  0.7
-                );
-              };
-              img.onerror = () => reject(new Error("Erro ao carregar imagem"));
+              // Converte direto para Data URL em memória (sem fetch e sem tráfego de rede)
+              const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+              resolve(dataUrl);
             };
-            reader.onerror = () => reject(new Error("Erro ao ler arquivo"));
-          });
-
-          // 2. Upload to Firebase Storage
-          const fileName = `v/${user.uid}/${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`;
-          const storageRef = ref(storage, fileName);
-          
-          await diagnostics.beforeUpload(storageRef, blob);
-          
-          const snapshot = await uploadBytes(storageRef, blob, { contentType: 'image/jpeg' });
-          const downloadUrl = await getDownloadURL(snapshot.ref);
-          
-          diagnostics.success(snapshot, downloadUrl);
-          return downloadUrl;
-        } catch (err: any) {
-          diagnostics.error(err);
-          return null;
-        }
+            img.onerror = () => reject(new Error("Erro ao carregar imagem"));
+          };
+          reader.onerror = () => reject(new Error("Erro ao ler arquivo"));
+        });
       });
 
-      const processedUrls = (await Promise.all(uploadPromises)).filter((url): url is string => url !== null);
-
-      if (processedUrls.length === 0) {
-        throw new Error("Falha ao subir fotos. Verifique sua conexão.");
-      }
+      const processedDataUrls = await Promise.all(processPromises);
 
       const newComodos = [...comodos];
       newComodos[cIdx] = {
         ...newComodos[cIdx],
-        fotos: [...newComodos[cIdx].fotos, ...processedUrls]
+        fotos: [...(newComodos[cIdx].fotos || []), ...processedDataUrls]
       };
       setComodos(newComodos);
       
-      toast.success(`${processedUrls.length} foto(s) enviada(s)!`, { id: toastId });
+      toast.success(`${processedDataUrls.length} foto(s) anexada(s)!`, { id: toastId });
     } catch (error: any) {
       console.error("Photo processing error:", error);
       toast.error(error.message || "Erro ao processar fotos.", { id: toastId });
