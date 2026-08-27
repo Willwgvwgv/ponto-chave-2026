@@ -24,7 +24,12 @@ import {
   Upload,
   Settings
 } from 'lucide-react';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { 
+  db, 
+  auth, 
+  storage, 
+  createUploadDiagnostics,
   collection, 
   query, 
   where, 
@@ -35,9 +40,7 @@ import {
   doc, 
   serverTimestamp,
   limit
-} from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, auth, storage, createUploadDiagnostics } from '../firebase';
+} from '../firebase';
 import { Vistoria, ComodoVistoria, ItemVistoria, CompanySettings, LocatarioVistoria } from '../types';
 import { cn } from '../lib/utils';
 import { format } from 'date-fns';
@@ -410,8 +413,8 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
       const uploadPromises = fileList.map(async (file) => {
         const diagnostics = createUploadDiagnostics();
         try {
-          // 1. Process/Compress local image before upload
-          const dataUrl = await new Promise<string>((resolve, reject) => {
+          // 1. Process/Compress local image before upload directly to Blob (sem fetch para respeitar CSP)
+          const blob = await new Promise<Blob>((resolve, reject) => {
             const reader = new FileReader();
             reader.readAsDataURL(file);
             reader.onload = (event) => {
@@ -432,8 +435,32 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
                 canvas.height = height;
                 const ctx = canvas.getContext('2d');
                 ctx?.drawImage(img, 0, 0, width, height);
-                // Compressão 0.7 para garantir upload rápido mesmo em 4G/3G
-                resolve(canvas.toDataURL('image/jpeg', 0.7));
+
+                // canvas.toBlob gera o Blob diretamente, sem chamar fetch() e sem violar CSP
+                canvas.toBlob(
+                  (b) => {
+                    if (b) {
+                      resolve(b);
+                    } else {
+                      // Fallback manual seguro com atob + Uint8Array (sem fetch)
+                      try {
+                        const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+                        const byteString = atob(dataUrl.split(',')[1]);
+                        const mimeString = dataUrl.split(',')[0].split(':')[1].split(';')[0];
+                        const ab = new ArrayBuffer(byteString.length);
+                        const ia = new Uint8Array(ab);
+                        for (let i = 0; i < byteString.length; i++) {
+                          ia[i] = byteString.charCodeAt(i);
+                        }
+                        resolve(new Blob([ab], { type: mimeString }));
+                      } catch (e) {
+                        reject(new Error("Erro ao converter imagem"));
+                      }
+                    }
+                  },
+                  'image/jpeg',
+                  0.7
+                );
               };
               img.onerror = () => reject(new Error("Erro ao carregar imagem"));
             };
@@ -441,8 +468,6 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
           });
 
           // 2. Upload to Firebase Storage
-          const response = await fetch(dataUrl);
-          const blob = await response.blob();
           const fileName = `v/${user.uid}/${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`;
           const storageRef = ref(storage, fileName);
           

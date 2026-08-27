@@ -26,6 +26,7 @@ import {
   Filter
 } from "lucide-react";
 import { 
+  db,
   collection, 
   query, 
   where, 
@@ -36,8 +37,7 @@ import {
   doc, 
   setDoc,
   serverTimestamp 
-} from "firebase/firestore";
-import { db } from "../../firebase";
+} from "../../firebase";
 import { 
   EdificioHidrometro, 
   FaturaHidrometro, 
