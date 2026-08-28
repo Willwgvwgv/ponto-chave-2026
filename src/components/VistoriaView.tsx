@@ -594,9 +594,17 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
         doc.setFontSize(8);
         doc.setFont('helvetica', 'bold');
         const addr = brandAddress || (brandCity && brandState ? `${brandCity} - ${brandState}` : (brandCity || brandState || ''));
-        doc.text(doc.splitTextToSize(addr, 60), 10, footerY);
-        doc.text(`${brandPhone || ''}\n${brandEmail || ''}\n${brandWebsite || ''}`.trim(), 80, footerY);
-        doc.text(`${brandName || ''}\n${brandCreci || ''}`.trim(), 135, footerY + 2);
+        const splitAddr = doc.splitTextToSize(addr.toUpperCase(), 60);
+        doc.text(splitAddr, 10, footerY);
+
+        const contactLines = [brandPhone, brandEmail, brandWebsite].filter(Boolean).join('\n');
+        const splitContact = doc.splitTextToSize(contactLines, 45);
+        doc.text(splitContact, 80, footerY);
+
+        const creciText = brandCreci ? (brandCreci.toUpperCase().includes('CRECI') ? brandCreci : `CRECI: ${brandCreci}`) : '';
+        const companyLines = [brandName?.toUpperCase(), creciText].filter(Boolean).join('\n');
+        const splitCompany = doc.splitTextToSize(companyLines, 55);
+        doc.text(splitCompany, 135, footerY);
       } else {
         // Cabeçalho minimalista para outras páginas (apenas número da página)
         doc.setTextColor(150, 150, 150);
