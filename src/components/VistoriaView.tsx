@@ -568,9 +568,9 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
             doc.roundedRect(barEndX - 20, 22, 20, 18, 9, 9, 'F');
 
             doc.setTextColor(255, 255, 255);
-            doc.setFontSize(15);
+            doc.setFontSize(13);
             doc.setFont('helvetica', 'bold');
-            doc.text('CONTRATO DE VISTORIA', 20, 33.5);
+            doc.text('TERMO DE VISTORIA E ENTREGA DE CHAVES', 20, 33.5);
 
             const format = logoToUse.toLowerCase().includes('png') || logoToUse.includes('image/png') ? 'PNG' : 'JPEG';
             doc.addImage(logoToUse, format, logoX, logoY, targetW, targetH, undefined, 'SLOW');
@@ -593,10 +593,10 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
         doc.setTextColor(0, 48, 102); // Azul Marinho
         doc.setFontSize(8);
         doc.setFont('helvetica', 'bold');
-        const addr = brandAddress || companySettings?.address || 'ENDEREÇO NÃO CONFIGURADO';
+        const addr = brandAddress || (brandCity && brandState ? `${brandCity} - ${brandState}` : (brandCity || brandState || ''));
         doc.text(doc.splitTextToSize(addr, 60), 10, footerY);
-        doc.text(`${brandPhone || ''}\n${brandEmail || ''}\n${brandWebsite || ''}`, 80, footerY);
-        doc.text(`${brandName || ''}\n${brandCreci || ''}`, 135, footerY + 2);
+        doc.text(`${brandPhone || ''}\n${brandEmail || ''}\n${brandWebsite || ''}`.trim(), 80, footerY);
+        doc.text(`${brandName || ''}\n${brandCreci || ''}`.trim(), 135, footerY + 2);
       } else {
         // Cabeçalho minimalista para outras páginas (apenas número da página)
         doc.setTextColor(150, 150, 150);
@@ -611,12 +611,16 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
       doc.rect(0, 22, 115, 18, 'F');
       doc.roundedRect(100, 22, 25, 18, 9, 9, 'F');
       doc.setTextColor(255, 255, 255);
-      doc.setFontSize(15);
+      doc.setFontSize(13);
       doc.setFont('helvetica', 'bold');
-      doc.text('CONTRATO DE VISTORIA', 20, 33.5);
-      doc.setTextColor(0, 48, 102);
-      doc.setFontSize(24);
-      doc.text(brandName || 'Vistoria', 140, 32);
+      doc.text('TERMO DE VISTORIA E ENTREGA DE CHAVES', 20, 33.5);
+      
+      if (brandName) {
+        doc.setTextColor(0, 48, 102);
+        doc.setFontSize(18);
+        const splitBrand = doc.splitTextToSize(brandName.toUpperCase(), 55);
+        doc.text(splitBrand, 140, 28);
+      }
     };
 
     const checkPageBreak = (currentY: number, needed: number) => {
@@ -686,7 +690,7 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
 
     // DADOS DO LOCADOR
     y += 5;
-    y = checkPageBreak(y, 25);
+    y = checkPageBreak(y, 35);
     y = drawSectionHeader('DADOS DO LOCADOR', y);
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(9);
@@ -698,7 +702,21 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
     y += 5;
     const locadorEndText = pdf.splitTextToSize(`ENDEREÇO: ${locadorToUse.endereco || ''}`, 170);
     pdf.text(locadorEndText, 20, y);
-    y += (locadorEndText.length * 5) + 5;
+    y += (locadorEndText.length * 5);
+
+    if (brandPhone) {
+      pdf.text(`TEL: ${brandPhone}`, 20, y);
+      y += 5;
+    }
+    if (brandEmail) {
+      pdf.text(`E-MAIL: ${brandEmail}`, 20, y);
+      y += 5;
+    }
+    if (brandCreci) {
+      pdf.text(`CRECI: ${brandCreci}`, 20, y);
+      y += 5;
+    }
+    y += 5;
 
     // DADOS DO IMÓVEL
     y = checkPageBreak(y, 20);
@@ -709,9 +727,9 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
     pdf.text(`ENDEREÇO: ${(vistoria.imovel.endereco || '').toUpperCase()}`, 20, y, { maxWidth: 170 });
     y += 15;
 
-    // TERMO DE CONSTATAÇÃO
+    // DECLARAÇÃO DE RECEBIMENTO DE CHAVES
     y = checkPageBreak(y, 30);
-    y = drawSectionHeader('TERMO DE CONSTATAÇÃO', y);
+    y = drawSectionHeader('DECLARAÇÃO DE RECEBIMENTO DE CHAVES', y);
     
     const sC = {
       fontSize: vistoria.styleContrato?.fontSize || 9,
@@ -819,87 +837,144 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
     // FOTOS E FINALIZAÇÃO
     y += 10;
     
-    // LAUDO DE VISTORIA E ASSINATURAS (Em nova página final)
+    // LGPD E PROTEÇÃO DE DADOS (Nova página)
     pdf.addPage();
     addHeaderAndFooter(pdf, false);
     y = 35;
-    y = drawSectionHeader('LAUDO DE VISTORIA', y);
+    y = drawSectionHeader('LGPD E PROTEÇÃO DE DADOS', y);
+    y += 5;
+
+    pdf.setFontSize(8.5);
+    pdf.setFont('helvetica', 'normal');
     pdf.setTextColor(0, 0, 0);
 
-    const sL = {
-      fontSize: vistoria.styleLaudo?.fontSize || 10,
-      textAlign: vistoria.styleLaudo?.textAlign || 'justify' as const,
-      isBold: !!vistoria.styleLaudo?.isBold
-    };
+    const lgpdParagraphs = [
+      "A IMOBILIÁRIA OU CORRETOR,",
+      "As partes declaram estar cientes e de acordo com o tratamento de seus dados pessoais, nos termos da Lei nº 13.709/2018 (Lei Geral de Proteção de Dados – LGPD).",
+      "§1º. Para os fins deste contrato de locação, a IMOBILIÁRIA atuará como CONTROLADORA dos dados pessoais, podendo tratá-los diretamente ou por meio de terceiros contratados, na qualidade de OPERADORES, exclusivamente para as seguintes finalidades: intermediação, administração e execução do contrato de locação; cobrança de valores; cumprimento de obrigações legais e regulatórias; comunicação entre as partes; elaboração de documentos, cadastros e registros necessários.",
+      "§2º. O tratamento dos dados pessoais terá como fundamentos legais: o cumprimento de obrigação legal ou regulatória (art. 7º, II, LGPD); a execução do contrato de locação (art. 7º, V, LGPD); e, quando aplicável, o consentimento expresso do titular (art. 7º, I, LGPD).",
+      "§3º. As partes comprometem-se a não divulgar, compartilhar ou utilizar os dados pessoais obtidos em razão deste contrato para finalidades diversas daquelas aqui previstas, salvo por determinação legal ou judicial.",
+      "§4º. A IMOBILIÁRIA adotará medidas técnicas e administrativas adequadas para proteger os dados pessoais contra acessos não autorizados, destruição, perda, alteração ou qualquer forma de tratamento inadequado ou ilícito.",
+      "§5º. Os dados pessoais serão armazenados pelo prazo necessário ao cumprimento das finalidades contratuais e legais, sendo posteriormente eliminados ou anonimizados, quando cabível."
+    ];
 
-    pdf.setFontSize(sL.fontSize);
-    pdf.setFont('helvetica', sL.isBold ? 'bold' : 'normal');
-    
-    const splitLaudo = pdf.splitTextToSize(vistoria.textoLaudo || '', 170);
-    splitLaudo.forEach((line: string) => {
-      y = checkPageBreak(y, 5);
-      pdf.setFont('helvetica', sL.isBold ? 'bold' : 'normal');
-      pdf.setFontSize(sL.fontSize);
-      
-      const xPos = sL.textAlign === 'center' ? 105 : sL.textAlign === 'right' ? 190 : 20;
-      pdf.text(line, xPos, y, { align: sL.textAlign });
-      y += sL.fontSize * 0.55;
+    lgpdParagraphs.forEach((p) => {
+      const splitP = pdf.splitTextToSize(p, 170);
+      y = checkPageBreak(y, splitP.length * 4.5 + 4);
+      pdf.text(splitP, 20, y);
+      y += (splitP.length * 4.5) + 3;
     });
 
-    // LOCAL E DATA
-    y += 15;
-    y = checkPageBreak(y, 30);
-    pdf.setFontSize(11);
-    pdf.setFont('helvetica', 'bold');
-    pdf.text('POR ESTAREM ASSIM ACORDADOS,', 20, y);
+    // SEÇÃO ASSINATURAS
+    y += 5;
+    y = checkPageBreak(y, 110);
+    y = drawSectionHeader('CLÁUSULA – DA VALIDADE E INTEGRIDADE DO INSTRUMENTO', y);
     y += 8;
-    pdf.setFontSize(10);
+
+    pdf.setFontSize(9);
     pdf.setFont('helvetica', 'normal');
-    const displayCityF = vistoria.companyCity || brandCity || 'Aparecida de Goiânia';
-    const reportDateStrF = vistoria.data ? format(new Date(vistoria.data + 'T12:00:00'), "dd 'de' MMMM 'de' yyyy", { locale: ptBR }) : format(new Date(), "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
-    pdf.text(`${displayCityF}, ${reportDateStrF}`, 20, y);
+    const validadeText = pdf.splitTextToSize("Permanecem válidas e inalteradas todas as demais cláusulas do contrato principal de locação e dos termos firmados entre as partes, que não conflitarem com o presente instrumento.", 170);
+    pdf.text(validadeText, 20, y);
+    y += (validadeText.length * 4.5) + 10;
 
-    // ASSINATURAS
-    y += 35;
-    y = checkPageBreak(y, 100);
+    // Helper data
+    const formatDateHelper = (dateStr?: string) => {
+      if (!dateStr) return format(new Date(), "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
+      try {
+        const d = dateStr.includes('T') ? new Date(dateStr) : new Date(dateStr + 'T12:00:00');
+        return format(d, "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
+      } catch {
+        return format(new Date(), "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
+      }
+    };
+
+    // Data alinhada à direita
+    pdf.setFontSize(9.5);
+    pdf.setFont('helvetica', 'normal');
+    const dataCityStr = `${brandCity || 'Bela Vista de Goiás'}, ${formatDateHelper((vistoria as any).dataVistoria || vistoria.data)}.`;
+    pdf.text(dataCityStr, 190, y, { align: 'right' });
+    y += 25;
+
+    // Linhas de assinatura (posições estruturadas com suporte a múltiplos locatários)
+    y = checkPageBreak(y, 80);
+    pdf.setLineWidth(0.3);
+    pdf.setDrawColor(0, 0, 0);
     
-    // Corretor
-    pdf.line(20, y, 95, y);
-    pdf.text('CORRETOR', 57, y + 5, { align: 'center' });
-    
-    // Imobiliária
-    pdf.line(115, y, 190, y);
-    pdf.text('IMOBILIÁRIA (LOCADOR)', 152, y + 5, { align: 'center' });
-    
-    y += 35;
     if (locatariosList.length === 1) {
-      y = checkPageBreak(y, 25);
-      pdf.line(65, y, 145, y);
-      const locName = locatariosList[0]?.nome ? `LOCATÁRIO: ${locatariosList[0].nome.toUpperCase()}` : 'LOCATÁRIO (INQUILINO)';
-      pdf.text(locName, 105, y + 5, { align: 'center' });
-    } else if (locatariosList.length === 2) {
-      y = checkPageBreak(y, 25);
-      pdf.line(20, y, 95, y);
-      pdf.text(`LOCATÁRIO 1: ${(locatariosList[0]?.nome || 'INQUILINO 1').toUpperCase()}`, 57, y + 5, { align: 'center' });
-
-      pdf.line(115, y, 190, y);
-      pdf.text(`LOCATÁRIO 2: ${(locatariosList[1]?.nome || 'INQUILINO 2').toUpperCase()}`, 152, y + 5, { align: 'center' });
+      // Linha 1 - 1 LOCATÁRIO e LOCADOR lado a lado
+      pdf.line(20, y, 80, y);
+      pdf.line(110, y, 190, y);
+      y += 5;
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(8.5);
+      const locName = locatariosList[0]?.nome ? `LOCATÁRIO: ${locatariosList[0].nome.toUpperCase()}` : 'LOCATÁRIO';
+      const splitLoc = pdf.splitTextToSize(locName, 65);
+      pdf.text(splitLoc, 50, y, { align: 'center' });
+      pdf.text('LOCADOR', 150, y, { align: 'center' });
+      y += Math.max(splitLoc.length * 4.5, 5) + 15;
     } else {
+      // Múltiplos locatários: gera linha para cada um em pares
       for (let i = 0; i < locatariosList.length; i += 2) {
-        y = checkPageBreak(y, 30);
+        y = checkPageBreak(y, 35);
         const loc1 = locatariosList[i];
         const loc2 = locatariosList[i + 1];
 
-        pdf.line(20, y, 95, y);
-        pdf.text(`LOCATÁRIO ${i + 1}: ${(loc1?.nome || '').toUpperCase()}`, 57, y + 5, { align: 'center' });
+        pdf.line(20, y, 80, y);
+        if (loc2) {
+          pdf.line(110, y, 190, y);
+        }
+        y += 5;
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(8.5);
+        
+        const label1 = `LOCATÁRIO ${i + 1}: ${(loc1?.nome || '').toUpperCase()}`;
+        const split1 = pdf.splitTextToSize(label1, 65);
+        pdf.text(split1, 50, y, { align: 'center' });
 
         if (loc2) {
-          pdf.line(115, y, 190, y);
-          pdf.text(`LOCATÁRIO ${i + 2}: ${(loc2?.nome || '').toUpperCase()}`, 152, y + 5, { align: 'center' });
+          const label2 = `LOCATÁRIO ${i + 2}: ${(loc2?.nome || '').toUpperCase()}`;
+          const split2 = pdf.splitTextToSize(label2, 65);
+          pdf.text(split2, 150, y, { align: 'center' });
         }
-        y += 28;
+        y += Math.max(split1.length * 4.5, 5) + 15;
       }
+
+      // Linha do LOCADOR
+      y = checkPageBreak(y, 30);
+      pdf.line(65, y, 145, y);
+      y += 5;
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(9);
+      pdf.text('LOCADOR', 105, y, { align: 'center' });
+      y += 20;
     }
+
+    // Linha AVALISTA centralizado
+    y = checkPageBreak(y, 30);
+    pdf.line(65, y, 145, y);
+    y += 5;
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(9);
+    pdf.text('AVALISTA', 105, y, { align: 'center' });
+    y += 20;
+
+    // Caixa TESTEMUNHAS
+    y = checkPageBreak(y, 45);
+    pdf.setDrawColor(0, 48, 102);
+    pdf.roundedRect(20, y, 170, 35, 3, 3, 'S');
+    y += 8;
+    pdf.setFont('helvetica', 'bold');
+    pdf.setTextColor(0, 48, 102);
+    pdf.text('TESTEMUNHAS:', 25, y);
+    pdf.setTextColor(0, 0, 0);
+    y += 8;
+    pdf.setFont('helvetica', 'normal');
+    pdf.setDrawColor(180, 180, 180);
+    pdf.line(25, y, 100, y);
+    pdf.text('1-', 25, y + 4);
+    y += 12;
+    pdf.line(25, y, 100, y);
+    pdf.text('2-', 25, y + 4);
 
     const primaryTenantName = locatariosList[0]?.nome || vistoria.locatario?.nome || 'Doc';
     const fileName = `Vistoria_${primaryTenantName.replace(/\s/g, '_')}.pdf`;
