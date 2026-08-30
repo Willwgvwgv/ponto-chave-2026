@@ -33,6 +33,7 @@ import { ReconciliacaoTab } from './financeiro/ReconciliacaoTab';
 import { DRETab } from './financeiro/DRETab';
 import { FluxoCaixaTab } from './financeiro/FluxoCaixaTab';
 import { CategoriasTab } from './financeiro/CategoriasTab';
+import { ContasPagarReceberTab } from './financeiro/ContasPagarReceberTab';
 import { DEFAULT_FINANCIAL_CATEGORIES } from './financeiro/DefaultCategories';
 import { RawFirestoreDiagnosticModal } from './financeiro/RawFirestoreDiagnosticModal';
 import { toast } from 'sonner';
@@ -46,6 +47,7 @@ import {
   Tag, 
   Landmark, 
   AlertTriangle, 
+  CalendarClock,
   Terminal,
   X 
 } from 'lucide-react';
@@ -65,7 +67,7 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
 }) => {
   const companyId = companySettings?.id || "default_company";
 
-  const [activeSubTab, setActiveSubTab] = useState<'dashboard' | 'lancamentos' | 'conciliacao' | 'dre' | 'fluxo' | 'categorias'>('dashboard');
+  const [activeSubTab, setActiveSubTab] = useState<'dashboard' | 'lancamentos' | 'contas' | 'conciliacao' | 'dre' | 'fluxo' | 'categorias'>('dashboard');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [pendingCategoryFilterIds, setPendingCategoryFilterIds] = useState<string[] | null>(null);
   const [isRawDiagnosticOpen, setIsRawDiagnosticOpen] = useState(false);
@@ -73,7 +75,7 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
   // Proteção contra perda de dados na Conciliação Bancária
   const [unconfirmedReconciliationCount, setUnconfirmedReconciliationCount] = useState<number>(0);
   const [showExitConfirmationModal, setShowExitConfirmationModal] = useState<boolean>(false);
-  const [pendingNavigationSubTab, setPendingNavigationSubTab] = useState<'dashboard' | 'lancamentos' | 'conciliacao' | 'dre' | 'fluxo' | 'categorias' | null>(null);
+  const [pendingNavigationSubTab, setPendingNavigationSubTab] = useState<'dashboard' | 'lancamentos' | 'contas' | 'conciliacao' | 'dre' | 'fluxo' | 'categorias' | null>(null);
   const [reconcileResetTrigger, setReconcileResetTrigger] = useState<number>(0);
 
   // Previne fechamento/recarregamento acidental da página se houver pendências
@@ -90,7 +92,7 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [activeSubTab, unconfirmedReconciliationCount]);
 
-  const handleRequestTabChange = (targetTab: 'dashboard' | 'lancamentos' | 'conciliacao' | 'dre' | 'fluxo' | 'categorias') => {
+  const handleRequestTabChange = (targetTab: 'dashboard' | 'lancamentos' | 'contas' | 'conciliacao' | 'dre' | 'fluxo' | 'categorias') => {
     setIsDropdownOpen(false);
     if (activeSubTab === 'conciliacao' && targetTab !== 'conciliacao' && unconfirmedReconciliationCount > 0) {
       setPendingNavigationSubTab(targetTab);
@@ -899,6 +901,16 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
         </button>
 
         <button
+          onClick={() => handleRequestTabChange('contas')}
+          className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold uppercase tracking-wide transition-all whitespace-nowrap ${
+            activeSubTab === 'contas' ? 'bg-white text-blue-600 shadow animate-fadeIn' : 'text-slate-500 hover:text-slate-705'
+          }`}
+        >
+          <CalendarClock className="w-3.5 h-3.5" />
+          Contas a Pagar/Receber
+        </button>
+
+        <button
           onClick={() => handleRequestTabChange('conciliacao')}
           className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold uppercase tracking-wide transition-all whitespace-nowrap ${
             activeSubTab === 'conciliacao' ? 'bg-white text-blue-600 shadow animate-fadeIn' : 'text-slate-500 hover:text-slate-705'
@@ -1042,6 +1054,14 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
               isAdmin={profile?.role === 'admin'}
               initialFilterIds={pendingCategoryFilterIds}
               onClearInitialFilter={() => setPendingCategoryFilterIds(null)}
+            />
+          )}
+
+          {activeSubTab === 'contas' && (
+            <ContasPagarReceberTab 
+              accounts={accounts} 
+              categories={categories} 
+              transactions={transactions} 
             />
           )}
 
