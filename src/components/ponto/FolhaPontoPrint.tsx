@@ -1,5 +1,5 @@
 import React, { useRef } from "react";
-import { X, Printer, Calendar, Users, Building, ShieldCheck } from "lucide-react";
+import { X, Printer, ShieldCheck } from "lucide-react";
 import { UserProfile, PontoRegistro, CompanySettings } from "../../types";
 import { formatMinutesToHHMM, formatMinutesToHoursFriendly } from "./MeuEspelho";
 
@@ -110,6 +110,8 @@ export const FolhaPontoPrint: React.FC<FolhaPontoPrintProps> = ({
   };
 
   const formattedMonthName = monthNames[month - 1];
+  const emissionDateStr = new Date().toLocaleDateString("pt-BR");
+  const emissionTimeStr = new Date().toLocaleTimeString("pt-BR");
 
   const handlePrint = () => {
     const printContent = printContentRef.current || document.getElementById("printable-folha-content");
@@ -118,7 +120,6 @@ export const FolhaPontoPrint: React.FC<FolhaPontoPrintProps> = ({
       return;
     }
 
-    // Use isolated iframe for 100% reliable print rendering without blank page issues
     const iframe = document.createElement("iframe");
     iframe.style.position = "fixed";
     iframe.style.right = "0";
@@ -145,97 +146,275 @@ export const FolhaPontoPrint: React.FC<FolhaPontoPrintProps> = ({
           <style>
             @page {
               size: A4 portrait;
-              margin: 8mm;
+              margin: 5mm 6mm;
             }
             * {
               box-sizing: border-box;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+              color-adjust: exact !important;
               font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             }
-            body {
+            html, body {
               margin: 0;
               padding: 0;
-              color: #000;
-              background: #fff;
-              font-size: 10px;
+              background: #ffffff !important;
+              color: #0f172a;
+              font-size: 8.5px;
+              line-height: 1.2;
+              width: 100%;
+              height: 100%;
+              overflow: hidden;
+            }
+            .page-container {
+              width: 100%;
+              max-width: 100%;
+              margin: 0 auto;
+              padding: 0;
+              page-break-inside: avoid;
+              page-break-after: avoid;
+            }
+            
+            /* Header */
+            .header-card {
+              border: 1.5px solid #0f172a;
+              border-radius: 6px;
+              padding: 6px 8px;
+              margin-bottom: 5px;
+              background: #ffffff;
+            }
+            .header-top {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              border-bottom: 1px solid #0f172a;
+              padding-bottom: 4px;
+              margin-bottom: 5px;
+            }
+            .company-name {
+              font-size: 11px;
+              font-weight: 900;
+              text-transform: uppercase;
+              color: #0f172a;
+              margin: 0 0 1px 0;
+              letter-spacing: -0.2px;
+            }
+            .company-sub {
+              font-size: 7.5px;
+              color: #475569;
+              margin: 0;
+              max-width: 480px;
+            }
+            .company-cnpj {
+              font-size: 8px;
+              font-weight: 800;
+              color: #0f172a;
+              margin-top: 1px;
+            }
+            .badge-box {
+              text-align: right;
+            }
+            .badge-title {
+              display: inline-block;
+              border: 1.5px solid #0f172a;
+              background: #f8fafc;
+              padding: 2px 8px;
+              font-size: 8.5px;
+              font-weight: 900;
+              text-transform: uppercase;
+              letter-spacing: 0.3px;
+              border-radius: 4px;
+            }
+            .badge-ref {
+              font-size: 8px;
+              color: #334155;
+              margin-top: 2px;
+              font-family: monospace;
+            }
+            
+            /* 4 Info Cards */
+            .info-grid {
+              display: grid;
+              grid-template-columns: repeat(4, 1fr);
+              gap: 5px;
+            }
+            .info-item {
+              border: 1px dashed #94a3b8;
+              background: #f8fafc;
+              border-radius: 4px;
+              padding: 3px 6px;
+            }
+            .info-item-label {
+              display: block;
+              font-size: 6.5px;
+              font-weight: 800;
+              text-transform: uppercase;
+              color: #64748b;
+              margin-bottom: 1px;
+            }
+            .info-item-val {
+              display: block;
+              font-size: 9px;
+              font-weight: 800;
+              color: #0f172a;
+              white-space: nowrap;
+              overflow: hidden;
+              text-overflow: ellipsis;
+            }
+
+            /* Table */
+            .table-container {
+              border: 1px solid #0f172a;
+              margin-bottom: 5px;
             }
             table {
               width: 100%;
               border-collapse: collapse;
+              table-layout: fixed;
             }
             th, td {
-              border: 1px solid #000;
-              padding: 3px 5px;
-              font-size: 9px;
+              border: 1px solid #0f172a;
+              padding: 1.5px 3px;
+              text-align: center;
+              font-size: 7.8px;
+              height: 14.5px;
+              line-height: 14.5px;
             }
             th {
-              background-color: #f1f5f9;
-              font-weight: 800;
-              text-transform: uppercase;
-            }
-            .header-box {
-              border: 1px solid #000;
-              padding: 10px;
-              margin-bottom: 10px;
-            }
-            .grid-4 {
-              display: grid;
-              grid-template-columns: repeat(4, 1fr);
-              gap: 8px;
-              margin-top: 8px;
-            }
-            .grid-2 {
-              display: grid;
-              grid-template-columns: repeat(2, 1fr);
-              gap: 12px;
-            }
-            .info-cell {
-              border: 1px dotted #94a3b8;
-              padding: 6px;
-              border-radius: 4px;
-            }
-            .info-label {
-              display: block;
-              font-size: 8px;
-              font-weight: bold;
-              text-transform: uppercase;
-              color: #64748b;
-            }
-            .info-value {
-              font-size: 10px;
-              font-weight: bold;
+              background-color: #f1f5f9 !important;
               color: #0f172a;
+              font-weight: 900;
+              font-size: 7.5px;
+              text-transform: uppercase;
+              letter-spacing: 0.2px;
+              border-bottom: 1.5px solid #0f172a;
             }
-            .totals-box {
-              border: 1px solid #000;
-              padding: 8px;
-              background-color: #f8fafc;
-              margin-top: 10px;
-              margin-bottom: 12px;
+            .th-day { width: 14%; text-align: left; padding-left: 4px; }
+            .th-time { width: 9.5%; }
+            .th-work { width: 12%; }
+            .th-saldo { width: 12%; }
+            .th-visto { width: 14%; text-align: left; }
+            
+            .td-day { text-align: left; font-weight: 700; font-family: monospace; font-size: 7.5px; padding-left: 4px; }
+            .td-day-weekend { color: #64748b; font-weight: normal; font-size: 7px; }
+            .td-weekend { background-color: #f8fafc !important; color: #64748b; font-style: italic; font-size: 7.2px; }
+            .td-semreg { color: #94a3b8; font-style: italic; font-size: 7.2px; }
+            .td-mono { font-family: monospace; font-weight: 700; font-size: 7.8px; }
+            .td-work { font-family: monospace; font-weight: 900; color: #0f172a; font-size: 7.8px; }
+            .td-saldo-pos { font-family: monospace; font-weight: 900; color: #047857; font-size: 7.8px; }
+            .td-saldo-neg { font-family: monospace; font-weight: 900; color: #c2410c; font-size: 7.8px; }
+            .td-empty { color: #94a3b8; font-family: monospace; font-size: 7.5px; }
+            .td-rubrica { color: #94a3b8; font-size: 7px; text-align: center; }
+
+            /* Summary Card */
+            .summary-card {
+              border: 1.5px solid #0f172a;
+              border-radius: 6px;
+              background: #f8fafc;
+              padding: 5px 8px;
+              margin-bottom: 6px;
+              display: flex;
+              justify-content: space-between;
+              gap: 10px;
             }
-            .signatures {
+            .summary-left {
+              width: 50%;
+            }
+            .summary-right {
+              width: 48%;
+              display: flex;
+              flex-direction: column;
+              justify-content: space-between;
+            }
+            .summary-title {
+              font-size: 8px;
+              font-weight: 900;
+              text-transform: uppercase;
+              color: #0f172a;
+              border-bottom: 1px solid #cbd5e1;
+              padding-bottom: 2px;
+              margin-bottom: 3px;
+            }
+            .summary-row {
+              display: flex;
+              justify-content: space-between;
+              font-family: monospace;
+              font-size: 7.5px;
+              color: #1e293b;
+              margin-bottom: 1.5px;
+            }
+            .summary-row-bold {
+              font-weight: 800;
+            }
+            .summary-row-total {
+              border-top: 1px solid #94a3b8;
+              padding-top: 2px;
+              margin-top: 2px;
+              font-size: 8.5px;
+              font-weight: 900;
+            }
+            .text-indigo { color: #4338ca; }
+            .text-amber { color: #b45309; }
+            .text-emerald { color: #047857; }
+            .text-rose { color: #be123c; }
+
+            .legal-text {
+              font-size: 6.8px;
+              text-align: justify;
+              color: #475569;
+              line-height: 1.25;
+              margin: 0;
+            }
+            .legal-footer {
+              font-size: 6.8px;
+              color: #64748b;
+              font-style: italic;
+              text-align: right;
+              font-family: monospace;
+              margin-top: 2px;
+            }
+
+            /* Signatures */
+            .signatures-grid {
               display: grid;
               grid-template-columns: 1fr 1fr;
-              gap: 32px;
+              gap: 20px;
               text-align: center;
-              margin-top: 24px;
+              margin-top: 6px;
+            }
+            .sig-box {
+              display: flex;
+              flex-direction: column;
+              align-items: center;
             }
             .sig-line {
-              border-bottom: 1px solid #000;
-              height: 24px;
-              margin-bottom: 6px;
+              width: 80%;
+              max-width: 220px;
+              border-bottom: 1px solid #0f172a;
+              height: 18px;
+              margin-bottom: 2px;
             }
-            .text-center { text-align: center; }
-            .text-right { text-align: right; }
-            .text-left { text-align: left; }
-            .font-mono { font-family: monospace; }
-            .font-bold { font-weight: bold; }
-            .font-black { font-weight: 900; }
-            .uppercase { text-transform: uppercase; }
-            .no-print { display: none !important; }
+            .sig-name {
+              font-size: 8.5px;
+              font-weight: 900;
+              text-transform: uppercase;
+              color: #0f172a;
+            }
+            .sig-role {
+              font-size: 7px;
+              color: #64748b;
+            }
+            .sig-doc {
+              font-size: 6.8px;
+              color: #64748b;
+              font-family: monospace;
+            }
           </style>
         </head>
         <body>
-          ${printContent.innerHTML}
+          <div class="page-container">
+            ${printContent.innerHTML}
+          </div>
         </body>
       </html>
     `);
@@ -253,61 +432,31 @@ export const FolhaPontoPrint: React.FC<FolhaPontoPrintProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto">
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 z-50 overflow-y-auto">
       
-      {/* CSS overrides for print-only scope */}
-      <style>{`
-        @media print {
-          @page {
-            size: A4 portrait;
-            margin: 8mm;
-          }
-          body {
-            background: white !important;
-          }
-          .no-print {
-            display: none !important;
-          }
-          #print-area-wrapper {
-            position: fixed !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: 100% !important;
-            height: auto !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            box-shadow: none !important;
-            border: none !important;
-            background: white !important;
-            overflow: visible !important;
-            z-index: 99999 !important;
-          }
-        }
-      `}</style>
-
       {/* Main Container */}
-      <div id="print-area-wrapper" className="bg-white rounded-2xl w-full max-w-4xl shadow-2xl border border-slate-250 flex flex-col max-h-[92vh]">
+      <div id="print-area-wrapper" className="bg-white rounded-2xl w-full max-w-4xl shadow-2xl border border-slate-200 flex flex-col max-h-[95vh]">
         
-        {/* Modal Header */}
-        <div className="no-print p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between rounded-t-2xl">
+        {/* Modal Header (Buttons & Controls) */}
+        <div className="no-print p-3.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between rounded-t-2xl">
           <div className="flex items-center gap-2">
             <ShieldCheck className="w-5 h-5 text-indigo-600 animate-pulse" />
             <div>
               <h3 className="text-sm font-bold text-slate-800">Visualização de Folha para Assinatura (CLT)</h3>
-              <p className="text-xxs text-slate-400">Verifique os dados apurados antes de enviar para impressão e assinatura dos colaboradores.</p>
+              <p className="text-xs text-slate-400">Layout ajustado em folha única A4 com cores e formatação completa para impressão/PDF.</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={handlePrint}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition shadow-sm cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white rounded-xl text-xs font-bold transition shadow-md shadow-indigo-200 cursor-pointer"
             >
               <Printer className="w-4 h-4" />
               Imprimir / Salvar PDF
             </button>
             <button
               onClick={onClose}
-              className="p-1.5 text-slate-400 hover:bg-slate-200 rounded-lg transition cursor-pointer"
+              className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-xl transition cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
@@ -315,70 +464,74 @@ export const FolhaPontoPrint: React.FC<FolhaPontoPrintProps> = ({
         </div>
 
         {/* Scalable Printable Document Body */}
-        <div className="flex-1 overflow-y-auto p-8 font-sans text-slate-800">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-100/50">
           
-          <div id="printable-folha-content" ref={printContentRef}>
+          <div 
+            id="printable-folha-content" 
+            ref={printContentRef}
+            className="bg-white p-4 sm:p-6 rounded-xl border border-slate-200 shadow-sm max-w-3xl mx-auto text-slate-900"
+          >
             {/* Header Layout Document */}
-            <div className="border border-black p-4 mb-4">
-              <div className="flex flex-col md:flex-row justify-between items-start md:items-center pb-3 border-b border-black gap-4 mb-3">
+            <div className="header-card border border-slate-900 rounded-lg p-3 mb-2.5 bg-white">
+              <div className="header-top flex justify-between items-center pb-2.5 mb-2.5 border-b border-slate-900 gap-2">
                 <div>
-                  <h1 className="text-sm font-black tracking-tight uppercase text-black">
-                    {companySettings?.name || "IMOBILIÁRIA"}
+                  <h1 className="company-name text-xs sm:text-sm font-black tracking-tight uppercase text-slate-900 m-0">
+                    {companySettings?.name || "FIDELITÉ NEGÓCIOS IMOBILIÁRIOS"}
                   </h1>
-                  <p className="text-[10px] text-slate-550 max-w-md">
-                    {companySettings?.address || "Endereço da Imobiliária"} {companySettings?.phone ? `| Tel: ${companySettings.phone}` : ""}
+                  <p className="company-sub text-[10px] text-slate-600 m-0 leading-tight">
+                    {companySettings?.address || "Rua Principal, Centro"} {companySettings?.phone ? `| Tel: ${companySettings.phone}` : ""}
                   </p>
                   {companySettings?.cnpj && (
-                    <p className="text-[10px] font-bold text-black mt-0.5">CNPJ: {companySettings.cnpj}</p>
+                    <p className="company-cnpj text-[10px] font-bold text-slate-900 mt-0.5 mb-0">CNPJ: {companySettings.cnpj}</p>
                   )}
                 </div>
-                <div className="md:text-right">
-                  <span className="inline-block px-3 py-1 border border-black text-[10px] font-bold tracking-wider uppercase text-black bg-slate-50">
+                <div className="badge-box text-right flex-shrink-0">
+                  <div className="badge-title inline-block px-2.5 py-1 border border-slate-900 text-[10px] font-black tracking-wider uppercase text-slate-900 bg-slate-50 rounded">
                     Espelho de Ponto Individual
-                  </span>
-                  <p className="text-[10px] text-slate-600 mt-1 font-mono">
-                    Referência: <strong>{formattedMonthName} / {year}</strong>
-                  </p>
+                  </div>
+                  <div className="badge-ref text-[9px] text-slate-600 mt-0.5 font-mono">
+                    Referência: <strong className="text-slate-900">{formattedMonthName} / {year}</strong>
+                  </div>
                 </div>
               </div>
 
               {/* Employee Block Fields */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
-                <div className="border border-dotted border-slate-400 p-2 rounded">
-                  <span className="block text-[8px] font-bold uppercase text-slate-400">Nome do Colaborador</span>
-                  <span className="font-extrabold text-slate-800 text-[11px]">{collaboratorName}</span>
+              <div className="info-grid grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="info-item border border-dashed border-slate-300 bg-slate-50/80 p-1.5 rounded">
+                  <span className="info-item-label block text-[8px] font-bold uppercase text-slate-500">Nome do Colaborador</span>
+                  <span className="info-item-val block font-black text-slate-900 text-[11px] truncate">{collaboratorName}</span>
                 </div>
-                <div className="border border-dotted border-slate-400 p-2 rounded">
-                  <span className="block text-[8px] font-bold uppercase text-slate-400">CPF do Colaborador</span>
-                  <span className="font-bold text-slate-800 text-[11px]">{collaborator?.cpf || "___.___.___-__"}</span>
+                <div className="info-item border border-dashed border-slate-300 bg-slate-50/80 p-1.5 rounded">
+                  <span className="info-item-label block text-[8px] font-bold uppercase text-slate-500">CPF do Colaborador</span>
+                  <span className="info-item-val block font-bold text-slate-800 text-[11px] font-mono">{collaborator?.cpf || "___.___.___-__"}</span>
                 </div>
-                <div className="border border-dotted border-slate-400 p-2 rounded">
-                  <span className="block text-[8px] font-bold uppercase text-slate-400">Função / Cargo</span>
-                  <span className="font-bold text-slate-800 text-[11px]">{getRoleLabel(collaborator)}</span>
+                <div className="info-item border border-dashed border-slate-300 bg-slate-50/80 p-1.5 rounded">
+                  <span className="info-item-label block text-[8px] font-bold uppercase text-slate-500">Função / Cargo</span>
+                  <span className="info-item-val block font-bold text-slate-800 text-[11px]">{getRoleLabel(collaborator)}</span>
                 </div>
-                <div className="border border-dotted border-slate-400 p-2 rounded">
-                  <span className="block text-[8px] font-bold uppercase text-slate-400">Jornada Diária Registrada</span>
-                  <span className="font-bold text-slate-800 text-[11px]">{formatMinutesToHoursFriendly(collaborator?.jornadaDiariaMinutos || 480)} / dia</span>
+                <div className="info-item border border-dashed border-slate-300 bg-slate-50/80 p-1.5 rounded">
+                  <span className="info-item-label block text-[8px] font-bold uppercase text-slate-500">Jornada Diária Registrada</span>
+                  <span className="info-item-val block font-bold text-slate-800 text-[11px]">{formatMinutesToHoursFriendly(collaborator?.jornadaDiariaMinutos || 480)} / dia</span>
                 </div>
               </div>
             </div>
 
             {/* Table Days Log */}
-            <div className="border-l border-r border-t border-black mb-4 overflow-x-auto">
-              <table className="w-full text-left text-black text-[10px] border-collapse min-w-[600px]">
+            <div className="table-container border border-slate-900 mb-2.5 overflow-hidden rounded-sm">
+              <table className="w-full text-left text-slate-900 text-[10px] border-collapse">
                 <thead>
-                  <tr className="bg-slate-100 border-b border-black font-black text-slate-800 text-xxs uppercase tracking-wider text-center">
-                    <th className="py-2 px-2 text-left border-r border-black w-28">Dia / Semana</th>
-                    <th className="py-2 px-1 border-r border-black w-16">Entrada</th>
-                    <th className="py-2 px-1 border-r border-black w-18">S. Almoço</th>
-                    <th className="py-2 px-1 border-r border-black w-18">R. Almoço</th>
-                    <th className="py-2 px-1 border-r border-black w-16">Saída</th>
-                    <th className="py-2 px-1 border-r border-black w-20">Trabalhado</th>
-                    <th className="py-2 px-1 border-r border-black w-20">Saldo Diário</th>
-                    <th className="py-2 px-2 text-left w-36">Visto / Rubrica</th>
+                  <tr className="bg-slate-100 border-b border-slate-900 font-black text-slate-900 text-[9px] uppercase tracking-wider text-center">
+                    <th className="th-day py-1 px-1.5 text-left border-r border-slate-900 w-[14%]">Dia / Semana</th>
+                    <th className="th-time py-1 px-1 border-r border-slate-900 w-[9.5%]">Entrada</th>
+                    <th className="th-time py-1 px-1 border-r border-slate-900 w-[9.5%]">S. Almoço</th>
+                    <th className="th-time py-1 px-1 border-r border-slate-900 w-[9.5%]">R. Almoço</th>
+                    <th className="th-time py-1 px-1 border-r border-slate-900 w-[9.5%]">Saída</th>
+                    <th className="th-work py-1 px-1 border-r border-slate-900 w-[12%]">Trabalhado</th>
+                    <th className="th-saldo py-1 px-1 border-r border-slate-900 w-[12%]">Saldo Diário</th>
+                    <th className="th-visto py-1 px-1.5 text-left w-[14%]">Visto / Rubrica</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-black/40">
+                <tbody className="divide-y divide-slate-300">
                   {diasDoMes.map(dia => {
                     const diaStr = String(dia).padStart(2, '0');
                     const pDate = `${year}-${String(month).padStart(2, '0')}-${diaStr}`;
@@ -388,16 +541,16 @@ export const FolhaPontoPrint: React.FC<FolhaPontoPrintProps> = ({
 
                     if (!reg) {
                       return (
-                        <tr key={dia} className={`h-7 hover:bg-slate-50/55 ${isWeekend ? "bg-slate-50" : ""}`}>
-                          <td className="py-1 px-2 font-mono font-bold border-r border-black">
-                            {diaStr}/{String(month).padStart(2, '0')} <span className="text-[8px] font-normal text-slate-500">({wName})</span>
+                        <tr key={dia} className={`h-4.5 ${isWeekend ? "bg-slate-50/80" : "bg-white"}`}>
+                          <td className="td-day py-0.5 px-1.5 font-mono font-bold border-r border-slate-900 text-[9px]">
+                            {diaStr}/{String(month).padStart(2, '0')} <span className="td-day-weekend text-[8px] font-normal text-slate-500">({wName})</span>
                           </td>
-                          <td colSpan={4} className="py-1 px-1 border-r border-black text-center text-slate-400 italic text-[9px]">
+                          <td colSpan={4} className={`td-weekend py-0.5 px-1 border-r border-slate-900 text-center italic text-[8.5px] ${isWeekend ? "text-slate-400" : "td-semreg text-slate-400"}`}>
                             {isWeekend ? "Fim de Semana" : "Sem Registro"}
                           </td>
-                          <td className="py-1 px-1 border-r border-black text-center text-slate-400 font-mono">--:--</td>
-                          <td className="py-1 px-1 border-r border-black text-center text-slate-400 font-mono">--:--</td>
-                          <td className="py-1 px-2 border-black/40 text-center text-slate-300">
+                          <td className="td-empty py-0.5 px-1 border-r border-slate-900 text-center text-slate-400 font-mono text-[8.5px]">--:--</td>
+                          <td className="td-empty py-0.5 px-1 border-r border-slate-900 text-center text-slate-400 font-mono text-[8.5px]">--:--</td>
+                          <td className="td-rubrica py-0.5 px-1.5 text-center text-slate-300">
                             {isWeekend ? "" : "________________"}
                           </td>
                         </tr>
@@ -411,21 +564,24 @@ export const FolhaPontoPrint: React.FC<FolhaPontoPrintProps> = ({
                       ? (reg.horasExtras >= 0 ? "+" : "") + formatMinutesToHHMM(reg.horasExtras) 
                       : "--:--";
 
+                    const isNegative = reg.horasExtras !== undefined && reg.horasExtras < 0;
+                    const isPositive = reg.horasExtras !== undefined && reg.horasExtras > 0;
+
                     return (
-                      <tr key={dia} className={`h-7 hover:bg-slate-50/55 ${isWeekend ? "bg-slate-50" : ""}`}>
-                        <td className="py-1 px-2 font-mono font-bold border-r border-black">
-                          {diaStr}/{String(month).padStart(2, '0')} <span className="text-[8px] font-bold text-slate-500">({wName})</span>
+                      <tr key={dia} className={`h-4.5 ${isWeekend ? "bg-slate-50/80" : "bg-white"}`}>
+                        <td className="td-day py-0.5 px-1.5 font-mono font-bold border-r border-slate-900 text-[9px]">
+                          {diaStr}/{String(month).padStart(2, '0')} <span className="td-day-weekend text-[8px] font-bold text-slate-600">({wName})</span>
                         </td>
-                        <td className="py-1 px-1 border-r border-black text-center font-semibold font-mono">{reg.entrada || "---"}</td>
-                        <td className="py-1 px-1 border-r border-black text-center font-semibold font-mono">{reg.saidaAlmoco || "---"}</td>
-                        <td className="py-1 px-1 border-r border-black text-center font-semibold font-mono">{reg.retornoAlmoco || "---"}</td>
-                        <td className="py-1 px-1 border-r border-black text-center font-semibold font-mono">{reg.saida || "---"}</td>
-                        <td className="py-1 px-1 border-r border-black text-center font-bold font-mono text-slate-900">{trabalhadoStr}</td>
-                        <td className={`py-1 px-1 border-r border-black text-center font-bold font-mono ${reg.horasExtras && reg.horasExtras < 0 ? "text-amber-700" : "text-emerald-850"}`}>
+                        <td className="td-mono py-0.5 px-1 border-r border-slate-900 text-center font-bold font-mono text-[9px] text-slate-800">{reg.entrada || "---"}</td>
+                        <td className="td-mono py-0.5 px-1 border-r border-slate-900 text-center font-bold font-mono text-[9px] text-slate-800">{reg.saidaAlmoco || "---"}</td>
+                        <td className="td-mono py-0.5 px-1 border-r border-slate-900 text-center font-bold font-mono text-[9px] text-slate-800">{reg.retornoAlmoco || "---"}</td>
+                        <td className="td-mono py-0.5 px-1 border-r border-slate-900 text-center font-bold font-mono text-[9px] text-slate-800">{reg.saida || "---"}</td>
+                        <td className="td-work py-0.5 px-1 border-r border-slate-900 text-center font-black font-mono text-[9px] text-slate-950">{trabalhadoStr}</td>
+                        <td className={`py-0.5 px-1 border-r border-slate-900 text-center font-black font-mono text-[9px] ${isNegative ? "td-saldo-neg text-amber-700" : isPositive ? "td-saldo-pos text-emerald-700" : "text-slate-600"}`}>
                           {saldoStr}
                         </td>
-                        <td className="py-1 px-2 border-black/40 text-center">
-                          <span className="text-slate-300 text-[8px]">________________</span>
+                        <td className="td-rubrica py-0.5 px-1.5 text-center text-slate-300">
+                          <span>________________</span>
                         </td>
                       </tr>
                     );
@@ -435,68 +591,66 @@ export const FolhaPontoPrint: React.FC<FolhaPontoPrintProps> = ({
             </div>
 
             {/* Resume and Legend Blocks */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border border-black p-3 mb-6 bg-slate-50 text-xs">
-              <div>
-                <h4 className="font-extrabold uppercase text-[10px] text-black border-b border-black pb-1 mb-2">Totais Consolidados do Período</h4>
-                <div className="space-y-1.5 font-mono text-[11px] text-slate-800">
-                  <div className="flex justify-between">
+            <div className="summary-card border border-slate-900 rounded-lg p-2.5 mb-2.5 bg-slate-50/90 text-[10px] flex flex-col sm:flex-row justify-between gap-3">
+              <div className="summary-left sm:w-1/2">
+                <h4 className="summary-title font-black uppercase text-[9px] text-slate-900 border-b border-slate-300 pb-1 mb-1.5">Totais Consolidados do Período</h4>
+                <div className="space-y-0.5 font-mono text-[9px] text-slate-800">
+                  <div className="summary-row flex justify-between">
                     <span>Dias Corridos de Escala:</span>
-                    <span className="font-bold">{totalDays} dias</span>
+                    <span className="summary-row-bold font-bold text-slate-900">{totalDays} dias</span>
                   </div>
-                  <div className="flex justify-between">
+                  <div className="summary-row flex justify-between">
                     <span>Dias com Apuração Efetiva:</span>
-                    <span className="font-bold">{diasTrabalhados} dias</span>
+                    <span className="summary-row-bold font-bold text-slate-900">{diasTrabalhados} dias</span>
                   </div>
-                  <div className="flex justify-between border-t border-dashed border-slate-300 pt-1">
+                  <div className="summary-row flex justify-between border-t border-dashed border-slate-300 pt-0.5">
                     <span>SOMA HORAS TRABALHADAS:</span>
-                    <span className="font-black text-black">{formatMinutesToHoursFriendly(totalTrabalhadas)} ({formatMinutesToHHMM(totalTrabalhadas)}h)</span>
+                    <span className="summary-row-bold font-black text-slate-950">{formatMinutesToHoursFriendly(totalTrabalhadas)} ({formatMinutesToHHMM(totalTrabalhadas)}h)</span>
                   </div>
-                  <div className="flex justify-between border-t border-dashed border-slate-300 pt-1">
+                  <div className="summary-row flex justify-between border-t border-dashed border-slate-300 pt-0.5">
                     <span>Banco Positivo Período (Extras):</span>
-                    <span className="font-bold text-indigo-700">+{formatMinutesToHHMM(totalExcedente)}h</span>
+                    <span className="summary-row-bold font-bold text-indigo-700 text-indigo">+{formatMinutesToHHMM(totalExcedente)}h</span>
                   </div>
-                  <div className="flex justify-between">
+                  <div className="summary-row flex justify-between">
                     <span>Banco Negativo Período (Faltas/Atrasos):</span>
-                    <span className="font-bold text-amber-600">-{formatMinutesToHHMM(totalDeficit)}h</span>
+                    <span className="summary-row-bold font-bold text-amber-600 text-amber">-{formatMinutesToHHMM(totalDeficit)}h</span>
                   </div>
-                  <div className="flex justify-between border-t border-slate-400 pt-1.5 text-xs font-black">
+                  <div className="summary-row summary-row-total flex justify-between border-t border-slate-400 pt-1 text-[10px] font-black">
                     <span>SALDO LÍQUIDO ACUMULADO:</span>
-                    <span className={`font-black ${totalSaldoNet >= 0 ? "text-emerald-700" : "text-rose-600"}`}>
+                    <span className={`font-black ${totalSaldoNet >= 0 ? "text-emerald-700 text-emerald" : "text-rose-600 text-rose"}`}>
                       {totalSaldoNet >= 0 ? "+" : ""}{formatMinutesToHHMM(totalSaldoNet)}
                     </span>
                   </div>
                 </div>
               </div>
 
-              <div className="flex flex-col justify-between">
+              <div className="summary-right sm:w-1/2 flex flex-col justify-between">
                 <div>
-                  <h4 className="font-extrabold uppercase text-[10px] text-black border-b border-black pb-1 mb-2">Declaração Legitimidade de Jornada</h4>
-                  <p className="text-[9px] text-justify text-slate-600 leading-relaxed">
+                  <h4 className="summary-title font-black uppercase text-[9px] text-slate-900 border-b border-slate-300 pb-1 mb-1.5">Declaração Legitimidade de Jornada</h4>
+                  <p className="legal-text text-[8px] text-justify text-slate-600 leading-tight m-0">
                     Declaro que as informações constantes neste relatório de espelho de ponto eletrônico são a expressão da verdade operacional, correspondendo integralmente aos horários e intervalos por mim praticados e registrados no sistema de controle eletrônico durante o período de referência, para fins do disposto no Artigo 74 da CLT e normas vigentes do MTE.
                   </p>
                 </div>
-                <div className="text-[9px] text-slate-400 mt-4 text-right font-mono italic">
-                  Ponto Eletrônico CLT | Emitido em: {new Date().toLocaleDateString("pt-BR")} às {new Date().toLocaleTimeString("pt-BR")}
+                <div className="legal-footer text-[8px] text-slate-400 mt-1 text-right font-mono italic">
+                  Ponto Eletrônico CLT | Emitido em: {emissionDateStr} às {emissionTimeStr}
                 </div>
               </div>
             </div>
 
             {/* Signature Box Section */}
-            <div className="mt-8 pt-8">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 text-center text-xs">
-                <div className="flex flex-col items-center">
-                  <div className="w-64 border-b border-black h-8 mb-2"></div>
-                  <span className="font-bold uppercase text-black">{collaboratorName}</span>
-                  <span className="text-[10px] text-slate-500">Assinatura do Colaborador</span>
-                  {collaborator?.cpf && <span className="text-[9px] text-slate-400 font-mono mt-0.5">CPF: {collaborator.cpf}</span>}
-                </div>
+            <div className="signatures-grid grid grid-cols-2 gap-4 text-center mt-3 pt-1">
+              <div className="sig-box flex flex-col items-center">
+                <div className="sig-line w-48 sm:w-56 border-b border-slate-900 h-5 mb-1"></div>
+                <span className="sig-name font-black uppercase text-slate-900 text-[10px]">{collaboratorName}</span>
+                <span className="sig-role text-[8px] text-slate-500">Assinatura do Colaborador</span>
+                {collaborator?.cpf && <span className="sig-doc text-[8px] text-slate-400 font-mono mt-0.5">CPF: {collaborator.cpf}</span>}
+              </div>
 
-                <div className="flex flex-col items-center">
-                  <div className="w-64 border-b border-black h-8 mb-2"></div>
-                  <span className="font-bold uppercase text-black">{companySettings?.name || "IMOBILIÁRIA / EMPREGADOR"}</span>
-                  <span className="text-[10px] text-slate-500">Representante do Empregador</span>
-                  {companySettings?.cnpj && <span className="text-[9px] text-slate-400 font-mono mt-0.5">CNPJ: {companySettings.cnpj}</span>}
-                </div>
+              <div className="sig-box flex flex-col items-center">
+                <div className="sig-line w-48 sm:w-56 border-b border-slate-900 h-5 mb-1"></div>
+                <span className="sig-name font-black uppercase text-slate-900 text-[10px]">{companySettings?.name || "FIDELITÉ NEGÓCIOS IMOBILIÁRIOS"}</span>
+                <span className="sig-role text-[8px] text-slate-500">Representante do Empregador</span>
+                {companySettings?.cnpj && <span className="sig-doc text-[8px] text-slate-400 font-mono mt-0.5">CNPJ: {companySettings.cnpj}</span>}
               </div>
             </div>
           </div>
@@ -507,4 +661,3 @@ export const FolhaPontoPrint: React.FC<FolhaPontoPrintProps> = ({
     </div>
   );
 };
-
