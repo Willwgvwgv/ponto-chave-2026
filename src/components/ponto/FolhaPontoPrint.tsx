@@ -146,7 +146,7 @@ export const FolhaPontoPrint: React.FC<FolhaPontoPrintProps> = ({
           <style>
             @page {
               size: A4 portrait;
-              margin: 5mm 6mm;
+              margin: 4mm 6mm;
             }
             * {
               box-sizing: border-box;
@@ -160,8 +160,8 @@ export const FolhaPontoPrint: React.FC<FolhaPontoPrintProps> = ({
               padding: 0;
               background: #ffffff !important;
               color: #0f172a;
-              font-size: 8.5px;
-              line-height: 1.2;
+              font-size: 8.2px;
+              line-height: 1.15;
               width: 100%;
               height: 100%;
               overflow: hidden;
@@ -178,9 +178,9 @@ export const FolhaPontoPrint: React.FC<FolhaPontoPrintProps> = ({
             /* Header */
             .header-card {
               border: 1.5px solid #0f172a;
-              border-radius: 6px;
-              padding: 6px 8px;
-              margin-bottom: 5px;
+              border-radius: 5px;
+              padding: 4px 7px;
+              margin-bottom: 4px;
               background: #ffffff;
             }
             .header-top {
@@ -188,11 +188,11 @@ export const FolhaPontoPrint: React.FC<FolhaPontoPrintProps> = ({
               justify-content: space-between;
               align-items: center;
               border-bottom: 1px solid #0f172a;
-              padding-bottom: 4px;
-              margin-bottom: 5px;
+              padding-bottom: 3px;
+              margin-bottom: 4px;
             }
             .company-name {
-              font-size: 11px;
+              font-size: 10.5px;
               font-weight: 900;
               text-transform: uppercase;
               color: #0f172a;
@@ -200,13 +200,13 @@ export const FolhaPontoPrint: React.FC<FolhaPontoPrintProps> = ({
               letter-spacing: -0.2px;
             }
             .company-sub {
-              font-size: 7.5px;
+              font-size: 7.2px;
               color: #475569;
               margin: 0;
               max-width: 480px;
             }
             .company-cnpj {
-              font-size: 8px;
+              font-size: 7.8px;
               font-weight: 800;
               color: #0f172a;
               margin-top: 1px;
@@ -218,17 +218,17 @@ export const FolhaPontoPrint: React.FC<FolhaPontoPrintProps> = ({
               display: inline-block;
               border: 1.5px solid #0f172a;
               background: #f8fafc;
-              padding: 2px 8px;
-              font-size: 8.5px;
+              padding: 1.5px 7px;
+              font-size: 8px;
               font-weight: 900;
               text-transform: uppercase;
               letter-spacing: 0.3px;
               border-radius: 4px;
             }
             .badge-ref {
-              font-size: 8px;
+              font-size: 7.5px;
               color: #334155;
-              margin-top: 2px;
+              margin-top: 1.5px;
               font-family: monospace;
             }
             
@@ -236,25 +236,25 @@ export const FolhaPontoPrint: React.FC<FolhaPontoPrintProps> = ({
             .info-grid {
               display: grid;
               grid-template-columns: repeat(4, 1fr);
-              gap: 5px;
+              gap: 4px;
             }
             .info-item {
               border: 1px dashed #94a3b8;
               background: #f8fafc;
               border-radius: 4px;
-              padding: 3px 6px;
+              padding: 2.5px 5px;
             }
             .info-item-label {
               display: block;
-              font-size: 6.5px;
+              font-size: 6.2px;
               font-weight: 800;
               text-transform: uppercase;
               color: #64748b;
-              margin-bottom: 1px;
+              margin-bottom: 0.5px;
             }
             .info-item-val {
               display: block;
-              font-size: 9px;
+              font-size: 8.5px;
               font-weight: 800;
               color: #0f172a;
               white-space: nowrap;
@@ -265,7 +265,7 @@ export const FolhaPontoPrint: React.FC<FolhaPontoPrintProps> = ({
             /* Table */
             .table-container {
               border: 1px solid #0f172a;
-              margin-bottom: 5px;
+              margin-bottom: 4px;
             }
             table {
               width: 100%;
@@ -274,45 +274,45 @@ export const FolhaPontoPrint: React.FC<FolhaPontoPrintProps> = ({
             }
             th, td {
               border: 1px solid #0f172a;
-              padding: 1.5px 3px;
+              padding: 1px 2px;
               text-align: center;
-              font-size: 7.8px;
-              height: 14.5px;
-              line-height: 14.5px;
+              font-size: 7.4px;
+              height: 13.2px;
+              line-height: 13.2px;
             }
             th {
               background-color: #f1f5f9 !important;
               color: #0f172a;
               font-weight: 900;
-              font-size: 7.5px;
+              font-size: 7.2px;
               text-transform: uppercase;
               letter-spacing: 0.2px;
               border-bottom: 1.5px solid #0f172a;
             }
-            .th-day { width: 14%; text-align: left; padding-left: 4px; }
+            .th-day { width: 14%; text-align: left; padding-left: 3px; }
             .th-time { width: 9.5%; }
             .th-work { width: 12%; }
             .th-saldo { width: 12%; }
             .th-visto { width: 14%; text-align: left; }
             
-            .td-day { text-align: left; font-weight: 700; font-family: monospace; font-size: 7.5px; padding-left: 4px; }
-            .td-day-weekend { color: #64748b; font-weight: normal; font-size: 7px; }
-            .td-weekend { background-color: #f8fafc !important; color: #64748b; font-style: italic; font-size: 7.2px; }
-            .td-semreg { color: #94a3b8; font-style: italic; font-size: 7.2px; }
-            .td-mono { font-family: monospace; font-weight: 700; font-size: 7.8px; }
-            .td-work { font-family: monospace; font-weight: 900; color: #0f172a; font-size: 7.8px; }
-            .td-saldo-pos { font-family: monospace; font-weight: 900; color: #047857; font-size: 7.8px; }
-            .td-saldo-neg { font-family: monospace; font-weight: 900; color: #c2410c; font-size: 7.8px; }
-            .td-empty { color: #94a3b8; font-family: monospace; font-size: 7.5px; }
-            .td-rubrica { color: #94a3b8; font-size: 7px; text-align: center; }
+            .td-day { text-align: left; font-weight: 700; font-family: monospace; font-size: 7.2px; padding-left: 3px; }
+            .td-day-weekend { color: #64748b; font-weight: normal; font-size: 6.8px; }
+            .td-weekend { background-color: #f8fafc !important; color: #64748b; font-style: italic; font-size: 7px; }
+            .td-semreg { color: #94a3b8; font-style: italic; font-size: 7px; }
+            .td-mono { font-family: monospace; font-weight: 700; font-size: 7.4px; }
+            .td-work { font-family: monospace; font-weight: 900; color: #0f172a; font-size: 7.4px; }
+            .td-saldo-pos { font-family: monospace; font-weight: 900; color: #047857; font-size: 7.4px; }
+            .td-saldo-neg { font-family: monospace; font-weight: 900; color: #c2410c; font-size: 7.4px; }
+            .td-empty { color: #94a3b8; font-family: monospace; font-size: 7.2px; }
+            .td-rubrica { color: #94a3b8; font-size: 6.8px; text-align: center; }
 
             /* Summary Card */
             .summary-card {
               border: 1.5px solid #0f172a;
-              border-radius: 6px;
+              border-radius: 5px;
               background: #f8fafc;
-              padding: 5px 8px;
-              margin-bottom: 6px;
+              padding: 4px 7px;
+              margin-bottom: 5px;
               display: flex;
               justify-content: space-between;
               gap: 10px;
@@ -327,30 +327,30 @@ export const FolhaPontoPrint: React.FC<FolhaPontoPrintProps> = ({
               justify-content: space-between;
             }
             .summary-title {
-              font-size: 8px;
+              font-size: 7.8px;
               font-weight: 900;
               text-transform: uppercase;
               color: #0f172a;
               border-bottom: 1px solid #cbd5e1;
-              padding-bottom: 2px;
-              margin-bottom: 3px;
+              padding-bottom: 1.5px;
+              margin-bottom: 2.5px;
             }
             .summary-row {
               display: flex;
               justify-content: space-between;
               font-family: monospace;
-              font-size: 7.5px;
+              font-size: 7.2px;
               color: #1e293b;
-              margin-bottom: 1.5px;
+              margin-bottom: 1px;
             }
             .summary-row-bold {
               font-weight: 800;
             }
             .summary-row-total {
               border-top: 1px solid #94a3b8;
-              padding-top: 2px;
-              margin-top: 2px;
-              font-size: 8.5px;
+              padding-top: 1.5px;
+              margin-top: 1.5px;
+              font-size: 8px;
               font-weight: 900;
             }
             .text-indigo { color: #4338ca; }
@@ -359,14 +359,14 @@ export const FolhaPontoPrint: React.FC<FolhaPontoPrintProps> = ({
             .text-rose { color: #be123c; }
 
             .legal-text {
-              font-size: 6.8px;
+              font-size: 6.5px;
               text-align: justify;
               color: #475569;
-              line-height: 1.25;
+              line-height: 1.2;
               margin: 0;
             }
             .legal-footer {
-              font-size: 6.8px;
+              font-size: 6.5px;
               color: #64748b;
               font-style: italic;
               text-align: right;
@@ -374,13 +374,14 @@ export const FolhaPontoPrint: React.FC<FolhaPontoPrintProps> = ({
               margin-top: 2px;
             }
 
-            /* Signatures */
+            /* Signatures - Generous signature height with plenty of room above line */
             .signatures-grid {
               display: grid;
               grid-template-columns: 1fr 1fr;
-              gap: 20px;
+              gap: 24px;
               text-align: center;
-              margin-top: 6px;
+              margin-top: 10px;
+              padding-top: 4px;
             }
             .sig-box {
               display: flex;
@@ -388,11 +389,11 @@ export const FolhaPontoPrint: React.FC<FolhaPontoPrintProps> = ({
               align-items: center;
             }
             .sig-line {
-              width: 80%;
-              max-width: 220px;
-              border-bottom: 1px solid #0f172a;
-              height: 18px;
-              margin-bottom: 2px;
+              width: 85%;
+              max-width: 240px;
+              border-bottom: 1.2px solid #0f172a;
+              height: 38px;
+              margin-bottom: 3px;
             }
             .sig-name {
               font-size: 8.5px;
@@ -405,7 +406,7 @@ export const FolhaPontoPrint: React.FC<FolhaPontoPrintProps> = ({
               color: #64748b;
             }
             .sig-doc {
-              font-size: 6.8px;
+              font-size: 6.5px;
               color: #64748b;
               font-family: monospace;
             }
@@ -638,18 +639,18 @@ export const FolhaPontoPrint: React.FC<FolhaPontoPrintProps> = ({
             </div>
 
             {/* Signature Box Section */}
-            <div className="signatures-grid grid grid-cols-2 gap-4 text-center mt-3 pt-1">
+            <div className="signatures-grid grid grid-cols-2 gap-6 text-center mt-5 pt-2">
               <div className="sig-box flex flex-col items-center">
-                <div className="sig-line w-48 sm:w-56 border-b border-slate-900 h-5 mb-1"></div>
-                <span className="sig-name font-black uppercase text-slate-900 text-[10px]">{collaboratorName}</span>
-                <span className="sig-role text-[8px] text-slate-500">Assinatura do Colaborador</span>
+                <div className="sig-line w-52 sm:w-64 border-b-[1.5px] border-slate-900 h-10 mb-1.5"></div>
+                <span className="sig-name font-black uppercase text-slate-900 text-[10.5px] tracking-tight">{collaboratorName}</span>
+                <span className="sig-role text-[8.5px] text-slate-500 font-medium">Assinatura do Colaborador</span>
                 {collaborator?.cpf && <span className="sig-doc text-[8px] text-slate-400 font-mono mt-0.5">CPF: {collaborator.cpf}</span>}
               </div>
 
               <div className="sig-box flex flex-col items-center">
-                <div className="sig-line w-48 sm:w-56 border-b border-slate-900 h-5 mb-1"></div>
-                <span className="sig-name font-black uppercase text-slate-900 text-[10px]">{companySettings?.name || "FIDELITÉ NEGÓCIOS IMOBILIÁRIOS"}</span>
-                <span className="sig-role text-[8px] text-slate-500">Representante do Empregador</span>
+                <div className="sig-line w-52 sm:w-64 border-b-[1.5px] border-slate-900 h-10 mb-1.5"></div>
+                <span className="sig-name font-black uppercase text-slate-900 text-[10.5px] tracking-tight">{companySettings?.name || "FIDELITÉ NEGÓCIOS IMOBILIÁRIOS"}</span>
+                <span className="sig-role text-[8.5px] text-slate-500 font-medium">Representante do Empregador</span>
                 {companySettings?.cnpj && <span className="sig-doc text-[8px] text-slate-400 font-mono mt-0.5">CNPJ: {companySettings.cnpj}</span>}
               </div>
             </div>
