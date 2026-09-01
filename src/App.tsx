@@ -98,7 +98,8 @@ const HidrometroView = lazy(() => import('./components/hidrometro/HidrometroView
 const PropostaBellaWhiteView = lazy(() => import('./components/PropostaBellaWhiteView').then(m => ({ default: m.PropostaBellaWhiteView })));
 import { PontoHeaderCapsule } from "./components/ponto/PontoHeaderCapsule";
 import { ConfirmModal } from './components/ui/ConfirmModal';
-import { Task, Priority, Tool, RecurrenceType, UserProfile, ProcessInstance, CompanySettings, ProcessTemplate, ProcessStep, KanbanColumn } from "./types";
+import { Task, Priority, Tool, RecurrenceType, UserProfile, ProcessInstance, CompanySettings, ProcessTemplate, ProcessStep, KanbanColumn, EscalaTipo, JornadaDiasConfig } from "./types";
+import { ESCALAS_PREDEFINIDAS, getExpectedDailyMinutes, getJornadaDescription } from "./utils/jornadaUtils";
 import { 
   auth, 
   db, 
@@ -1227,6 +1228,33 @@ const UserManagement = ({
       
       const userRef = doc(db, "users", docId);
       const permissions = editingUserProfile.permissions || [];
+
+      const selectedEscalaId = editingUserProfile.escalaTipo || '44h_seg_sex_8h_sab_4h';
+      const matchedPreset = ESCALAS_PREDEFINIDAS.find(e => e.id === selectedEscalaId);
+      
+      let finalJornadaDias: JornadaDiasConfig;
+      let finalSemanalHoras = 44;
+      let finalDescricao = '';
+      let finalDiariaMinutos = 480;
+
+      if (selectedEscalaId === 'personalizado') {
+        finalJornadaDias = editingUserProfile.jornadaDias || { seg: 480, ter: 480, qua: 480, qui: 480, sex: 480, sab: 240, dom: 0 };
+        const totalMin = Object.values(finalJornadaDias).reduce((a, b) => a + Number(b || 0), 0);
+        finalSemanalHoras = Math.round((totalMin / 60) * 10) / 10;
+        finalDiariaMinutos = finalJornadaDias.seg || 480;
+        finalDescricao = `${finalSemanalHoras}h semanais personalizada`;
+      } else if (matchedPreset) {
+        finalJornadaDias = matchedPreset.dias;
+        finalSemanalHoras = matchedPreset.semanalHoras;
+        finalDescricao = matchedPreset.shortLabel;
+        finalDiariaMinutos = matchedPreset.diariaBase;
+      } else {
+        finalJornadaDias = { seg: 480, ter: 480, qua: 480, qui: 480, sex: 480, sab: 240, dom: 0 };
+        finalSemanalHoras = 44;
+        finalDescricao = '44h semanais (Seg a Sex 8h + Sáb 4h)';
+        finalDiariaMinutos = 480;
+      }
+
       const updates: Partial<UserProfile> = {
         displayName: editingUserProfile.displayName,
         email: editingUserProfile.email ? editingUserProfile.email.trim().toLowerCase() : "",
@@ -1245,7 +1273,11 @@ const UserManagement = ({
         perm_processos: permissions.includes("processos"),
         permPonto: editingUserProfile.permPonto ?? true,
         perm_ponto: editingUserProfile.permPonto ?? true,
-        jornadaDiariaMinutos: Number(editingUserProfile.jornadaDiariaMinutos) || 480
+        jornadaDiariaMinutos: finalDiariaMinutos,
+        jornadaSemanalHoras: finalSemanalHoras,
+        escalaTipo: selectedEscalaId,
+        jornadaDias: finalJornadaDias,
+        escalaDescricao: finalDescricao
       };
       
       await updateDoc(userRef, updates);
@@ -2175,11 +2207,11 @@ const UserManagement = ({
                   </div>
                 </div>
 
-                {/* Card 4 — Ponto Eletrônico CLT */}
+                {/* Card 4 — Ponto Eletrônico CLT & Carga Horária Semanal */}
                 <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 transition-all hover:border-slate-200 space-y-3">
                   <div className="flex items-center gap-2 mb-1">
                     <Clock className="w-4 h-4 text-orange-500" />
-                    <span className="text-[11px] font-bold text-slate-900 uppercase tracking-wider">Ponto Eletrônico CLT</span>
+                    <span className="text-[11px] font-bold text-slate-900 uppercase tracking-wider">Ponto Eletrônico CLT & Carga Horária</span>
                   </div>
 
                   <div className="flex items-center justify-between p-2 pb-2.5 pt-2.5 bg-white rounded-xl border border-slate-200 hover:border-slate-300 transition-all">
@@ -2198,24 +2230,135 @@ const UserManagement = ({
                   </div>
 
                   {(editingUserProfile.permPonto !== false) && (
-                    <div className="space-y-1.5 animate-in fade-in slide-in-from-top-2 duration-350">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">
-                        Jornada Diária (Minutos)
-                      </label>
-                      <input
-                        type="number"
-                        min="1"
-                        max="1440"
-                        value={editingUserProfile.jornadaDiariaMinutos ?? 480}
-                        onChange={(e) => setEditingUserProfile({ 
-                          ...editingUserProfile, 
-                          jornadaDiariaMinutos: Number(e.target.value) || 480 
-                        })}
-                        className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-xs font-bold text-slate-700 font-mono"
-                      />
-                      <span className="text-[8.5px] text-slate-400 font-semibold block leading-normal">
-                        Padrão: 480 minutos (8 horas). Corresponde a {((editingUserProfile.jornadaDiariaMinutos ?? 480) / 60).toFixed(1)}h por dia.
-                      </span>
+                    <div className="space-y-3 animate-in fade-in slide-in-from-top-2 duration-350 pt-1">
+                      {/* Seleção da Escala Semanal */}
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block flex items-center justify-between">
+                          <span>Escala & Horas Semanais</span>
+                          <span className="text-blue-600 font-bold lowercase font-mono">
+                            {editingUserProfile.escalaTipo === 'personalizado' 
+                              ? `${((Object.values(editingUserProfile.jornadaDias || { seg: 480, ter: 480, qua: 480, qui: 480, sex: 480, sab: 240, dom: 0 }) as number[]).reduce((a: number, b: number) => a + Number(b || 0), 0) / 60).toFixed(0)}h semanais`
+                              : (ESCALAS_PREDEFINIDAS.find(e => e.id === (editingUserProfile.escalaTipo || '44h_seg_sex_8h_sab_4h'))?.semanalHoras || 44) + 'h semanais'}
+                          </span>
+                        </label>
+                        <select
+                          value={editingUserProfile.escalaTipo || '44h_seg_sex_8h_sab_4h'}
+                          onChange={(e) => {
+                            const newTipo = e.target.value as EscalaTipo;
+                            const matched = ESCALAS_PREDEFINIDAS.find(p => p.id === newTipo);
+                            if (matched && matched.id !== 'personalizado') {
+                              setEditingUserProfile({
+                                ...editingUserProfile,
+                                escalaTipo: newTipo,
+                                jornadaSemanalHoras: matched.semanalHoras,
+                                jornadaDias: matched.dias,
+                                jornadaDiariaMinutos: matched.diariaBase,
+                                escalaDescricao: matched.shortLabel
+                              });
+                            } else {
+                              setEditingUserProfile({
+                                ...editingUserProfile,
+                                escalaTipo: 'personalizado',
+                                jornadaDias: editingUserProfile.jornadaDias || { seg: 480, ter: 480, qua: 480, qui: 480, sex: 480, sab: 240, dom: 0 }
+                              });
+                            }
+                          }}
+                          className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-xs font-bold text-slate-800"
+                        >
+                          {ESCALAS_PREDEFINIDAS.map(p => (
+                            <option key={p.id} value={p.id}>{p.label}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Exibição detalhada dos dias / Configuração */}
+                      {editingUserProfile.escalaTipo === 'personalizado' ? (
+                        <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-2">
+                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">
+                            Horas por dia da semana (em horas)
+                          </span>
+                          <div className="grid grid-cols-7 gap-1 text-center">
+                            {[
+                              { key: 'seg' as const, label: 'Seg' },
+                              { key: 'ter' as const, label: 'Ter' },
+                              { key: 'qua' as const, label: 'Qua' },
+                              { key: 'qui' as const, label: 'Qui' },
+                              { key: 'sex' as const, label: 'Sex' },
+                              { key: 'sab' as const, label: 'Sáb' },
+                              { key: 'dom' as const, label: 'Dom' }
+                            ].map(({ key, label }) => {
+                              const dias = editingUserProfile.jornadaDias || { seg: 480, ter: 480, qua: 480, qui: 480, sex: 480, sab: 240, dom: 0 };
+                              const valMin = dias[key] ?? 0;
+                              const valH = (valMin / 60).toString();
+                              return (
+                                <div key={key} className="space-y-1">
+                                  <span className="text-[9px] font-bold text-slate-500 block uppercase">{label}</span>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max="24"
+                                    step="0.5"
+                                    value={valH}
+                                    onChange={(e) => {
+                                      const hours = parseFloat(e.target.value) || 0;
+                                      const newDias = { ...dias, [key]: Math.round(hours * 60) };
+                                      setEditingUserProfile({
+                                        ...editingUserProfile,
+                                        jornadaDias: newDias
+                                      });
+                                    }}
+                                    className="w-full text-center py-1 px-0.5 border border-slate-200 rounded-lg text-[11px] font-bold text-slate-700 font-mono bg-slate-50 focus:bg-white focus:ring-1 focus:ring-blue-500"
+                                  />
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="bg-white p-2.5 rounded-xl border border-slate-200/90 shadow-2xs space-y-2">
+                          <div className="flex items-center justify-between text-xxs font-bold text-slate-500 uppercase border-b border-slate-100 pb-1.5">
+                            <span>Distribuição da Carga Horária</span>
+                            <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md font-extrabold">
+                              {ESCALAS_PREDEFINIDAS.find(e => e.id === (editingUserProfile.escalaTipo || '44h_seg_sex_8h_sab_4h'))?.semanalHoras || 44}h Semanais
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-7 gap-1 text-center pt-0.5">
+                            {[
+                              { label: 'Seg', diaKey: 'seg' as const },
+                              { label: 'Ter', diaKey: 'ter' as const },
+                              { label: 'Qua', diaKey: 'qua' as const },
+                              { label: 'Qui', diaKey: 'qui' as const },
+                              { label: 'Sex', diaKey: 'sex' as const },
+                              { label: 'Sáb', diaKey: 'sab' as const },
+                              { label: 'Dom', diaKey: 'dom' as const }
+                            ].map(({ label, diaKey }) => {
+                              const escalaId = editingUserProfile.escalaTipo || '44h_seg_sex_8h_sab_4h';
+                              const preset = ESCALAS_PREDEFINIDAS.find(e => e.id === escalaId);
+                              const min = preset?.dias[diaKey] ?? (diaKey === 'dom' ? 0 : diaKey === 'sab' ? 240 : 480);
+                              const isWork = min > 0;
+                              return (
+                                <div key={label} className={`py-1 px-0.5 rounded-lg border text-center ${isWork ? 'bg-blue-50/60 border-blue-100 text-blue-900' : 'bg-slate-50 border-slate-100 text-slate-400'}`}>
+                                  <div className="text-[8.5px] font-bold uppercase">{label}</div>
+                                  <div className="text-[10.5px] font-extrabold font-mono mt-0.5">
+                                    {isWork ? `${(min / 60).toFixed(min % 60 === 0 ? 0 : 1)}h` : 'Folga'}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          <p className="text-[9px] text-slate-500 font-medium leading-tight pt-1">
+                            {editingUserProfile.escalaTipo === '44h_seg_sex_8h_sab_4h' || !editingUserProfile.escalaTipo
+                              ? '• Segunda a Sexta: 8h/dia | Sábado: 4h (ex: 08:00 às 12:00) | Total: 44h semanais.'
+                              : editingUserProfile.escalaTipo === '44h_seg_sex_8h48'
+                              ? '• Segunda a Sexta: 8h48m/dia (compensação do sábado) | Sábado e Domingo livres.'
+                              : editingUserProfile.escalaTipo === '40h_seg_sex_8h'
+                              ? '• Segunda a Sexta: 8h/dia | Sábado e Domingo livres | Total: 40h semanais.'
+                              : '• Carga horária ajustada conforme regulamentação da função.'}
+                          </p>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

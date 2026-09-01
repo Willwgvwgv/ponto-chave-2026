@@ -12,10 +12,11 @@ import {
   ChevronRight,
   CheckCircle2
 } from "lucide-react";
-import { useTeam, usePontoMes } from "../../hooks/useQueries";
+import { useTeam, usePontoMes, calcularHoras } from "../../hooks/useQueries";
 import { UserProfile, PontoRegistro, CompanySettings } from "../../types";
 import { formatMinutesToHHMM, formatMinutesToHoursFriendly } from "./MeuEspelho";
 import { FolhaPontoPrint } from "./FolhaPontoPrint";
+import { getJornadaDescription, getExpectedDailyMinutes } from "../../utils/jornadaUtils";
 
 interface GestaoPontoProps {
   profile: UserProfile | null;
@@ -93,22 +94,23 @@ export const GestaoPonto: React.FC<GestaoPontoProps> = ({ profile, companySettin
     let diasTrabalhados = 0;
 
     registros.forEach(r => {
-      if (r.horasTrabalhadas !== undefined) {
-        totalTrabalhadas += r.horasTrabalhadas;
+      const calc = calcularHoras(r, selectedCollaborator || 480, r.date);
+      if (calc.trabalhadas > 0 || r.horasTrabalhadas) {
+        const worked = calc.trabalhadas || r.horasTrabalhadas || 0;
+        const extra = calc.extras !== undefined ? calc.extras : (r.horasExtras || 0);
+        totalTrabalhadas += worked;
         diasTrabalhados++;
-      }
-      if (r.horasExtras !== undefined) {
-        totalSaldoNet += r.horasExtras;
-        if (r.horasExtras > 0) {
-          totalExtrasPositivas += r.horasExtras;
+        totalSaldoNet += extra;
+        if (extra > 0) {
+          totalExtrasPositivas += extra;
         } else {
-          totalFaltasNegativas += Math.abs(r.horasExtras);
+          totalFaltasNegativas += Math.abs(extra);
         }
       }
     });
 
     return { totalTrabalhadas, totalExtrasPositivas, totalFaltasNegativas, totalSaldoNet, diasTrabalhados };
-  }, [registros]);
+  }, [registros, selectedCollaborator]);
 
   const getWeekDayName = (dateStr: string) => {
     const d = new Date(dateStr + "T00:00:00");
@@ -129,14 +131,18 @@ export const GestaoPonto: React.FC<GestaoPontoProps> = ({ profile, companySettin
       const wName = getWeekDayName(pDate);
       
       if (reg) {
+        const calc = calcularHoras(reg, selectedCollaborator || 480, pDate);
+        const worked = calc.trabalhadas || reg.horasTrabalhadas || 0;
+        const extra = calc.extras !== undefined ? calc.extras : (reg.horasExtras || 0);
+
         const row = [
           `${diaStr}/${String(selectedMonth).padStart(2, '0')}/${selectedYear} (${wName})`,
           reg.entrada || "",
           reg.saidaAlmoco || "",
           reg.retornoAlmoco || "",
           reg.saida || "",
-          reg.horasTrabalhadas !== undefined ? formatMinutesToHHMM(reg.horasTrabalhadas) : "",
-          reg.horasExtras !== undefined ? (reg.horasExtras >= 0 ? "+" : "") + formatMinutesToHHMM(reg.horasExtras) : ""
+          formatMinutesToHHMM(worked),
+          (extra >= 0 ? "+" : "") + formatMinutesToHHMM(extra)
         ];
         csvRows.push(row.map(cell => `"${cell}"`).join(";"));
       } else {
@@ -300,8 +306,8 @@ export const GestaoPonto: React.FC<GestaoPontoProps> = ({ profile, companySettin
               <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
                 Folha Mensal: {selectedCollaborator.displayName || selectedCollaborator.email}
               </h3>
-              <p className="text-xxs font-semibold text-slate-400 bg-slate-50 px-2.5 py-1 rounded-full uppercase">
-                Jornada Cadastrada: {formatMinutesToHoursFriendly(selectedCollaborator.jornadaDiariaMinutos || 480)} / dia
+              <p className="text-xxs font-semibold text-slate-500 bg-slate-50 px-2.5 py-1 rounded-full uppercase border border-slate-100">
+                {getJornadaDescription(selectedCollaborator)}
               </p>
             </div>
             
@@ -352,11 +358,16 @@ export const GestaoPonto: React.FC<GestaoPontoProps> = ({ profile, companySettin
                       );
                     }
 
-                    const trabalhadoStr = reg.horasTrabalhadas !== undefined 
-                      ? formatMinutesToHHMM(reg.horasTrabalhadas) 
+                    const calc = calcularHoras(reg, selectedCollaborator || 480, pDate);
+                    const hasCalc = calc.trabalhadas > 0 || reg.horasTrabalhadas !== undefined;
+                    const workedMin = calc.trabalhadas || reg.horasTrabalhadas || 0;
+                    const extraMin = calc.extras !== undefined ? calc.extras : (reg.horasExtras !== undefined ? reg.horasExtras : 0);
+
+                    const trabalhadoStr = hasCalc 
+                      ? formatMinutesToHHMM(workedMin) 
                       : "--:--";
-                    const saldoStr = reg.horasExtras !== undefined 
-                      ? (reg.horasExtras >= 0 ? "+" : "") + formatMinutesToHHMM(reg.horasExtras) 
+                    const saldoStr = hasCalc 
+                      ? (extraMin >= 0 ? "+" : "") + formatMinutesToHHMM(extraMin) 
                       : "--:--";
 
                     return (

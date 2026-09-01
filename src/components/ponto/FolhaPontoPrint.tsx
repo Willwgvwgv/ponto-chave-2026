@@ -2,6 +2,8 @@ import React, { useRef } from "react";
 import { X, Printer, ShieldCheck } from "lucide-react";
 import { UserProfile, PontoRegistro, CompanySettings } from "../../types";
 import { formatMinutesToHHMM, formatMinutesToHoursFriendly } from "./MeuEspelho";
+import { getJornadaDescription, getExpectedDailyMinutes } from "../../utils/jornadaUtils";
+import { calcularHoras } from "../../hooks/useQueries";
 
 interface FolhaPontoPrintProps {
   collaborator: UserProfile | null;
@@ -41,26 +43,57 @@ export const FolhaPontoPrint: React.FC<FolhaPontoPrintProps> = ({
     registrosMap.set(r.date, r);
   });
 
-  // Calculate stats
+  // Calculate stats & rows taking into account employee schedule
   let totalTrabalhadas = 0;
   let totalExcedente = 0;
   let totalDeficit = 0;
   let totalSaldoNet = 0;
   let diasTrabalhados = 0;
 
-  registros.forEach(r => {
-    if (r.horasTrabalhadas !== undefined) {
-      totalTrabalhadas += r.horasTrabalhadas;
-      diasTrabalhados++;
-    }
-    if (r.horasExtras !== undefined) {
-      totalSaldoNet += r.horasExtras;
-      if (r.horasExtras > 0) {
-        totalExcedente += r.horasExtras;
-      } else {
-        totalDeficit += Math.abs(r.horasExtras);
+  const calculatedRows = diasDoMes.map(dia => {
+    const diaStr = String(dia).padStart(2, '0');
+    const pDate = `${year}-${String(month).padStart(2, '0')}-${diaStr}`;
+    const reg = registrosMap.get(pDate);
+    const wName = getWeekDayName(pDate);
+    const isWeekend = wName === "Sáb" || wName === "Dom";
+    const expectedMinutes = getExpectedDailyMinutes(pDate, collaborator);
+
+    let workedMin = 0;
+    let extraMin = 0;
+    let hasCalculation = false;
+
+    if (reg) {
+      const calc = calcularHoras(reg, collaborator || 480, pDate);
+      if (calc.trabalhadas > 0 || reg.horasTrabalhadas) {
+        workedMin = calc.trabalhadas || reg.horasTrabalhadas || 0;
+        extraMin = calc.extras !== undefined ? calc.extras : (reg.horasExtras !== undefined ? reg.horasExtras : workedMin - expectedMinutes);
+        hasCalculation = true;
       }
     }
+
+    if (hasCalculation) {
+      totalTrabalhadas += workedMin;
+      diasTrabalhados++;
+      totalSaldoNet += extraMin;
+      if (extraMin > 0) {
+        totalExcedente += extraMin;
+      } else {
+        totalDeficit += Math.abs(extraMin);
+      }
+    }
+
+    return {
+      dia,
+      diaStr,
+      pDate,
+      reg,
+      wName,
+      isWeekend,
+      expectedMinutes,
+      workedMin,
+      extraMin,
+      hasCalculation
+    };
   });
 
   const collaboratorName =
@@ -511,8 +544,10 @@ export const FolhaPontoPrint: React.FC<FolhaPontoPrintProps> = ({
                   <span className="info-item-val block font-bold text-slate-800 text-[11px]">{getRoleLabel(collaborator)}</span>
                 </div>
                 <div className="info-item border border-dashed border-slate-300 bg-slate-50/80 p-1.5 rounded">
-                  <span className="info-item-label block text-[8px] font-bold uppercase text-slate-500">Jornada Diária Registrada</span>
-                  <span className="info-item-val block font-bold text-slate-800 text-[11px]">{formatMinutesToHoursFriendly(collaborator?.jornadaDiariaMinutos || 480)} / dia</span>
+                  <span className="info-item-label block text-[8px] font-bold uppercase text-slate-500">Jornada / Escala</span>
+                  <span className="info-item-val block font-bold text-slate-800 text-[10px] truncate leading-tight" title={getJornadaDescription(collaborator)}>
+                    {getJornadaDescription(collaborator)}
+                  </span>
                 </div>
               </div>
             </div>
@@ -533,40 +568,35 @@ export const FolhaPontoPrint: React.FC<FolhaPontoPrintProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-300">
-                  {diasDoMes.map(dia => {
-                    const diaStr = String(dia).padStart(2, '0');
-                    const pDate = `${year}-${String(month).padStart(2, '0')}-${diaStr}`;
-                    const reg = registrosMap.get(pDate);
-                    const wName = getWeekDayName(pDate);
-                    const isWeekend = wName === "Sáb" || wName === "Dom";
-
+                  {calculatedRows.map(({ dia, diaStr, pDate, reg, wName, isWeekend, expectedMinutes, workedMin, extraMin, hasCalculation }) => {
                     if (!reg) {
+                      const isExpectedWork = expectedMinutes > 0;
                       return (
                         <tr key={dia} className={`h-4.5 ${isWeekend ? "bg-slate-50/80" : "bg-white"}`}>
                           <td className="td-day py-0.5 px-1.5 font-mono font-bold border-r border-slate-900 text-[9px]">
                             {diaStr}/{String(month).padStart(2, '0')} <span className="td-day-weekend text-[8px] font-normal text-slate-500">({wName})</span>
                           </td>
                           <td colSpan={4} className={`td-weekend py-0.5 px-1 border-r border-slate-900 text-center italic text-[8.5px] ${isWeekend ? "text-slate-400" : "td-semreg text-slate-400"}`}>
-                            {isWeekend ? "Fim de Semana" : "Sem Registro"}
+                            {isWeekend && !isExpectedWork ? "Fim de Semana" : "Sem Registro"}
                           </td>
                           <td className="td-empty py-0.5 px-1 border-r border-slate-900 text-center text-slate-400 font-mono text-[8.5px]">--:--</td>
                           <td className="td-empty py-0.5 px-1 border-r border-slate-900 text-center text-slate-400 font-mono text-[8.5px]">--:--</td>
                           <td className="td-rubrica py-0.5 px-1.5 text-center text-slate-300">
-                            {isWeekend ? "" : "________________"}
+                            {isWeekend && !isExpectedWork ? "" : "________________"}
                           </td>
                         </tr>
                       );
                     }
 
-                    const trabalhadoStr = reg.horasTrabalhadas !== undefined 
-                      ? formatMinutesToHHMM(reg.horasTrabalhadas) 
+                    const trabalhadoStr = hasCalculation 
+                      ? formatMinutesToHHMM(workedMin) 
                       : "--:--";
-                    const saldoStr = reg.horasExtras !== undefined 
-                      ? (reg.horasExtras >= 0 ? "+" : "") + formatMinutesToHHMM(reg.horasExtras) 
+                    const saldoStr = hasCalculation 
+                      ? (extraMin >= 0 ? "+" : "") + formatMinutesToHHMM(extraMin) 
                       : "--:--";
 
-                    const isNegative = reg.horasExtras !== undefined && reg.horasExtras < 0;
-                    const isPositive = reg.horasExtras !== undefined && reg.horasExtras > 0;
+                    const isNegative = hasCalculation && extraMin < 0;
+                    const isPositive = hasCalculation && extraMin > 0;
 
                     return (
                       <tr key={dia} className={`h-4.5 ${isWeekend ? "bg-slate-50/80" : "bg-white"}`}>

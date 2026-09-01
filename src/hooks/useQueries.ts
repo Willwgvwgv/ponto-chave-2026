@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { db, collection, getDocs, query, where, orderBy, doc, addDoc, updateDoc, deleteDoc, getDoc, setDoc, limit } from "../firebase";
 import { Sale, BrokerSplit, ComissoneUser, Comissao, RateioComissao, PagamentoCorretor, Despejo, PontoRegistro, SolicitacaoAjustePonto, UserProfile } from "../types";
+import { getExpectedDailyMinutes } from "../utils/jornadaUtils";
 import { toast } from "sonner";
 
 // Lógica de arredondamento de duas casas decimais
@@ -425,6 +426,10 @@ export function useTeam(agencyId: string) {
             uid: u.uid || u.id,
             status: u.status,
             jornadaDiariaMinutos: u.jornadaDiariaMinutos,
+            jornadaSemanalHoras: u.jornadaSemanalHoras,
+            escalaTipo: u.escalaTipo,
+            jornadaDias: u.jornadaDias,
+            escalaDescricao: u.escalaDescricao,
             agency_id: safeAgencyId,
             name: realName || (u.email ? u.email.split('@')[0] : "Colaborador"),
             displayName: realName || (u.email ? u.email.split('@')[0] : "Colaborador"),
@@ -1418,23 +1423,56 @@ export function useCreateBrokerAdvanceMutation() {
 
 // === PONTO ELETRÔNICO CLT OPERATIONS ===
 
-export function calcularHoras(reg: Partial<PontoRegistro>, jornadaDiariaMinutos: number = 480): { trabalhadas: number; extras: number } {
-  if (!reg.entrada || !reg.saidaAlmoco || !reg.retornoAlmoco || !reg.saida) {
-    return { trabalhadas: 0, extras: 0 };
-  }
+export function calcularHoras(
+  reg: Partial<PontoRegistro>,
+  jornadaDiariaMinutos: number | UserProfile = 480,
+  dateStr?: string
+): { trabalhadas: number; extras: number } {
   const toMin = (hhmm: string) => {
     const [h, m] = hhmm.split(':').map(Number);
     return (isNaN(h) ? 0 : h) * 60 + (isNaN(m) ? 0 : m);
   };
-  const mEntrada = toMin(reg.entrada);
-  const mSaidaAlmoco = toMin(reg.saidaAlmoco);
-  const mRetornoAlmoco = toMin(reg.retornoAlmoco);
-  const mSaida = toMin(reg.saida);
 
-  const periodo1 = mSaidaAlmoco - mEntrada;
-  const periodo2 = mSaida - mRetornoAlmoco;
-  const trabalhadas = periodo1 + periodo2;
-  return { trabalhadas, extras: trabalhadas - jornadaDiariaMinutos };
+  let trabalhadas = 0;
+  const hasEntrada = !!reg.entrada;
+  const hasSaidaAlmoco = !!reg.saidaAlmoco;
+  const hasRetornoAlmoco = !!reg.retornoAlmoco;
+  const hasSaida = !!reg.saida;
+
+  if (hasEntrada && hasSaidaAlmoco && hasRetornoAlmoco && hasSaida) {
+    // 4 batidas completas (2 períodos com intervalo de refeição)
+    const periodo1 = Math.max(0, toMin(reg.saidaAlmoco!) - toMin(reg.entrada!));
+    const periodo2 = Math.max(0, toMin(reg.saida!) - toMin(reg.retornoAlmoco!));
+    trabalhadas = periodo1 + periodo2;
+  } else if (hasEntrada && hasSaida && !hasSaidaAlmoco && !hasRetornoAlmoco) {
+    // Turno único direto (ex: Sábado 08:00 às 12:00 direto)
+    trabalhadas = Math.max(0, toMin(reg.saida!) - toMin(reg.entrada!));
+  } else if (hasEntrada && hasSaidaAlmoco && !hasRetornoAlmoco && !hasSaida) {
+    // Turno de 2 batidas registrado no primeiro bloco (ex: Sábado 08:00 às 12:00)
+    trabalhadas = Math.max(0, toMin(reg.saidaAlmoco!) - toMin(reg.entrada!));
+  } else {
+    return { trabalhadas: 0, extras: 0 };
+  }
+
+  // Determinar a jornada diária esperada
+  const targetDate = reg.date || dateStr || new Date().toLocaleDateString('en-CA');
+  let expectedDaily = 480;
+
+  if (typeof jornadaDiariaMinutos === "number") {
+    expectedDaily = jornadaDiariaMinutos;
+    // Se for sábado e padrão 480, ajusta para 240m (4h)
+    const parts = targetDate.split('-');
+    if (parts.length === 3) {
+      const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+      if (d.getDay() === 6 && expectedDaily === 480) {
+        expectedDaily = 240;
+      }
+    }
+  } else if (jornadaDiariaMinutos && typeof jornadaDiariaMinutos === "object") {
+    expectedDaily = getExpectedDailyMinutes(targetDate, jornadaDiariaMinutos);
+  }
+
+  return { trabalhadas, extras: trabalhadas - expectedDaily };
 }
 
 export function usePontoHoje(userId: string | undefined) {
@@ -1548,12 +1586,13 @@ export function useRegistrarPonto() {
 
       reg[params.campo] = params.horario;
 
-      if (reg.entrada && reg.saidaAlmoco && reg.retornoAlmoco && reg.saida) {
-        const jornada = params.jornadaDiariaMinutos || 480;
-        const calc = calcularHoras(reg, jornada);
+      const calc = calcularHoras(reg, params.jornadaDiariaMinutos || 480, todayStr);
+      if (calc.trabalhadas > 0) {
         reg.horasTrabalhadas = calc.trabalhadas;
         reg.horasExtras = calc.extras;
-        reg.status = "completo";
+        const isSaturday = new Date(todayStr + "T00:00:00").getDay() === 6;
+        const isCompleted = (reg.entrada && reg.saidaAlmoco && reg.retornoAlmoco && reg.saida) || (isSaturday && reg.entrada && (reg.saida || reg.saidaAlmoco));
+        reg.status = isCompleted ? "completo" : "incompleto";
       } else {
         reg.status = "incompleto";
       }
@@ -1662,6 +1701,10 @@ export function useResponderAjuste() {
       const regSnap = await getDoc(regRef);
 
       if (params.status === "aprovado") {
+        const datePart = (regSnap.exists() && regSnap.data()?.date) 
+          ? regSnap.data().date 
+          : (params.registroId.split('_')[1] || new Date().toLocaleDateString('en-CA'));
+
         let regData: any = {};
         if (regSnap.exists()) {
           regData = regSnap.data();
@@ -1669,7 +1712,6 @@ export function useResponderAjuste() {
           const userRef = doc(db, "users", params.userId);
           const userSnap = await getDoc(userRef);
           const userName = userSnap.exists() ? (userSnap.data().displayName || "Colaborador") : "Colaborador";
-          const datePart = params.registroId.split('_')[1] || new Date().toLocaleDateString('en-CA');
 
           regData = {
             id: params.registroId,
@@ -1683,12 +1725,13 @@ export function useResponderAjuste() {
 
         regData[params.campo] = params.valorSolicitado;
 
-        if (regData.entrada && regData.saidaAlmoco && regData.retornoAlmoco && regData.saida) {
-          const jornada = params.jornadaDiariaMinutos || 480;
-          const calc = calcularHoras(regData, jornada);
+        const calc = calcularHoras(regData, params.jornadaDiariaMinutos || 480, datePart);
+        if (calc.trabalhadas > 0) {
           regData.horasTrabalhadas = calc.trabalhadas;
           regData.horasExtras = calc.extras;
-          regData.status = "completo";
+          const isSaturday = new Date(datePart + "T00:00:00").getDay() === 6;
+          const isCompleted = (regData.entrada && regData.saidaAlmoco && regData.retornoAlmoco && regData.saida) || (isSaturday && regData.entrada && (regData.saida || regData.saidaAlmoco));
+          regData.status = isCompleted ? "completo" : "incompleto";
         } else {
           regData.status = "incompleto";
         }

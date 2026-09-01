@@ -10,10 +10,11 @@ import {
   TrendingDown,
   Printer
 } from "lucide-react";
-import { usePontoMes, useSolicitarAjuste } from "../../hooks/useQueries";
+import { usePontoMes, useSolicitarAjuste, calcularHoras } from "../../hooks/useQueries";
 import { UserProfile, PontoRegistro, CompanySettings } from "../../types";
 import { toast } from "sonner";
 import { FolhaPontoPrint } from "./FolhaPontoPrint";
+import { getJornadaDescription, getExpectedDailyMinutes } from "../../utils/jornadaUtils";
 
 interface MeuEspelhoProps {
   profile: UserProfile | null;
@@ -97,24 +98,25 @@ export const MeuEspelho: React.FC<MeuEspelhoProps> = ({ profile, companySettings
     return map;
   }, [registros]);
 
-  // Calc totals
+  // Calc totals taking into account collaborator weekly schedule
   const totais = useMemo(() => {
     let totalTrabalhadas = 0;
     let totalExtras = 0;
     let diasTrabalhados = 0;
 
     registros.forEach(r => {
-      if (r.horasTrabalhadas !== undefined) {
-        totalTrabalhadas += r.horasTrabalhadas;
+      const calc = calcularHoras(r, profile || 480, r.date);
+      if (calc.trabalhadas > 0 || r.horasTrabalhadas) {
+        const worked = calc.trabalhadas || r.horasTrabalhadas || 0;
+        const extra = calc.extras !== undefined ? calc.extras : (r.horasExtras || 0);
+        totalTrabalhadas += worked;
+        totalExtras += extra;
         diasTrabalhados++;
-      }
-      if (r.horasExtras !== undefined) {
-        totalExtras += r.horasExtras;
       }
     });
 
     return { totalTrabalhadas, totalExtras, diasTrabalhados };
-  }, [registros]);
+  }, [registros, profile]);
 
   const handleOpenAjuste = (date: string, regId: string, campo: typeof campoAjuste, currentVal?: string) => {
     setTargetDate(date);
@@ -299,12 +301,17 @@ export const MeuEspelho: React.FC<MeuEspelhoProps> = ({ profile, companySettings
                   );
                 }
 
+                const calc = calcularHoras(reg, profile || 480, pDate);
+                const hasCalc = calc.trabalhadas > 0 || reg.horasTrabalhadas !== undefined;
+                const workedMin = calc.trabalhadas || reg.horasTrabalhadas || 0;
+                const extraMin = calc.extras !== undefined ? calc.extras : (reg.horasExtras !== undefined ? reg.horasExtras : 0);
+
                 // Format worked hours and extras
-                const trabalhadoStr = reg.horasTrabalhadas !== undefined 
-                  ? formatMinutesToHHMM(reg.horasTrabalhadas) 
+                const trabalhadoStr = hasCalc 
+                  ? formatMinutesToHHMM(workedMin) 
                   : "--:--";
-                const saldoStr = reg.horasExtras !== undefined 
-                  ? (reg.horasExtras >= 0 ? "+" : "") + formatMinutesToHHMM(reg.horasExtras) 
+                const saldoStr = hasCalc 
+                  ? (extraMin >= 0 ? "+" : "") + formatMinutesToHHMM(extraMin) 
                   : "--:--";
 
                 return (

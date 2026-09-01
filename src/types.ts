@@ -53,7 +53,28 @@ export interface UserProfile {
   permPonto?: boolean;        // true para "colaborador" por padrão
   perm_ponto?: boolean;
   jornadaDiariaMinutos?: number; // padrão 480 (8h)
+  jornadaSemanalHoras?: number;  // ex: 44 (44h semanais) ou 40
+  escalaTipo?: EscalaTipo;
+  jornadaDias?: JornadaDiasConfig;
+  escalaDescricao?: string;
 }
+
+export interface JornadaDiasConfig {
+  seg: number; // minutos (ex: 480 para 8h)
+  ter: number;
+  qua: number;
+  qui: number;
+  sex: number;
+  sab: number; // minutos (ex: 240 para 4h ou 0)
+  dom: number; // minutos (ex: 0)
+}
+
+export type EscalaTipo =
+  | '44h_seg_sex_8h_sab_4h'
+  | '44h_seg_sex_8h48'
+  | '40h_seg_sex_8h'
+  | '30h_seg_sex_6h'
+  | 'personalizado';
 
 export interface PontoRegistro {
   id: string;
