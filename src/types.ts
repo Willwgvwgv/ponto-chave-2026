@@ -354,8 +354,10 @@ export interface ComissoneUser {
   id: string;
   agency_id: string;
   name: string;
+  displayName?: string | null;
   email: string;
-  role: 'ADMIN' | 'BROKER' | 'MANAGER';
+  role: 'ADMIN' | 'BROKER' | 'MANAGER' | string;
+  originalRole?: string;
   cpf?: string;
   phone?: string;
   created_at: string;

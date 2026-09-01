@@ -179,9 +179,11 @@ export const GestaoPonto: React.FC<GestaoPontoProps> = ({ profile, companySettin
           >
             {activeCollaborators.map((u, idx) => {
               const val = u.uid || u.id || `colab-${idx}`;
+              const colabName = u.displayName || (u as any).name || (u as any).nome || u.email || "Colaborador sem nome";
+              const isAdm = u.role === "admin" || (u as any).originalRole === "admin";
               return (
                 <option key={val} value={val}>
-                  {u.displayName || u.email || "Colaborador sem nome"} {u.role === "admin" ? "(Admin)" : ""}
+                  {colabName} {isAdm ? "(Admin)" : ""}
                 </option>
               );
             })}

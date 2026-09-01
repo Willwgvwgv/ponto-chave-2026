@@ -419,15 +419,18 @@ export function useTeam(agencyId: string) {
           } else if (rLower === "manager" || rLower === "gerente") {
             roleMapped = "MANAGER";
           }
+          const realName = u.displayName || u.name || u.nome || "";
           return {
             id: u.uid || u.id,
             uid: u.uid || u.id,
             status: u.status,
             jornadaDiariaMinutos: u.jornadaDiariaMinutos,
             agency_id: safeAgencyId,
-            name: u.displayName || u.name || "Corretor Sem Nome",
+            name: realName || (u.email ? u.email.split('@')[0] : "Colaborador"),
+            displayName: realName || (u.email ? u.email.split('@')[0] : "Colaborador"),
             email: u.email || "",
-            role: roleMapped,
+            role: u.role || roleMapped,
+            originalRole: u.role || (rLower === "admin" ? "admin" : "colaborador"),
             cpf: u.cpf,
             phone: u.phone,
             created_at: u.createdAt || u.created_at || new Date().toISOString(),
