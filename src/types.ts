@@ -280,6 +280,10 @@ export interface Vistoria {
   companyLogo?: string | null;
   companyName?: string;
   companySubtitle?: string;
+  tipo?: 'entrada' | 'saida';
+  vistoriaEntradaId?: string | null;
+  descricaoGeral?: string;
+  fotosGerais?: string[];
   textoContrato?: string;
   textoLaudo?: string;
   styleContrato?: {
@@ -643,5 +647,3 @@ export interface FaturaHidrometro {
   criadoPorUid?: string;
   criadoPorNome?: string;
 }
-
-
