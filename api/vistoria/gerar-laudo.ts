@@ -1,4 +1,81 @@
-import { getFirebaseAdmin } from "../_firebaseAdmin.js";
+import crypto from "crypto";
+import fs from "fs";
+import path from "path";
+
+const GOOGLE_CERTS_URL = "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
+let cachedCerts: { keys: any[]; fetchedAt: number } | null = null;
+
+function base64UrlDecode(input: string): Buffer {
+  input = input.replace(/-/g, "+").replace(/_/g, "/");
+  while (input.length % 4) input += "=";
+  return Buffer.from(input, "base64");
+}
+
+function getFirebaseProjectId(): string {
+  if (process.env.VITE_FIREBASE_PROJECT_ID) return process.env.VITE_FIREBASE_PROJECT_ID;
+  try {
+    const configPath = path.join(process.cwd(), "firebase-applet-config.json");
+    if (fs.existsSync(configPath)) {
+      const cfg = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+      if (cfg.projectId) return cfg.projectId;
+    }
+  } catch {
+    // ignora — cai no valor padrão abaixo
+  }
+  return "";
+}
+
+async function getGoogleCerts() {
+  const now = Date.now();
+  if (cachedCerts && now - cachedCerts.fetchedAt < 60 * 60 * 1000) {
+    return cachedCerts.keys;
+  }
+  const resp = await fetch(GOOGLE_CERTS_URL);
+  const data = await resp.json();
+  cachedCerts = { keys: data.keys, fetchedAt: now };
+  return data.keys;
+}
+
+// Verificação própria e leve do ID Token do Firebase (RS256), sem depender do
+// firebase-admin/auth — esse import estava causando erro de compatibilidade
+// ESM/CommonJS (ERR_REQUIRE_ESM) no ambiente serverless da Vercel.
+async function verifyFirebaseIdToken(idToken: string): Promise<{ uid: string } | null> {
+  try {
+    const parts = idToken.split(".");
+    if (parts.length !== 3) return null;
+
+    const [headerB64, payloadB64, signatureB64] = parts;
+    const header = JSON.parse(base64UrlDecode(headerB64).toString("utf-8"));
+    const payload = JSON.parse(base64UrlDecode(payloadB64).toString("utf-8"));
+
+    const projectId = getFirebaseProjectId();
+    const now = Math.floor(Date.now() / 1000);
+
+    if (projectId && payload.aud !== projectId) return null;
+    if (projectId && payload.iss !== `https://securetoken.google.com/${projectId}`) return null;
+    if (typeof payload.exp !== "number" || payload.exp < now) return null;
+    if (typeof payload.iat !== "number" || payload.iat > now + 60) return null;
+    if (!payload.sub) return null;
+
+    const keys = await getGoogleCerts();
+    const matchingKey = keys.find((k: any) => k.kid === header.kid);
+    if (!matchingKey) return null;
+
+    const publicKey = crypto.createPublicKey({ key: matchingKey, format: "jwk" as const });
+    const signedData = `${headerB64}.${payloadB64}`;
+    const isValid = crypto.verify(
+      "RSA-SHA256",
+      Buffer.from(signedData),
+      { key: publicKey, padding: crypto.constants.RSA_PKCS1_PADDING },
+      base64UrlDecode(signatureB64)
+    );
+
+    return isValid ? { uid: payload.sub } : null;
+  } catch (err) {
+    console.error("Erro ao verificar ID token:", err);
+    return null;
+  }
+}
 
 export default async function handler(req: any, res: any) {
   res.setHeader("Content-Type", "application/json");
@@ -14,15 +91,9 @@ export default async function handler(req: any, res: any) {
   }
 
   const idToken = authHeader.split("Bearer ")[1];
-  const { adminAuthInstance } = getFirebaseAdmin();
+  const decoded = await verifyFirebaseIdToken(idToken);
 
-  if (!adminAuthInstance) {
-    return res.status(503).json({ error: "Serviço de autenticação do servidor indisponível" });
-  }
-
-  try {
-    await adminAuthInstance.verifyIdToken(idToken);
-  } catch {
+  if (!decoded) {
     return res.status(401).json({ error: "Acesso não autorizado: Token inválido" });
   }
 
