@@ -42,7 +42,10 @@ async function getGoogleCerts() {
 async function verifyFirebaseIdToken(idToken: string): Promise<{ uid: string } | null> {
   try {
     const parts = idToken.split(".");
-    if (parts.length !== 3) return null;
+    if (parts.length !== 3) {
+      console.error("[verifyFirebaseIdToken] token não tem 3 partes");
+      return null;
+    }
 
     const [headerB64, payloadB64, signatureB64] = parts;
     const header = JSON.parse(base64UrlDecode(headerB64).toString("utf-8"));
@@ -51,15 +54,33 @@ async function verifyFirebaseIdToken(idToken: string): Promise<{ uid: string } |
     const projectId = getFirebaseProjectId();
     const now = Math.floor(Date.now() / 1000);
 
-    if (projectId && payload.aud !== projectId) return null;
-    if (projectId && payload.iss !== `https://securetoken.google.com/${projectId}`) return null;
-    if (typeof payload.exp !== "number" || payload.exp < now) return null;
-    if (typeof payload.iat !== "number" || payload.iat > now + 60) return null;
-    if (!payload.sub) return null;
+    if (projectId && payload.aud !== projectId) {
+      console.error("[verifyFirebaseIdToken] aud não bate", { aud: payload.aud, projectId });
+      return null;
+    }
+    if (projectId && payload.iss !== `https://securetoken.google.com/${projectId}`) {
+      console.error("[verifyFirebaseIdToken] iss não bate", { iss: payload.iss, projectId });
+      return null;
+    }
+    if (typeof payload.exp !== "number" || payload.exp < now) {
+      console.error("[verifyFirebaseIdToken] token expirado", { exp: payload.exp, now });
+      return null;
+    }
+    if (typeof payload.iat !== "number" || payload.iat > now + 60) {
+      console.error("[verifyFirebaseIdToken] iat inválido", { iat: payload.iat, now });
+      return null;
+    }
+    if (!payload.sub) {
+      console.error("[verifyFirebaseIdToken] sem sub");
+      return null;
+    }
 
     const keys = await getGoogleCerts();
     const matchingKey = keys.find((k: any) => k.kid === header.kid);
-    if (!matchingKey) return null;
+    if (!matchingKey) {
+      console.error("[verifyFirebaseIdToken] kid não encontrado", { kid: header.kid, kidsDisponiveis: keys.map((k: any) => k.kid) });
+      return null;
+    }
 
     const publicKey = crypto.createPublicKey({ key: matchingKey, format: "jwk" as const });
     const signedData = `${headerB64}.${payloadB64}`;
@@ -69,6 +90,10 @@ async function verifyFirebaseIdToken(idToken: string): Promise<{ uid: string } |
       { key: publicKey, padding: crypto.constants.RSA_PKCS1_PADDING },
       base64UrlDecode(signatureB64)
     );
+
+    if (!isValid) {
+      console.error("[verifyFirebaseIdToken] assinatura inválida");
+    }
 
     return isValid ? { uid: payload.sub } : null;
   } catch (err) {
