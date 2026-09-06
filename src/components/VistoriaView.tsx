@@ -804,8 +804,14 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
             doc.roundedRect(barEndX - 20, 22, 20, 18, 9, 9, 'F');
 
             doc.setTextColor(255, 255, 255);
-            doc.setFontSize(13);
             doc.setFont('helvetica', 'bold');
+            let tituloFontSize = 13;
+            doc.setFontSize(tituloFontSize);
+            const maxTituloWidth = barEndX - 25; // espaço disponível antes da logo
+            while (doc.getTextWidth(tituloDocumento) > maxTituloWidth && tituloFontSize > 8) {
+              tituloFontSize -= 0.5;
+              doc.setFontSize(tituloFontSize);
+            }
             doc.text(tituloDocumento, 20, 33.5);
 
             const format = logoToUse.toLowerCase().includes('png') || logoToUse.includes('image/png') ? 'PNG' : 'JPEG';
@@ -855,8 +861,14 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
       doc.rect(0, 22, 115, 18, 'F');
       doc.roundedRect(100, 22, 25, 18, 9, 9, 'F');
       doc.setTextColor(255, 255, 255);
-      doc.setFontSize(13);
       doc.setFont('helvetica', 'bold');
+      let tituloFontSizeFallback = 13;
+      doc.setFontSize(tituloFontSizeFallback);
+      const maxTituloWidthFallback = 95; // espaço disponível antes do nome da marca (x=140)
+      while (doc.getTextWidth(tituloDocumento) > maxTituloWidthFallback && tituloFontSizeFallback > 8) {
+        tituloFontSizeFallback -= 0.5;
+        doc.setFontSize(tituloFontSizeFallback);
+      }
       doc.text(tituloDocumento, 20, 33.5);
       
       if (brandName) {
