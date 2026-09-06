@@ -97,6 +97,20 @@ export const VistoriaView = ({ isAdmin, user, profile, companySettings }: { isAd
   const [brandDefaultTextoLaudo, setBrandDefaultTextoLaudo] = useState('');
   const [isSavingConfig, setIsSavingConfig] = useState(false);
 
+  // Evita que o navegador abra/navegue para uma imagem arrastada acidentalmente
+  // fora de uma área de dropzone (o que faria perder o formulário preenchido).
+  useEffect(() => {
+    const preventDefault = (e: DragEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener('dragover', preventDefault);
+    window.addEventListener('drop', preventDefault);
+    return () => {
+      window.removeEventListener('dragover', preventDefault);
+      window.removeEventListener('drop', preventDefault);
+    };
+  }, []);
+
   useEffect(() => {
     if (companySettings) {
       setBrandName(companySettings.name);
@@ -464,11 +478,27 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
     return Promise.all(processPromises);
   };
 
-  const handlePhotoUpload = async (cIdx: number, e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
+  // Suporte a arrastar-e-soltar (drag and drop) de imagens direto do computador/celular.
+  // Sem isso, o navegador tenta abrir o arquivo numa aba nova em vez de anexá-lo.
+  const extractImageFiles = (dataTransfer: DataTransfer): File[] => {
+    return Array.from(dataTransfer.files || []).filter(f => f.type.startsWith('image/'));
+  };
 
-    const fileList = Array.from(files) as File[];
+  const handleDropZoneEvents = (onFiles: (files: File[]) => void) => ({
+    onDragOver: (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+    },
+    onDrop: (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const files = extractImageFiles(e.dataTransfer);
+      if (files.length > 0) onFiles(files);
+    }
+  });
+
+  const processAndAttachComodoPhotos = async (cIdx: number, fileList: File[]) => {
+    if (fileList.length === 0) return;
     const toastId = "uploading-photo";
     toast.loading(`Processando e otimizando ${fileList.length} foto(s)...`, { id: toastId });
 
@@ -481,23 +511,25 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
         fotos: [...(newComodos[cIdx].fotos || []), ...processedDataUrls]
       };
       setComodos(newComodos);
-      
+
       toast.success(`${processedDataUrls.length} foto(s) anexada(s)!`, { id: toastId });
     } catch (error: any) {
       console.error("Photo processing error:", error);
       toast.error(error.message || "Erro ao processar fotos.", { id: toastId });
-    } finally {
-      if (e.target) e.target.value = '';
     }
+  };
+
+  const handlePhotoUpload = async (cIdx: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    await processAndAttachComodoPhotos(cIdx, Array.from(files));
+    if (e.target) e.target.value = '';
   };
 
   // Fotos "soltas" da vistoria — não é necessário indicar de qual cômodo é cada uma.
   // Ficam todas juntas num único painel; a descrição geral abaixo é que dá o contexto pra IA.
-  const handlePhotoUploadGeral = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    const fileList = Array.from(files) as File[];
+  const processAndAttachFotosGerais = async (fileList: File[]) => {
+    if (fileList.length === 0) return;
     const toastId = "uploading-photo-geral";
     toast.loading(`Processando e otimizando ${fileList.length} foto(s)...`, { id: toastId });
 
@@ -508,9 +540,14 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
     } catch (error: any) {
       console.error("Photo processing error:", error);
       toast.error(error.message || "Erro ao processar fotos.", { id: toastId });
-    } finally {
-      if (e.target) e.target.value = '';
     }
+  };
+
+  const handlePhotoUploadGeral = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    await processAndAttachFotosGerais(Array.from(files));
+    if (e.target) e.target.value = '';
   };
 
   const handleRemoveFotoGeral = (pIdx: number) => {
@@ -1679,10 +1716,13 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
                       placeholder="Ex: parede da sala com um furo perto da janela, piso do quarto 2 riscado, torneira da cozinha pingando..."
                     />
 
-                    <div className="space-y-2">
+                    <div
+                      className="space-y-2 p-3 rounded-2xl border-2 border-dashed border-transparent hover:border-purple-200 transition-colors"
+                      {...handleDropZoneEvents(processAndAttachFotosGerais)}
+                    >
                       <div className="flex items-center justify-between">
                         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">
-                          Fotos da Vistoria ({fotosGerais.length})
+                          Fotos da Vistoria ({fotosGerais.length}) — arraste e solte aqui
                         </label>
                         <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-purple-200 text-purple-600 rounded-lg text-xs font-bold cursor-pointer hover:bg-purple-50 transition-all">
                           <Upload className="w-3.5 h-3.5" />
@@ -1971,8 +2011,11 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
                   </div>
 
                   {/* Room Photos */}
-                  <div className="pt-4 border-t border-slate-100">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Fotos do Cômodo</p>
+                  <div
+                    className="pt-4 border-t border-slate-100 rounded-2xl transition-colors"
+                    {...handleDropZoneEvents((files) => processAndAttachComodoPhotos(cIdx, files))}
+                  >
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Fotos do Cômodo — arraste e solte aqui</p>
                     <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
                       {comodo.fotos.map((foto, pIdx) => (
                         <div key={pIdx} className="relative aspect-square rounded-2xl overflow-hidden group/photo ring-1 ring-slate-100">
