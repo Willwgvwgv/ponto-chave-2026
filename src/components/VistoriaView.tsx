@@ -635,6 +635,12 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
         c.itens.filter(i => !i.ok).map(i => `${c.nome} - ${i.nome}: ${i.ressalva || 'sem detalhes'}`)
       );
 
+      // As fotos aqui são só os destaques de danos (usadas pra IA dar ênfase no laudo).
+      // O total real de fotos da vistoria inclui também as fotos gerais de cada cômodo,
+      // adicionadas na etapa seguinte — por isso contamos as duas coisas separadamente.
+      const quantidadeFotosDestaque = fotosGerais.length;
+      const quantidadeFotosTotal = quantidadeFotosDestaque + comodos.reduce((acc, c) => acc + (c.fotos?.length || 0), 0);
+
       const idToken = await auth.currentUser?.getIdToken();
 
       const resp = await fetch('/api/vistoria/gerar-laudo', {
@@ -648,7 +654,8 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
           enderecoImovel: imovel.endereco,
           descricaoGeral,
           ressalvas,
-          quantidadeFotos: fotosGerais.length,
+          quantidadeFotosDestaque,
+          quantidadeFotosTotal,
           textoLaudoAtual: textoLaudo
         })
       });
@@ -1688,7 +1695,10 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
                       </label>
                     </div>
                     <p className="text-[11px] text-slate-500">
-                      Descreva livremente o que encontrou no imóvel (paredes, furos, manchas, estado geral etc.) e jogue as fotos soltas abaixo — não precisa indicar de qual cômodo é cada uma. A IA usa isso, junto das ressalvas marcadas nos cômodos, para escrever o texto formal do laudo.
+                      Envie aqui <strong>só as fotos que mostram os danos/problemas</strong> que você quer que a IA
+                      destaque no laudo — não precisa ser o registro completo do imóvel. As fotos gerais de cada
+                      cômodo (entrada, sala, cozinha, tudo certinho) você adiciona na próxima etapa, e todas elas
+                      entram no PDF final normalmente.
                     </p>
                     <div className="flex items-center justify-between">
                       <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">
@@ -1722,7 +1732,7 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
                     >
                       <div className="flex items-center justify-between">
                         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">
-                          Fotos da Vistoria ({fotosGerais.length}) — arraste e solte aqui
+                          Fotos de Destaque dos Danos ({fotosGerais.length}) — arraste e solte aqui
                         </label>
                         <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-purple-200 text-purple-600 rounded-lg text-xs font-bold cursor-pointer hover:bg-purple-50 transition-all">
                           <Upload className="w-3.5 h-3.5" />

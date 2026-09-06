@@ -134,7 +134,8 @@ export default async function handler(req: any, res: any) {
     enderecoImovel,
     descricaoGeral,
     ressalvas,
-    quantidadeFotos,
+    quantidadeFotosDestaque,
+    quantidadeFotosTotal,
     textoLaudoAtual
   } = req.body || {};
 
@@ -153,7 +154,8 @@ Dados disponíveis:
 - Observações livres do vistoriador (linguagem informal, pode ter erros de digitação): """${descricaoGeral || "(nenhuma observação livre registrada)"}"""
 - Ressalvas marcadas item a item nos cômodos:
 ${ressalvasTexto}
-- Quantidade de fotos anexadas como evidência: ${quantidadeFotos ?? 0}
+- Fotos de destaque enviadas especificamente para dar ênfase aos danos/problemas: ${quantidadeFotosDestaque ?? 0}
+- Total real de fotografias que acompanham o laudo (incluindo o registro fotográfico completo de todos os cômodos, não só os destaques): ${quantidadeFotosTotal ?? quantidadeFotosDestaque ?? 0}
 ${textoLaudoAtual ? `- Texto atual do laudo (pode ser usado como base/estilo, mas deve ser atualizado com as novas informações acima): """${textoLaudoAtual}"""` : ""}
 
 Instruções:
@@ -162,8 +164,9 @@ Instruções:
 3. Descreva de forma clara e objetiva o estado do imóvel com base nas observações e ressalvas fornecidas — não invente danos que não foram mencionados.
 4. Se não houver nenhuma ressalva, declare que o imóvel foi vistoriado e encontra-se em bom estado de conservação.
 5. Se for uma vistoria de SAÍDA, inclua uma cláusula final indicando que cabe à imobiliária/locador comparar este laudo com o laudo de entrada para apurar eventuais danos e responsabilidades.
-6. Não invente dados cadastrais (nomes, CPF, valores) que não foram fornecidos.
-7. Responda APENAS com o texto final do laudo, sem comentários, sem markdown, sem aspas envolvendo o texto.`;
+6. Ao mencionar a quantidade de fotografias anexadas ao laudo, use sempre o "Total real de fotografias" informado acima — nunca a quantidade de fotos de destaque, que é só um subconjunto usado para dar ênfase às avarias.
+7. Não invente dados cadastrais (nomes, CPF, valores) que não foram fornecidos.
+8. Responda APENAS com o texto final do laudo, sem comentários, sem markdown, sem aspas envolvendo o texto.`;
 
   try {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
