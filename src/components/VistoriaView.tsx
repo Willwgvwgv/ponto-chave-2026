@@ -1226,15 +1226,29 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
     pdf.setFont('helvetica', sL.isBold ? 'bold' : 'normal');
     pdf.setTextColor(0, 0, 0);
 
-    const splitLaudo = pdf.splitTextToSize(vistoria.textoLaudo || '', 170);
-    splitLaudo.forEach((line: string) => {
-      y = checkPageBreak(y, 5);
-      pdf.setFont('helvetica', sL.isBold ? 'bold' : 'normal');
-      pdf.setFontSize(sL.fontSize);
+    // Detecta linhas de título/item (ex: "4.8. QUARTOS..." ou "1. IDENTIFICAÇÃO...")
+    // para imprimi-las em negrito, destacando a estrutura do laudo.
+    const headerLineRegex = /^\d+(\.\d+)*\.\s*[A-ZÀ-ÜÇ]/;
+    const paragraphs = (vistoria.textoLaudo || '').split('\n');
 
-      const xPos = sL.textAlign === 'center' ? 105 : sL.textAlign === 'right' ? 190 : 20;
-      pdf.text(line, xPos, y, { align: sL.textAlign });
-      y += sL.fontSize * 0.55;
+    paragraphs.forEach((paragraph) => {
+      if (paragraph.trim() === '') {
+        y += sL.fontSize * 0.55;
+        return;
+      }
+
+      const isHeaderLine = headerLineRegex.test(paragraph.trim());
+      const lines = pdf.splitTextToSize(paragraph, 170);
+
+      lines.forEach((line: string) => {
+        y = checkPageBreak(y, 5);
+        pdf.setFont('helvetica', isHeaderLine || sL.isBold ? 'bold' : 'normal');
+        pdf.setFontSize(sL.fontSize);
+
+        const xPos = sL.textAlign === 'center' ? 105 : sL.textAlign === 'right' ? 190 : 20;
+        pdf.text(line, xPos, y, { align: sL.textAlign });
+        y += sL.fontSize * 0.55;
+      });
     });
 
     // LGPD E PROTEÇÃO DE DADOS (Nova página)
