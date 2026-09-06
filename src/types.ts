@@ -282,6 +282,7 @@ export interface Vistoria {
   companySubtitle?: string;
   tipo?: 'entrada' | 'saida';
   vistoriaEntradaId?: string | null;
+  vistoriadorNome?: string;
   descricaoGeral?: string;
   fotosGerais?: string[];
   statusAssinatura?: 'nao_enviado' | 'enviado' | 'assinado';

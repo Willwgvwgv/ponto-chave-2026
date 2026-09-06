@@ -24,7 +24,8 @@ import {
   Upload,
   Settings,
   Mic,
-  PenTool
+  PenTool,
+  UserCheck
 } from 'lucide-react';
 import { 
   db, 
@@ -251,6 +252,7 @@ export const VistoriaView = ({ isAdmin, user, profile, companySettings }: { isAd
 
   const [tipoVistoria, setTipoVistoria] = useState<'entrada' | 'saida'>('entrada');
   const [vistoriaEntradaId, setVistoriaEntradaId] = useState<string | null>(null);
+  const [vistoriadorNome, setVistoriadorNome] = useState('');
   const [descricaoGeral, setDescricaoGeral] = useState('');
   const [fotosGerais, setFotosGerais] = useState<string[]>([]);
   const [isGerandoLaudo, setIsGerandoLaudo] = useState(false);
@@ -333,6 +335,7 @@ export const VistoriaView = ({ isAdmin, user, profile, companySettings }: { isAd
         companySubtitle: companySettings?.subtitle || 'Negócios Imobiliários',
         tipo: tipoVistoria,
         vistoriaEntradaId: tipoVistoria === 'saida' ? vistoriaEntradaId : null,
+        vistoriadorNome,
         descricaoGeral,
         statusAssinatura,
         linkAssinatura,
@@ -376,6 +379,7 @@ export const VistoriaView = ({ isAdmin, user, profile, companySettings }: { isAd
     setFormStep(0);
     setTipoVistoria('entrada');
     setVistoriaEntradaId(null);
+    setVistoriadorNome(user?.displayName || profile?.displayName || '');
     setDescricaoGeral('');
     setFotosGerais([]);
     setStatusAssinatura('nao_enviado');
@@ -410,6 +414,7 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
     setEditingVistoria(v);
     setTipoVistoria(v.tipo || 'entrada');
     setVistoriaEntradaId(v.vistoriaEntradaId || null);
+    setVistoriadorNome(v.vistoriadorNome || v.corretorNome || user?.displayName || '');
     setDescricaoGeral(v.descricaoGeral || '');
     setStatusAssinatura(v.statusAssinatura || 'nao_enviado');
     setLinkAssinatura(v.linkAssinatura || '');
@@ -740,6 +745,17 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
   });
 
   const generatePDF = async (vistoria: Vistoria, options?: { forceDownload?: boolean }) => {
+    // Helper data (definido cedo para poder ser usado já na capa)
+    const formatDateHelper = (dateStr?: string) => {
+      if (!dateStr) return format(new Date(), "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
+      try {
+        const d = dateStr.includes('T') ? new Date(dateStr) : new Date(dateStr + 'T12:00:00');
+        return format(d, "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
+      } catch {
+        return format(new Date(), "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
+      }
+    };
+
     const toastId = toast.loading("Gerando PDF, aguarde...");
     try {
       const pdf = new jsPDF('p', 'mm', 'a4');
@@ -863,6 +879,23 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
     // --- INÍCIO DA RENDERIZAÇÃO ---
     addHeaderAndFooter(pdf, true);
     y = 70;
+
+    // CAPA — dados essenciais de identificação (endereço, data, vistoriador responsável)
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(11);
+    pdf.setTextColor(0, 48, 102);
+    const enderecoCapa = pdf.splitTextToSize((vistoria.imovel?.endereco || '').toUpperCase(), 170);
+    pdf.text(enderecoCapa, 20, y);
+    y += enderecoCapa.length * 6 + 8;
+
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(9.5);
+    pdf.setTextColor(60, 60, 60);
+    pdf.text(`DATA DA VISTORIA: ${formatDateHelper((vistoria as any).dataVistoria || vistoria.data)}`, 20, y);
+    y += 6;
+    pdf.text(`VISTORIADOR RESPONSÁVEL: ${(vistoria.vistoriadorNome || vistoria.corretorNome || '').toUpperCase()}`, 20, y);
+    pdf.setTextColor(0, 0, 0);
+    y += 12;
 
     const drawSectionHeader = (title: string, yPos: number) => {
       const upperTitle = title.toUpperCase();
@@ -1231,17 +1264,6 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
     const validadeText = pdf.splitTextToSize("Permanecem válidas e inalteradas todas as demais cláusulas do contrato principal de locação e dos termos firmados entre as partes, que não conflitarem com o presente instrumento.", 170);
     pdf.text(validadeText, 20, y);
     y += (validadeText.length * 4.5) + 10;
-
-    // Helper data
-    const formatDateHelper = (dateStr?: string) => {
-      if (!dateStr) return format(new Date(), "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
-      try {
-        const d = dateStr.includes('T') ? new Date(dateStr) : new Date(dateStr + 'T12:00:00');
-        return format(d, "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
-      } catch {
-        return format(new Date(), "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
-      }
-    };
 
     // Data alinhada à direita
     pdf.setFontSize(9.5);
@@ -1623,6 +1645,28 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
                       placeholder="Endereço do locador"
                     />
                   </div>
+                </div>
+              </div>
+
+              <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-6">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-8 h-8 rounded-xl bg-teal-50 flex items-center justify-center">
+                    <UserCheck className="w-4 h-4 text-teal-600" />
+                  </div>
+                  <h3 className="font-bold text-slate-900">Dados do Vistoriador</h3>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Nome do Vistoriador Responsável</label>
+                  <input
+                    type="text"
+                    value={vistoriadorNome}
+                    onChange={e => setVistoriadorNome(e.target.value)}
+                    className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 transition-all"
+                    placeholder="Nome de quem está fazendo a vistoria"
+                  />
+                  <p className="text-[10px] text-slate-400 ml-1">
+                    Já vem preenchido com o seu nome — mude aqui se outra pessoa da equipe estiver fazendo essa vistoria.
+                  </p>
                 </div>
               </div>
 
@@ -2123,6 +2167,7 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
                       companyId: profile?.companyId || 'default',
                       tipo: tipoVistoria,
                       vistoriaEntradaId,
+                      vistoriadorNome,
                       descricaoGeral,
                       fotosGerais,
                       textoContrato,
@@ -2172,6 +2217,7 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
                       companyId: profile?.companyId || 'default',
                       tipo: tipoVistoria,
                       vistoriaEntradaId,
+                      vistoriadorNome,
                       descricaoGeral,
                       fotosGerais,
                       textoContrato,
