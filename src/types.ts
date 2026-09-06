@@ -263,13 +263,13 @@ export interface Comissao {
 export interface LocatarioVistoria {
   nome: string;
   cpf: string;
-  rg: string;
-  nacionalidade: string;
-  dataNascimento: string;
-  naturalidade: string;
+  rg?: string;
+  nacionalidade?: string;
+  dataNascimento?: string;
+  naturalidade?: string;
   filiacao?: string;
-  endereco: string;
-  cep: string;
+  endereco?: string;
+  cep?: string;
   email: string;
   telefone: string;
 }
@@ -284,6 +284,8 @@ export interface Vistoria {
   vistoriaEntradaId?: string | null;
   descricaoGeral?: string;
   fotosGerais?: string[];
+  statusAssinatura?: 'nao_enviado' | 'enviado' | 'assinado';
+  linkAssinatura?: string;
   textoContrato?: string;
   textoLaudo?: string;
   styleContrato?: {
@@ -647,3 +649,5 @@ export interface FaturaHidrometro {
   criadoPorUid?: string;
   criadoPorNome?: string;
 }
+
+

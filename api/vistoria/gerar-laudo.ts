@@ -12,12 +12,12 @@ function base64UrlDecode(input: string): Buffer {
 }
 
 function getFirebaseProjectId(): string {
-  if (process.env.VITE_FIREBASE_PROJECT_ID) return process.env.VITE_FIREBASE_PROJECT_ID;
+  if (process.env.VITE_FIREBASE_PROJECT_ID) return process.env.VITE_FIREBASE_PROJECT_ID.trim();
   try {
     const configPath = path.join(process.cwd(), "firebase-applet-config.json");
     if (fs.existsSync(configPath)) {
       const cfg = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-      if (cfg.projectId) return cfg.projectId;
+      if (cfg.projectId) return String(cfg.projectId).trim();
     }
   } catch {
     // ignora — cai no valor padrão abaixo

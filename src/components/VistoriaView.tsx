@@ -22,7 +22,9 @@ import {
   Save,
   Printer,
   Upload,
-  Settings
+  Settings,
+  Mic,
+  PenTool
 } from 'lucide-react';
 import { 
   db, 
@@ -238,6 +240,10 @@ export const VistoriaView = ({ isAdmin, user, profile, companySettings }: { isAd
   const [descricaoGeral, setDescricaoGeral] = useState('');
   const [fotosGerais, setFotosGerais] = useState<string[]>([]);
   const [isGerandoLaudo, setIsGerandoLaudo] = useState(false);
+  const [isGravandoAudio, setIsGravandoAudio] = useState(false);
+  const [statusAssinatura, setStatusAssinatura] = useState<'nao_enviado' | 'enviado' | 'assinado'>('nao_enviado');
+  const [linkAssinatura, setLinkAssinatura] = useState('');
+  const speechRecognitionRef = React.useRef<any>(null);
   const [textoContrato, setTextoContrato] = useState('');
   const [textoLaudo, setTextoLaudo] = useState('');
   const [styleContrato, setStyleContrato] = useState({ fontSize: 9, textAlign: 'justify' as const, isBold: false });
@@ -314,6 +320,8 @@ export const VistoriaView = ({ isAdmin, user, profile, companySettings }: { isAd
         tipo: tipoVistoria,
         vistoriaEntradaId: tipoVistoria === 'saida' ? vistoriaEntradaId : null,
         descricaoGeral,
+        statusAssinatura,
+        linkAssinatura,
         textoContrato,
         textoLaudo,
         styleContrato,
@@ -356,6 +364,8 @@ export const VistoriaView = ({ isAdmin, user, profile, companySettings }: { isAd
     setVistoriaEntradaId(null);
     setDescricaoGeral('');
     setFotosGerais([]);
+    setStatusAssinatura('nao_enviado');
+    setLinkAssinatura('');
     setStyleContrato({ fontSize: 9, textAlign: 'justify', isBold: false });
     setStyleLaudo({ fontSize: 9, textAlign: 'justify', isBold: false });
     setLocatarios([{ ...DEFAULT_LOCATARIO }]);
@@ -387,6 +397,8 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
     setTipoVistoria(v.tipo || 'entrada');
     setVistoriaEntradaId(v.vistoriaEntradaId || null);
     setDescricaoGeral(v.descricaoGeral || '');
+    setStatusAssinatura(v.statusAssinatura || 'nao_enviado');
+    setLinkAssinatura(v.linkAssinatura || '');
     setFotosGerais([]);
     if (v.locatarios && Array.isArray(v.locatarios) && v.locatarios.length > 0) {
       setLocatarios(v.locatarios.map(l => ({ ...DEFAULT_LOCATARIO, ...l })));
@@ -505,6 +517,72 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
     setFotosGerais(prev => prev.filter((_, i) => i !== pIdx));
   };
 
+  const handleToggleGravacaoVoz = () => {
+    const SpeechRecognitionApi = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+    if (!SpeechRecognitionApi) {
+      toast.error('Seu navegador não suporta ditado por voz. Tente usar o Google Chrome.');
+      return;
+    }
+
+    if (isGravandoAudio) {
+      speechRecognitionRef.current?.stop();
+      return;
+    }
+
+    const recognition = new SpeechRecognitionApi();
+    recognition.lang = 'pt-BR';
+    recognition.continuous = true;
+    recognition.interimResults = false;
+
+    recognition.onstart = () => {
+      setIsGravandoAudio(true);
+      toast.info('Ouvindo... fale a descrição da vistoria.');
+    };
+
+    recognition.onresult = (event: any) => {
+      let textoFinal = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        if (event.results[i].isFinal) {
+          textoFinal += event.results[i][0].transcript;
+        }
+      }
+      if (textoFinal.trim()) {
+        setDescricaoGeral(prev => (prev ? `${prev.trim()} ${textoFinal.trim()}` : textoFinal.trim()));
+      }
+    };
+
+    recognition.onerror = (event: any) => {
+      console.error('Erro no reconhecimento de voz:', event.error);
+      if (event.error !== 'no-speech' && event.error !== 'aborted') {
+        toast.error('Erro ao capturar áudio. Tente novamente.');
+      }
+    };
+
+    recognition.onend = () => {
+      setIsGravandoAudio(false);
+    };
+
+    speechRecognitionRef.current = recognition;
+    recognition.start();
+  };
+
+  const handleEnviarParaAssinatura = async (vistoria: Vistoria) => {
+    // 1) Gera e força o download do PDF (pra já ter o arquivo pronto pra subir no CredPago)
+    await generatePDF(vistoria, { forceDownload: true });
+
+    // 2) Abre o CredPago/CredSign numa nova aba
+    window.open('https://credpago.com.br/credsign/', '_blank');
+
+    // 3) Marca como "enviado" — o próprio usuário confirma quando terminar de subir o arquivo lá
+    setStatusAssinatura('enviado');
+
+    toast('PDF baixado! Agora é só subir esse arquivo no CredPago que abriu na outra aba.', {
+      duration: 6000,
+      icon: '📄'
+    });
+  };
+
   const handleGerarLaudoComIA = async () => {
     if (!descricaoGeral.trim() && comodos.every(c => c.itens.every(i => i.ok))) {
       toast.error('Escreva uma descrição geral ou marque alguma ressalva nos cômodos antes de gerar o laudo.');
@@ -617,7 +695,7 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
     return matchesSearch && matchedStatus;
   });
 
-  const generatePDF = async (vistoria: Vistoria) => {
+  const generatePDF = async (vistoria: Vistoria, options?: { forceDownload?: boolean }) => {
     const toastId = toast.loading("Gerando PDF, aguarde...");
     try {
       const pdf = new jsPDF('p', 'mm', 'a4');
@@ -758,6 +836,79 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
       return yPos + 10;
     };
 
+    // CONSIDERAÇÕES PRELIMINARES, CONTESTAÇÃO E CRITÉRIOS DE VISTORIA (nova página, logo após a capa)
+    pdf.addPage();
+    addHeaderAndFooter(pdf, false);
+    y = 35;
+    y = drawSectionHeader('CONSIDERAÇÕES PRELIMINARES', y);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(8.5);
+
+    const printParagraph = (text: string, startY: number): number => {
+      let yy = startY;
+      const lines = pdf.splitTextToSize(text, 170);
+      lines.forEach((line: string) => {
+        yy = checkPageBreak(yy, 5);
+        pdf.text(line, 20, yy);
+        yy += 4.2;
+      });
+      return yy + 4;
+    };
+
+    y = printParagraph(
+      'Este relatório de vistoria tem por objetivo retratar o estado de conservação e funcionamento do imóvel na data de sua realização, em atendimento ao disposto no art. 22, inciso V, e art. 23, inciso III, ambos da Lei nº 8.245/91 (Lei do Inquilinato).',
+      y
+    );
+    y = printParagraph(
+      'A presente vistoria foi realizada por observação estética da construção e acabamentos, não se atendo a aspectos estruturais de solidez, fundações e vícios ocultos.',
+      y
+    );
+    y = printParagraph(
+      'O(a) locatário(a) declara estar ciente de que deverá devolver o imóvel nas mesmas condições em que o recebeu, conforme descrição constante deste laudo, ressalvado o desgaste natural decorrente do uso normal.',
+      y
+    );
+
+    y = checkPageBreak(y, 15);
+    y = drawSectionHeader('PRAZO PARA CONTESTAÇÃO', y);
+    y = printParagraph(
+      'Terá o(a) locatário(a) 10 (dez) dias corridos, a contar da data de assinatura deste termo, para se manifestar sobre o seu conteúdo, exceção feita a implicações originárias de chuva, cujo prazo se inicia a partir do primeiro evento.',
+      y
+    );
+    y = printParagraph(
+      'Toda e qualquer contestação deverá ser feita por escrito, seguindo a mesma numeração de itens deste laudo, e acompanhada de fotos que comprovem a divergência apontada, encaminhada ao departamento responsável pela administração do imóvel.',
+      y
+    );
+    y = printParagraph(
+      'A ausência de manifestação dentro do prazo estabelecido caracteriza a plena concordância do(a) locatário(a) com o conteúdo deste laudo, não sendo admitida contestação posterior, inclusive no momento da rescisão contratual.',
+      y
+    );
+
+    y = checkPageBreak(y, 15);
+    y = drawSectionHeader('CRITÉRIOS DE ESTADO DE CONSERVAÇÃO', y);
+    pdf.setFontSize(8.5);
+
+    const criterios: [string, string][] = [
+      ['NOVO', 'Primeiro uso. Pintura recente com cobrimento completo da superfície, sem retoques.'],
+      ['BOM', 'Sem sinais relevantes de desgaste, ou com pequenas irregularidades que não comprometem o uso ou a integridade do item.'],
+      ['REGULAR', 'Presença de manchas, riscos, lascas ou pequenas perfurações, desgaste leve pela ação do tempo, ou pequenas falhas na pintura.'],
+      ['RUIM', 'Danos relevantes: descascamentos, trincas, infiltrações, deterioração de revestimento ou demais avarias que comprometem a aparência ou o funcionamento do item.']
+    ];
+
+    criterios.forEach(([label, desc]) => {
+      y = checkPageBreak(y, 12);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text(`${label}:`, 20, y);
+      pdf.setFont('helvetica', 'normal');
+      const descLines = pdf.splitTextToSize(desc, 150);
+      pdf.text(descLines, 42, y);
+      y += Math.max(5, descLines.length * 4.2) + 2;
+    });
+
+    // DADOS DO LOCATÁRIO (nova página)
+    pdf.addPage();
+    addHeaderAndFooter(pdf, false);
+    y = 35;
+
     // DADOS DO LOCATÁRIO
     const locatariosList: LocatarioVistoria[] = (vistoria.locatarios && vistoria.locatarios.length > 0)
       ? vistoria.locatarios
@@ -772,10 +923,9 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
       const prefix = locatariosList.length > 1 ? `LOCATÁRIO ${idx + 1}: ` : 'LOCATÁRIO: ';
       const locatarioInfo = [
         `${prefix}${(loc.nome || '').toUpperCase()}`,
-        `NATURALIDADE: ${loc.naturalidade || ''} | NASC: ${loc.dataNascimento || ''}`,
-        `CPF: ${loc.cpf || ''}  |  RG: ${loc.rg || ''}${loc.nacionalidade ? ` | NACIONALIDADE: ${loc.nacionalidade}` : ''}`,
-        `ENDEREÇO: ${loc.endereco || ''}  -  CEP: ${loc.cep || ''}`,
-        `E-MAIL: ${loc.email || ''}  |  TEL: ${loc.telefone || ''}`
+        `CPF: ${loc.cpf || ''}${loc.rg ? `  |  RG: ${loc.rg}` : ''}`,
+        `E-MAIL: ${loc.email || ''}  |  TEL: ${loc.telefone || ''}`,
+        ...(loc.endereco ? [`ENDEREÇO: ${loc.endereco}${loc.cep ? `  -  CEP: ${loc.cep}` : ''}`] : [])
       ];
       
       locatarioInfo.forEach(line => {
@@ -1143,14 +1293,19 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
     // Output as Blob to open in new window
     const blob = pdf.output('blob');
     const url = URL.createObjectURL(blob);
-    
-    const newWindow = window.open(url, '_blank');
-    if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
-      // If popup is blocked, fallback to direct download
+
+    if (options?.forceDownload) {
       pdf.save(fileName);
       toast.success("PDF gerado e baixado com sucesso!", { id: toastId });
     } else {
-      toast.success("PDF gerado com sucesso!", { id: toastId });
+      const newWindow = window.open(url, '_blank');
+      if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
+        // If popup is blocked, fallback to direct download
+        pdf.save(fileName);
+        toast.success("PDF gerado e baixado com sucesso!", { id: toastId });
+      } else {
+        toast.success("PDF gerado com sucesso!", { id: toastId });
+      }
     }
   } catch (error) {
     console.error("Erro ao gerar PDF:", error);
@@ -1351,36 +1506,6 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
                           />
                         </div>
                         <div className="space-y-1.5">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Data Nascimento</label>
-                          <input 
-                            type="text" 
-                            value={loc.dataNascimento}
-                            onChange={e => handleUpdateLocatario(idx, 'dataNascimento', e.target.value)}
-                            className="w-full px-4 py-3 bg-white border border-slate-200/80 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
-                            placeholder="DD/MM/AAAA"
-                          />
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Naturalidade</label>
-                          <input 
-                            type="text" 
-                            value={loc.naturalidade}
-                            onChange={e => handleUpdateLocatario(idx, 'naturalidade', e.target.value)}
-                            className="w-full px-4 py-3 bg-white border border-slate-200/80 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
-                            placeholder="Cidade/Estado"
-                          />
-                        </div>
-                        <div className="space-y-1.5 md:col-span-2">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Filiação</label>
-                          <input 
-                            type="text" 
-                            value={loc.filiacao || ''}
-                            onChange={e => handleUpdateLocatario(idx, 'filiacao', e.target.value)}
-                            className="w-full px-4 py-3 bg-white border border-slate-200/80 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
-                            placeholder="Nome dos pais"
-                          />
-                        </div>
-                        <div className="space-y-1.5">
                           <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">E-mail</label>
                           <input 
                             type="email" 
@@ -1398,46 +1523,6 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
                             onChange={e => handleUpdateLocatario(idx, 'telefone', e.target.value)}
                             className="w-full px-4 py-3 bg-white border border-slate-200/80 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
                             placeholder="(00) 00000-0000"
-                          />
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">RG</label>
-                          <input 
-                            type="text" 
-                            value={loc.rg}
-                            onChange={e => handleUpdateLocatario(idx, 'rg', e.target.value)}
-                            className="w-full px-4 py-3 bg-white border border-slate-200/80 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
-                            placeholder="RG"
-                          />
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Nacionalidade</label>
-                          <input 
-                            type="text" 
-                            value={loc.nacionalidade}
-                            onChange={e => handleUpdateLocatario(idx, 'nacionalidade', e.target.value)}
-                            className="w-full px-4 py-3 bg-white border border-slate-200/80 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
-                            placeholder="BRASILEIRO(A)"
-                          />
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Endereço Residencial</label>
-                          <input 
-                            type="text" 
-                            value={loc.endereco}
-                            onChange={e => handleUpdateLocatario(idx, 'endereco', e.target.value)}
-                            className="w-full px-4 py-3 bg-white border border-slate-200/80 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
-                            placeholder="Rua, Número, Bairro..."
-                          />
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">CEP</label>
-                          <input 
-                            type="text" 
-                            value={loc.cep}
-                            onChange={e => handleUpdateLocatario(idx, 'cep', e.target.value)}
-                            className="w-full px-4 py-3 bg-white border border-slate-200/80 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
-                            placeholder="00000-000"
                           />
                         </div>
                       </div>
@@ -1568,6 +1653,24 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
                     <p className="text-[11px] text-slate-500">
                       Descreva livremente o que encontrou no imóvel (paredes, furos, manchas, estado geral etc.) e jogue as fotos soltas abaixo — não precisa indicar de qual cômodo é cada uma. A IA usa isso, junto das ressalvas marcadas nos cômodos, para escrever o texto formal do laudo.
                     </p>
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">
+                        Descrição livre (fale ou digite)
+                      </label>
+                      <button
+                        type="button"
+                        onClick={handleToggleGravacaoVoz}
+                        className={cn(
+                          "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all",
+                          isGravandoAudio
+                            ? "bg-red-500 text-white animate-pulse"
+                            : "bg-white border border-purple-200 text-purple-600 hover:bg-purple-50"
+                        )}
+                      >
+                        <Mic className="w-3.5 h-3.5" />
+                        {isGravandoAudio ? 'Ouvindo... toque para parar' : 'Falar em vez de digitar'}
+                      </button>
+                    </div>
                     <textarea
                       value={descricaoGeral}
                       onChange={e => setDescricaoGeral(e.target.value)}
@@ -1785,7 +1888,7 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
               </AnimatePresence>
 
               {comodos.map((comodo, cIdx) => (
-                <div key={`${comodo.nome}-${cIdx}`} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-6">
+                <div key={cIdx} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-6">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                        <div className="w-8 h-8 rounded-xl bg-slate-900 flex items-center justify-center">
@@ -1992,6 +2095,80 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
                   <Printer className="w-5 h-5" />
                   Visualizar PDF
                 </button>
+              </div>
+
+              <div className="p-6 bg-indigo-50/50 rounded-3xl border border-indigo-100 text-left space-y-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-indigo-100 flex items-center justify-center">
+                    <PenTool className="w-4 h-4 text-indigo-600" />
+                  </div>
+                  <h4 className="font-bold text-slate-900">Assinatura Digital (CredSign)</h4>
+                </div>
+                <p className="text-xs text-slate-500">
+                  Baixe o PDF e envie para assinatura pelo CredPago/CredSign. Depois de enviar, marque o status
+                  abaixo e cole o link (se tiver) pra manter o controle de quais vistorias já foram assinadas.
+                </p>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const tempVistoria: Vistoria = {
+                      id: editingVistoria?.id || 'preview',
+                      corretorId: user.uid,
+                      corretorNome: user.displayName || profile?.displayName || 'Corretor',
+                      companyId: profile?.companyId || 'default',
+                      tipo: tipoVistoria,
+                      vistoriaEntradaId,
+                      descricaoGeral,
+                      fotosGerais,
+                      textoContrato,
+                      textoLaudo,
+                      styleContrato,
+                      styleLaudo,
+                      locatario: locatarios[0] || DEFAULT_LOCATARIO,
+                      locatarios: locatarios,
+                      imovel,
+                      locador,
+                      comodos,
+                      status: 'rascunho',
+                      data: dataVistoria,
+                      companyCity: vistoriaCity,
+                      companyState: vistoriaState,
+                      createdAt: { seconds: Date.now() / 1000, nanoseconds: 0 } as any,
+                      updatedAt: { seconds: Date.now() / 1000, nanoseconds: 0 } as any
+                    };
+                    handleEnviarParaAssinatura(tempVistoria);
+                  }}
+                  className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2"
+                >
+                  <PenTool className="w-4 h-4" />
+                  Baixar PDF e Abrir CredSign
+                </button>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Status</label>
+                    <select
+                      value={statusAssinatura}
+                      onChange={e => setStatusAssinatura(e.target.value as any)}
+                      className="w-full mt-1 px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold focus:outline-none focus:border-indigo-400 transition-colors"
+                    >
+                      <option value="nao_enviado">Não enviado</option>
+                      <option value="enviado">Enviado p/ assinatura</option>
+                      <option value="assinado">Assinado</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Link do CredSign (opcional)</label>
+                    <input
+                      type="text"
+                      value={linkAssinatura}
+                      onChange={e => setLinkAssinatura(e.target.value)}
+                      placeholder="Cole o link aqui"
+                      className="w-full mt-1 px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-medium focus:outline-none focus:border-indigo-400 transition-colors"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
           )}
