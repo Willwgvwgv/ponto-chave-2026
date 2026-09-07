@@ -392,11 +392,7 @@ export const VistoriaView = ({ isAdmin, user, profile, companySettings }: { isAd
       cnpj: brandCnpj || companySettings?.cnpj || '',
       endereco: brandAddress || companySettings?.address || ''
     });
-    setTextoContrato(brandDefaultTexto || companySettings?.defaultTextoContrato || `O(A) LOCATÁRIO(A), acima qualificado(a), declara, para os devidos fins, que nesta data recebeu as chaves do imóvel locado, passando a ter a posse do referido bem.
-
-Declara, ainda, que teve ciência das condições do imóvel, conforme laudo de vistoria elaborado pela imobiliária, o qual foi devidamente apresentado, acompanhado e conferido, concordando integralmente com seu estado de conservação no ato da entrega.
-
-O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guarda, conservação e demais obrigações previstas no contrato de locação.`);
+    setTextoContrato(brandDefaultTexto || companySettings?.defaultTextoContrato || getDefaultTextoContrato('entrada'));
     setTextoLaudo(brandDefaultTextoLaudo || companySettings?.defaultTextoLaudo || `1) O presente laudo é parte integrante do contrato de locação celebrado entre o(a) locador(a) e o(a) locatário(a). Qualquer restrição ao registro deverá ser comunicada ao(à) LOCADOR(a) por escrito, dentro de 07 (sete) dias a contar da data da assinatura deste documento.
 
 Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em bom estado de conservação, com todos os seus pertences, utensílios e acessórios em perfeito estado de funcionamento e conservação, sendo que dessa forma o(a) LOCATÁRIO(a) se compromete a devolvê-lo, findo o prazo contratual, em igual situação.`);
@@ -522,6 +518,21 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
       console.error("Photo processing error:", error);
       toast.error(error.message || "Erro ao processar fotos.", { id: toastId });
     }
+  };
+
+  const getDefaultTextoContrato = (tipo: 'entrada' | 'saida') => {
+    if (tipo === 'saida') {
+      return `O(A) LOCATÁRIO(A), acima qualificado(a), declara, para os devidos fins, que nesta data devolveu as chaves do imóvel locado à ADMINISTRADORA/LOCADOR(A), encerrando a posse direta sobre o referido bem.
+
+Declara, ainda, ter ciência do estado de conservação do imóvel registrado no laudo de vistoria de saída, elaborado nesta mesma data, o qual foi devidamente apresentado, acompanhado e conferido.
+
+A ADMINISTRADORA/LOCADOR(A) recebe as chaves nesta data, sem prejuízo da apuração de eventuais danos, deteriorações ou pendências identificadas no laudo de vistoria, as quais poderão ser cobradas do(a) LOCATÁRIO(A) na forma e no prazo legalmente cabíveis.`;
+    }
+    return `O(A) LOCATÁRIO(A), acima qualificado(a), declara, para os devidos fins, que nesta data recebeu as chaves do imóvel locado, passando a ter a posse do referido bem.
+
+Declara, ainda, que teve ciência das condições do imóvel, conforme laudo de vistoria elaborado pela imobiliária, o qual foi devidamente apresentado, acompanhado e conferido, concordando integralmente com seu estado de conservação no ato da entrega.
+
+O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guarda, conservação e demais obrigações previstas no contrato de locação.`;
   };
 
   const handlePhotoUpload = async (cIdx: number, e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1072,9 +1083,12 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
     pdf.text(`ENDEREÇO: ${(vistoria.imovel.endereco || '').toUpperCase()}`, 20, y, { maxWidth: 170 });
     y += 15;
 
-    // DECLARAÇÃO DE RECEBIMENTO DE CHAVES
+    // DECLARAÇÃO DE RECEBIMENTO/DEVOLUÇÃO DE CHAVES
     y = checkPageBreak(y, 30);
-    y = drawSectionHeader('DECLARAÇÃO DE RECEBIMENTO DE CHAVES', y);
+    y = drawSectionHeader(
+      vistoria.tipo === 'saida' ? 'DECLARAÇÃO DE DEVOLUÇÃO DE CHAVES' : 'DECLARAÇÃO DE RECEBIMENTO DE CHAVES',
+      y
+    );
     
     const sC = {
       fontSize: vistoria.styleContrato?.fontSize || 9,
@@ -1709,11 +1723,7 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
                       <div className="flex items-center gap-2">
                         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Introdução e Declarações (Pág 1)</label>
                         <button 
-                          onClick={() => setTextoContrato(brandDefaultTexto || companySettings?.defaultTextoContrato || `O(A) LOCATÁRIO(A), acima qualificado(a), declara, para os devidos fins, que nesta data recebeu as chaves do imóvel locado, passando a ter a posse do referido bem.
-
-Declara, ainda, que teve ciência das condições do imóvel, conforme laudo de vistoria elaborado pela imobiliária, o qual foi devidamente apresentado, acompanhado e conferido, concordando integralmente com seu estado de conservação no ato da entrega.
-
-O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guarda, conservação e demais obrigações previstas no contrato de locação.`)}
+                          onClick={() => setTextoContrato(brandDefaultTexto || companySettings?.defaultTextoContrato || getDefaultTextoContrato(tipoVistoria))}
                           className="text-[9px] text-blue-500 font-bold hover:underline"
                           title="Restaurar para o texto padrão definido nas configurações"
                         >
