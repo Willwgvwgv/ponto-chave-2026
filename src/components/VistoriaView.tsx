@@ -318,6 +318,10 @@ export const VistoriaView = ({ isAdmin, user, profile, companySettings }: { isAd
   }, [user, profile, isAdmin]);
 
   const handleSave = async (e: React.FormEvent) => {
+    if (!user || !profile) {
+      toast.error('Aguarde o carregamento do seu perfil antes de salvar. Tente novamente em alguns segundos.');
+      return;
+    }
     try {
       const primaryLocatario = locatarios[0] || DEFAULT_LOCATARIO;
       // Fotos são usadas exclusivamente em memória durante a sessão para geração do PDF
@@ -329,7 +333,9 @@ export const VistoriaView = ({ isAdmin, user, profile, companySettings }: { isAd
       const data = {
         corretorId: user?.uid || 'anonymous',
         corretorNome: user?.displayName || profile?.displayName || 'Corretor',
-        companyId: profile?.companyId || 'default',
+        // Preserva o companyId original ao editar — nunca recalcula, pra evitar que a vistoria
+        // "suma" da lista caso o perfil ainda não tenha carregado no momento do salvamento.
+        companyId: editingVistoria?.companyId || profile?.companyId || 'default',
         companyLogo: companySettings?.logoUrl || null,
         companyName: companySettings?.name || 'FIDELITE',
         companySubtitle: companySettings?.subtitle || 'Negócios Imobiliários',
