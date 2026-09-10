@@ -127,6 +127,39 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
     });
   }, [convertedModels, selectedMonthFilter]);
 
+  // FILTERED RENTALS FOR THE RESTURED LIST — também usado pelos cards de resumo (KPIs) abaixo,
+  // para que buscar por um corretor específico (ex: "reginaldo") reflita nos totais mostrados.
+  const filteredRentals = useMemo(() => {
+    return monthlyModels.filter(r => {
+      const searchLower = filterText.toLowerCase();
+      const matchText = 
+        (r.imovel || "").toLowerCase().includes(searchLower) || 
+        (r.inquilino || "").toLowerCase().includes(searchLower) ||
+        `loc-${r.id}`.toLowerCase().includes(searchLower) ||
+        (r.distribuicao || []).some(rt => (rt.corretorNome || "").toLowerCase().includes(searchLower));
+
+      if (!matchText) return false;
+
+      const st = getRowStatus(r);
+      if (filterStatus === "TODOS" || filterStatus === "TUDO") return true;
+      if (filterStatus === "CONCLUIDO" || filterStatus === "PAGO") return st === "concluido";
+      if (filterStatus === "EM_ABERTO" || filterStatus === "PENDENTE") return st === "em_aberto";
+      if (filterStatus === "ATRASADO" || filterStatus === "ATRASO") return st === "atrasado";
+      return true;
+    });
+  }, [monthlyModels, filterText, filterStatus]);
+
+  // Quando a busca combina com o nome de um corretor específico, os valores em dinheiro (pago/a
+  // receber) passam a considerar só a parte dele no rateio — não a locação inteira — para que
+  // "reginaldo" mostre exatamente o que é do Reginaldo, não o valor total da locação.
+  const getRelevantDistribuicoes = (r: any) => {
+    const entries = r.distribuicao || [];
+    const searchLower = filterText.trim().toLowerCase();
+    if (!searchLower) return entries;
+    const matched = entries.filter((d: any) => (d.corretorNome || "").toLowerCase().includes(searchLower));
+    return matched.length > 0 ? matched : entries;
+  };
+
   const selectedRental = useMemo(() => {
     if (!selectedRentalId) return null;
     return convertedModels.find(r => r.id === selectedRentalId) || null;
@@ -357,7 +390,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
   };
 
   // FILTERED MODELS BY MONTH REFERENCE
-  const currentFiltered = monthlyModels;
+  const currentFiltered = filteredRentals;
 
   // KPI 1 — Total Processado (Volume Total em 1º Aluguel)
   const totalProcessado = useMemo(() => {
@@ -400,13 +433,13 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
     let pagos = 0;
     let aPagar = 0;
     currentFiltered.forEach(r => {
-      (r.distribuicao || []).forEach(d => {
+      getRelevantDistribuicoes(r).forEach((d: any) => {
         pagos += (d.totalPago || 0);
         aPagar += Math.max(0, (d.valor || 0) - (d.totalPago || 0));
       });
     });
     return { pagos, aPagar };
-  }, [currentFiltered]);
+  }, [currentFiltered, filterText]);
 
   // Operações pagas count
   const countOperacoesPagas = useMemo(() => {
@@ -418,12 +451,21 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
     return currentFiltered.filter(r => getRowStatus(r) === "em_aberto").length;
   }, [currentFiltered]);
 
-  // Total atrasados valor
+  // Total atrasados valor — soma só a parte do corretor buscado (se houver busca), não a locação inteira
   const totalAtrasadosValor = useMemo(() => {
     return currentFiltered
       .filter(r => getRowStatus(r) === "atrasado")
-      .reduce((acc, r) => acc + (r.legacyDoc.primeiroAluguel || r.valorAluguel || 0), 0);
-  }, [currentFiltered]);
+      .reduce((acc, r) => {
+        if (!filterText.trim()) {
+          return acc + (r.legacyDoc.primeiroAluguel || r.valorAluguel || 0);
+        }
+        const parteDoCorretor = getRelevantDistribuicoes(r).reduce(
+          (sum: number, d: any) => sum + Math.max(0, (d.valor || 0) - (d.totalPago || 0)),
+          0
+        );
+        return acc + parteDoCorretor;
+      }, 0);
+  }, [currentFiltered, filterText]);
 
   // Progresso percentual para os cards de repasse
   const totalDevidoRepasses = card4Data.pagos + card4Data.aPagar;
@@ -438,27 +480,6 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
       setActiveCardFilter(cardId);
     }
   };
-
-  // FILTERED RENTALS FOR THE RESTURED LIST
-  const filteredRentals = useMemo(() => {
-    return monthlyModels.filter(r => {
-      const searchLower = filterText.toLowerCase();
-      const matchText = 
-        (r.imovel || "").toLowerCase().includes(searchLower) || 
-        (r.inquilino || "").toLowerCase().includes(searchLower) ||
-        `loc-${r.id}`.toLowerCase().includes(searchLower) ||
-        (r.distribuicao || []).some(rt => (rt.corretorNome || "").toLowerCase().includes(searchLower));
-
-      if (!matchText) return false;
-
-      const st = getRowStatus(r);
-      if (filterStatus === "TODOS" || filterStatus === "TUDO") return true;
-      if (filterStatus === "CONCLUIDO" || filterStatus === "PAGO") return st === "concluido";
-      if (filterStatus === "EM_ABERTO" || filterStatus === "PENDENTE") return st === "em_aberto";
-      if (filterStatus === "ATRASADO" || filterStatus === "ATRASO") return st === "atrasado";
-      return true;
-    });
-  }, [monthlyModels, filterText, filterStatus]);
 
   // ACTIONS
   const setLocadorBroker = (brokerId: string) => {
@@ -1802,6 +1823,11 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                 placeholder="Buscar por imóvel, corretor ou locatário..." 
                 className="w-full pl-10 pr-4 py-2 bg-slate-50/80 border border-slate-200/80 rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
               />
+              {filterText.trim() && (
+                <span className="absolute -bottom-5 left-0 text-[10px] font-bold text-blue-600">
+                  Os valores dos cards acima refletem só {filterText}
+                </span>
+              )}
             </div>
 
             {/* Status Pills */}
