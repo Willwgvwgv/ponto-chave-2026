@@ -598,6 +598,10 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
 
   const handleSaveRental = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!editingRental && !userProfile?.companyId) {
+      toast.error('Aguarde o carregamento do seu perfil antes de salvar. Tente novamente em alguns segundos.');
+      return;
+    }
     if (!imovel || !inquilino) {
       toast.error("Por favor, preencha o imóvel e inquilino.");
       return;
