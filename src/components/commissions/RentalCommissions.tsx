@@ -127,6 +127,20 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
     });
   }, [convertedModels, selectedMonthFilter]);
 
+  // Status detection for each rental contract — precisa vir antes do filteredRentals abaixo, que já depende dela
+  const getRowStatus = (r: RentalFinancialViewModel): "concluido" | "em_aberto" | "atrasado" => {
+    const isConcluido = r.statusFinanceiro === "concluida" || r.legacyDoc.status === "pago";
+    if (isConcluido) return "concluido";
+
+    const isAtrasado = (
+      r.legacyDoc.status === "atraso" || 
+      (!!r.legacyDoc.vencimento && new Date(r.legacyDoc.vencimento + 'T23:59:59') < new Date())
+    );
+    if (isAtrasado) return "atrasado";
+
+    return "em_aberto";
+  };
+
   // FILTERED RENTALS FOR THE RESTURED LIST — também usado pelos cards de resumo (KPIs) abaixo,
   // para que buscar por um corretor específico (ex: "reginaldo") reflita nos totais mostrados.
   const filteredRentals = useMemo(() => {
@@ -311,19 +325,6 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
   }, [rateios, porcentagemLocador, valorLocadorValue, aluguelMensal]);
 
   // Status detection for each rental contract
-  const getRowStatus = (r: RentalFinancialViewModel): "concluido" | "em_aberto" | "atrasado" => {
-    const isConcluido = r.statusFinanceiro === "concluida" || r.legacyDoc.status === "pago";
-    if (isConcluido) return "concluido";
-
-    const isAtrasado = (
-      r.legacyDoc.status === "atraso" || 
-      (!!r.legacyDoc.vencimento && new Date(r.legacyDoc.vencimento + 'T23:59:59') < new Date())
-    );
-    if (isAtrasado) return "atrasado";
-
-    return "em_aberto";
-  };
-
   const getDistribuidoPct = (r: RentalFinancialViewModel): number => {
     const totalDevidoCorretores = r.legacyDoc.valorRepasseCorretores || 0;
     if (totalDevidoCorretores <= 0) return 100;
