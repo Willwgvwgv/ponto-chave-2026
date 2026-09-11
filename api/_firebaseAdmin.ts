@@ -15,12 +15,15 @@ export function getFirebaseAdmin() {
   try {
     let adminConfig: any = {};
     const configPath = path.join(process.cwd(), "firebase-applet-config.json");
-    let databaseId: string | undefined = undefined;
+    // Prioriza a mesma variável de ambiente que o app cliente usa para escolher o banco de
+    // dados nomeado do Firestore — sem isso, o Admin SDK cai no banco "(default)", que é
+    // diferente (e vazio) do banco real usado pelo aplicativo.
+    let databaseId: string | undefined = process.env.VITE_FIREBASE_DATABASE_ID?.trim() || undefined;
 
     if (fs.existsSync(configPath)) {
       const firebaseConfig = JSON.parse(fs.readFileSync(configPath, "utf-8"));
       adminConfig.projectId = firebaseConfig.projectId;
-      databaseId = firebaseConfig.firestoreDatabaseId;
+      if (!databaseId) databaseId = firebaseConfig.firestoreDatabaseId;
     }
 
     if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
