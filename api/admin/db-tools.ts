@@ -71,12 +71,24 @@ export default async function handler(req: any, res: any) {
   res.setHeader("Content-Type", "application/json");
 
   const authHeader = req.headers.authorization || req.headers.Authorization;
-  if (!authHeader || typeof authHeader !== "string" || !authHeader.startsWith("Bearer ")) {
-    return res.status(401).json({ error: "Acesso não autorizado: Token não fornecido" });
+  const providedSecret = req.query?.secret || req.headers["x-admin-secret"];
+  const expectedSecret = process.env.ADMIN_EXPORT_SECRET;
+
+  let authorized = false;
+
+  // Opção 1 (mais simples): senha fixa configurada na Vercel
+  if (expectedSecret && providedSecret && providedSecret === expectedSecret) {
+    authorized = true;
   }
-  const decoded = await verifyFirebaseIdToken(authHeader.split("Bearer ")[1]);
-  if (!decoded) {
-    return res.status(401).json({ error: "Acesso não autorizado: Token inválido" });
+
+  // Opção 2: token de login normal do Firebase
+  if (!authorized && authHeader && typeof authHeader === "string" && authHeader.startsWith("Bearer ")) {
+    const decoded = await verifyFirebaseIdToken(authHeader.split("Bearer ")[1]);
+    if (decoded) authorized = true;
+  }
+
+  if (!authorized) {
+    return res.status(401).json({ error: "Acesso não autorizado" });
   }
 
   const { adminDb } = getFirebaseAdmin();
