@@ -25,7 +25,8 @@ import {
   X,
   AlertTriangle,
   ArrowUpRight,
-  ArrowDownRight
+  ArrowDownRight,
+  Download,
 } from 'lucide-react';
 import { BankAccount, FinancialCategory, FinancialTransaction } from '../../types';
 import { db, doc, deleteDoc } from '../../firebase';
@@ -656,6 +657,47 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
     };
   }, [filteredTransactions]);
 
+  // Exporta os lançamentos atualmente filtrados (respeitando busca, período, conta,
+  // categoria, tipo e status já aplicados na tela) para um arquivo CSV.
+  const handleExportCSV = () => {
+    const accountMap = new Map<string, BankAccount>(accounts.map(a => [a.id, a]));
+
+    const escapeCsv = (value: string) => {
+      const needsQuotes = value.includes(';') || value.includes('"') || value.includes('\n');
+      const escaped = value.replace(/"/g, '""');
+      return needsQuotes ? `"${escaped}"` : escaped;
+    };
+
+    const header = ['Data', 'Descrição', 'Tipo', 'Categoria', 'Conta', 'Status', 'Valor', 'Observações'];
+    const rows = filteredTransactions.map(t => {
+      const cat = categories.find(c => c.id === t.categoryId);
+      const acc = accountMap.get(t.accountId);
+      return [
+        t.date || '',
+        t.description || '',
+        t.type === 'RECEITA' ? 'Receita' : t.type === 'DESPESA' ? 'Despesa' : (t.type || ''),
+        cat?.name || '',
+        acc?.name || '',
+        t.status || '',
+        (t.amount ?? 0).toFixed(2).replace('.', ','),
+        t.notes || ''
+      ].map(v => escapeCsv(String(v))).join(';');
+    });
+
+    const csvContent = '\uFEFF' + [header.join(';'), ...rows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const dataAtual = new Date().toISOString().split('T')[0];
+    link.href = url;
+    link.download = `lancamentos_${dataAtual}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    toast.success(`${filteredTransactions.length} lançamento(s) exportado(s)!`);
+  };
+
   const handleCreateTransaction = (e: React.FormEvent) => {
     e.preventDefault();
     if (!txAmount || !txAccountId || !txDesc) return;
@@ -1080,6 +1122,14 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
             Excluir todos os lançamentos recorrentes com erro ({errorTransactionsToDelete.length})
           </button>
         )}
+        <button
+          onClick={handleExportCSV}
+          className="flex items-center gap-1.5 px-4 py-2.5 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-xl font-bold text-xs transition-colors"
+          title="Exportar os lançamentos filtrados nesta tela para um arquivo CSV"
+        >
+          <Download className="w-4 h-4" />
+          Exportar
+        </button>
         <button
           onClick={() => {
             const firstAcc = accounts[0];
