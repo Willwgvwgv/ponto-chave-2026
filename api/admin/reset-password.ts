@@ -1,5 +1,5 @@
 import { FieldValue } from "firebase-admin/firestore";
-import { getFirebaseAdmin } from "../_firebaseAdmin.js";
+import { getFirebaseAdmin, getFirebaseAdminAuth } from "../_firebaseAdmin.js";
 
 export default async function handler(req: any, res: any) {
   res.setHeader("Content-Type", "application/json");
@@ -8,7 +8,8 @@ export default async function handler(req: any, res: any) {
     return res.status(405).json({ error: "Método não permitido" });
   }
 
-  const { adminDb, adminAuthInstance } = getFirebaseAdmin();
+  const { adminDb } = getFirebaseAdmin();
+  const adminAuthInstance = await getFirebaseAdminAuth();
 
   const authHeader = req.headers.authorization || req.headers.Authorization;
   if (!authHeader || typeof authHeader !== "string" || !authHeader.startsWith("Bearer ")) {

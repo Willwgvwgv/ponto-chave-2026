@@ -1,60 +1,79 @@
 import { initializeApp as initAdminApp, getApps, cert } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
-import { getAuth as getAdminAuth } from "firebase-admin/auth";
 import path from "path";
 import fs from "fs";
 
 let adminDb: any = null;
 let adminAuthInstance: any = null;
+let authInitAttempted = false;
 
-export function getFirebaseAdmin() {
-  if (adminDb) {
-    return { adminDb, adminAuthInstance };
+function resolveAdminConfig() {
+  let adminConfig: any = {};
+  const configPath = path.join(process.cwd(), "firebase-applet-config.json");
+  // Prioriza a mesma variável de ambiente que o app cliente usa para escolher o banco de
+  // dados nomeado do Firestore — sem isso, o Admin SDK cai no banco "(default)", que é
+  // diferente (e vazio) do banco real usado pelo aplicativo.
+  let databaseId: string | undefined = process.env.VITE_FIREBASE_DATABASE_ID?.trim() || undefined;
+
+  if (fs.existsSync(configPath)) {
+    const firebaseConfig = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+    adminConfig.projectId = firebaseConfig.projectId;
+    if (!databaseId) databaseId = firebaseConfig.firestoreDatabaseId;
   }
 
-  try {
-    let adminConfig: any = {};
-    const configPath = path.join(process.cwd(), "firebase-applet-config.json");
-    // Prioriza a mesma variável de ambiente que o app cliente usa para escolher o banco de
-    // dados nomeado do Firestore — sem isso, o Admin SDK cai no banco "(default)", que é
-    // diferente (e vazio) do banco real usado pelo aplicativo.
-    let databaseId: string | undefined = process.env.VITE_FIREBASE_DATABASE_ID?.trim() || undefined;
-
-    if (fs.existsSync(configPath)) {
-      const firebaseConfig = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-      adminConfig.projectId = firebaseConfig.projectId;
-      if (!databaseId) databaseId = firebaseConfig.firestoreDatabaseId;
-    }
-
-    if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
-      try {
-        const sa = typeof process.env.FIREBASE_SERVICE_ACCOUNT_JSON === "string"
-          ? JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON)
-          : process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
-        adminConfig.credential = cert(sa);
-        if (sa.project_id) adminConfig.projectId = sa.project_id;
-      } catch (e) {
-        console.warn("Error parsing FIREBASE_SERVICE_ACCOUNT_JSON from env:", e);
-      }
-    }
-
-    if (getApps().length === 0) {
-      initAdminApp(adminConfig);
-    }
-    adminDb = getFirestore(databaseId || "(default)");
-
-    // O Auth do Admin SDK quebra neste ambiente serverless (conflito ESM/CommonJS
-    // de uma dependência interna, jwks-rsa/jose) — isola numa tentativa separada
-    // pra não impedir o Firestore (adminDb) de funcionar normalmente.
+  if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
     try {
-      adminAuthInstance = getAdminAuth();
-    } catch (authErr) {
-      console.warn("Firebase Admin Auth indisponível neste ambiente (usar verificação própria de token):", authErr);
-      adminAuthInstance = null;
+      const sa = typeof process.env.FIREBASE_SERVICE_ACCOUNT_JSON === "string"
+        ? JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON)
+        : process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+      adminConfig.credential = cert(sa);
+      if (sa.project_id) adminConfig.projectId = sa.project_id;
+    } catch (e) {
+      console.warn("Error parsing FIREBASE_SERVICE_ACCOUNT_JSON from env:", e);
     }
-  } catch (err) {
-    console.warn("Could not initialize Firebase Admin DB/Auth:", err);
+  }
+
+  return { adminConfig, databaseId };
+}
+
+// Firestore (adminDb) — usado pela maioria dos endpoints administrativos, e não sofre
+// do problema de compatibilidade ESM/CommonJS que afeta o módulo de Auth abaixo.
+export function getFirebaseAdmin() {
+  if (!adminDb) {
+    try {
+      const { adminConfig, databaseId } = resolveAdminConfig();
+      if (getApps().length === 0) {
+        initAdminApp(adminConfig);
+      }
+      adminDb = getFirestore(databaseId || "(default)");
+    } catch (err) {
+      console.warn("Could not initialize Firebase Admin Firestore:", err);
+    }
   }
 
   return { adminDb, adminAuthInstance };
+}
+
+// Auth do Admin SDK — importado dinamicamente (só quando de fato chamado), porque o
+// import estático de "firebase-admin/auth" quebra o carregamento de QUALQUER função
+// serverless deste projeto (conflito ESM/CommonJS numa dependência interna dela,
+// jwks-rsa/jose), mesmo em funções que nunca usam Auth. Com import() dinâmico, o erro
+// fica isolado só em quem realmente precisa de Auth, e pode ser tratado com try/catch.
+export async function getFirebaseAdminAuth() {
+  if (adminAuthInstance || authInitAttempted) {
+    return adminAuthInstance;
+  }
+  authInitAttempted = true;
+
+  try {
+    // Garante que o app admin (usado pelo Firestore acima) já está inicializado
+    getFirebaseAdmin();
+    const { getAuth } = await import("firebase-admin/auth");
+    adminAuthInstance = getAuth();
+  } catch (err) {
+    console.warn("Firebase Admin Auth indisponível neste ambiente (usar verificação própria de token):", err);
+    adminAuthInstance = null;
+  }
+
+  return adminAuthInstance;
 }
