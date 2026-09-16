@@ -26,7 +26,8 @@ import {
   Building2,
   Users,
   Landmark,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Download
 } from "lucide-react";
 import { Comissao, RateioComissao, PagamentoCorretor, ComissoneUser, UserProfile } from "../../types";
 import { ConfirmModal } from "../ui/ConfirmModal";
@@ -172,6 +173,80 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
     if (!searchLower) return entries;
     const matched = entries.filter((d: any) => (d.corretorNome || "").toLowerCase().includes(searchLower));
     return matched.length > 0 ? matched : entries;
+  };
+
+  const escapeCsvValue = (value: string) => {
+    const needsQuotes = value.includes(';') || value.includes('"') || value.includes('\n');
+    const escaped = value.replace(/"/g, '""');
+    return needsQuotes ? `"${escaped}"` : escaped;
+  };
+
+  const downloadCsv = (filename: string, header: string[], rows: string[][]) => {
+    const csvContent = '\uFEFF' + [header.join(';'), ...rows.map(r => r.map(v => escapeCsvValue(String(v))).join(';'))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  // Relatório de pagamento do rateio de UMA locação específica — uma linha por corretor
+  // envolvido, mostrando o papel, percentual, valor devido, já pago e saldo em aberto.
+  const handleExportSingleRentalCSV = (r: any) => {
+    const header = ['Imóvel', 'Inquilino', 'Competência', 'Corretor', 'Papel', 'Porcentagem', 'Valor Devido', 'Total Pago', 'Saldo em Aberto', 'Status'];
+    const rows = (r.distribuicao || []).map((d: any) => [
+      r.imovel || '',
+      r.inquilino || '',
+      `${String(r.competencia.mes).padStart(2, '0')}/${r.competencia.ano}`,
+      d.corretorNome || '',
+      d.papel === 'captador' ? 'Captador' : d.papel === 'locacao' ? 'Locação' : 'Auxiliar',
+      `${Number(d.porcentagem || 0).toFixed(2).replace('.', ',')}%`,
+      Number(d.valor || 0).toFixed(2).replace('.', ','),
+      Number(d.totalPago || 0).toFixed(2).replace('.', ','),
+      Math.max(0, Number(d.valor || 0) - Number(d.totalPago || 0)).toFixed(2).replace('.', ','),
+      d.status === 'pago' ? 'Pago' : 'Pendente'
+    ]);
+    const dataAtual = new Date().toISOString().split('T')[0];
+    const nomeArquivo = `rateio_${(r.imovel || 'locacao').replace(/[^a-zA-Z0-9]/g, '_')}_${dataAtual}.csv`;
+    downloadCsv(nomeArquivo, header, rows);
+    toast.success('Relatório da locação exportado!');
+  };
+
+  // Exporta TODAS as locações atualmente filtradas na tela (mês, status, busca) —
+  // uma linha por corretor/rateio, igual ao relatório individual, mas consolidado.
+  const handleExportAllFilteredCSV = () => {
+    const header = ['Imóvel', 'Inquilino', 'Competência', 'Corretor', 'Papel', 'Porcentagem', 'Valor Devido', 'Total Pago', 'Saldo em Aberto', 'Status Rateio', 'Status Locação'];
+    const rows: string[][] = [];
+    currentFiltered.forEach(r => {
+      const st = getRowStatus(r);
+      (r.distribuicao || []).forEach((d: any) => {
+        rows.push([
+          r.imovel || '',
+          r.inquilino || '',
+          `${String(r.competencia.mes).padStart(2, '0')}/${r.competencia.ano}`,
+          d.corretorNome || '',
+          d.papel === 'captador' ? 'Captador' : d.papel === 'locacao' ? 'Locação' : 'Auxiliar',
+          `${Number(d.porcentagem || 0).toFixed(2).replace('.', ',')}%`,
+          Number(d.valor || 0).toFixed(2).replace('.', ','),
+          Number(d.totalPago || 0).toFixed(2).replace('.', ','),
+          Math.max(0, Number(d.valor || 0) - Number(d.totalPago || 0)).toFixed(2).replace('.', ','),
+          d.status === 'pago' ? 'Pago' : 'Pendente',
+          st === 'concluido' ? 'Concluído' : st === 'atrasado' ? 'Atrasado' : 'Em Aberto'
+        ]);
+      });
+    });
+    if (rows.length === 0) {
+      toast.error('Nenhuma locação encontrada com os filtros atuais.');
+      return;
+    }
+    const dataAtual = new Date().toISOString().split('T')[0];
+    const mesLabel = selectedMonthFilter === 'TODOS' ? 'todos_os_meses' : selectedMonthFilter;
+    downloadCsv(`comissoes_locacao_${mesLabel}_${dataAtual}.csv`, header, rows);
+    toast.success(`${currentFiltered.length} locação(ões) exportada(s)!`);
   };
 
   const selectedRental = useMemo(() => {
@@ -895,6 +970,17 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                 </select>
               </div>
             </div>
+
+            {/* Exportar (respeita o filtro de competência/status/busca atual) */}
+            <button
+              type="button"
+              onClick={handleExportAllFilteredCSV}
+              title="Exportar relatório de pagamento do rateio de todas as locações filtradas"
+              className="flex items-center gap-2 px-5 py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-2xl text-xs font-bold tracking-wide cursor-pointer transition-all shrink-0"
+            >
+              <Download className="w-4 h-4" />
+              <span>Exportar</span>
+            </button>
 
             {/* Novo Repasse / Nova Locação button */}
             <button
@@ -2039,6 +2125,26 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                           {/* AÇÕES */}
                           <td className="py-4 pr-6 pl-4 text-right">
                             <div className="flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
+                              <button
+                                type="button"
+                                onClick={() => handleExportSingleRentalCSV(r)}
+                                title="Exportar relatório de pagamento desta locação"
+                                className="p-2 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-xl cursor-pointer transition-all"
+                              >
+                                <Download className="w-4 h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (window.confirm(`Excluir a locação de ${r.imovel}? Essa ação não pode ser desfeita.`)) {
+                                    onDeleteRental(r.id);
+                                  }
+                                }}
+                                title="Excluir esta locação"
+                                className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl cursor-pointer transition-all"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
                               <button
                                 type="button"
                                 onClick={() => setSelectedRentalId(r.id)}
