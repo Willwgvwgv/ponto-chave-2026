@@ -71,8 +71,8 @@ export default async function handler(req: any, res: any) {
   res.setHeader("Content-Type", "application/json");
 
   const authHeader = req.headers.authorization || req.headers.Authorization;
-  const providedSecret = req.query?.secret || req.headers["x-admin-secret"];
-  const expectedSecret = process.env.ADMIN_EXPORT_SECRET;
+  const providedSecret = (req.query?.secret || req.headers["x-admin-secret"] || "").toString().trim();
+  const expectedSecret = (process.env.ADMIN_EXPORT_SECRET || "").trim();
 
   let authorized = false;
 
