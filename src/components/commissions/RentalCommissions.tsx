@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from "react";
+import jsPDF from "jspdf";
 import { 
   DollarSign, 
   Building, 
@@ -181,71 +182,211 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
     return needsQuotes ? `"${escaped}"` : escaped;
   };
 
-  const downloadCsv = (filename: string, header: string[], rows: string[][]) => {
-    const csvContent = '\uFEFF' + [header.join(';'), ...rows.map(r => r.map(v => escapeCsvValue(String(v))).join(';'))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+  const AZUL_FIDELITE: [number, number, number] = [15, 39, 74]; // #0f274a — mesmo tom usado no resto do sistema
+
+  // Desenha o cabeçalho padrão (barra azul + título) em qualquer página do relatório
+  const desenharCabecalhoPdf = (pdf: jsPDF, titulo: string) => {
+    pdf.setFillColor(...AZUL_FIDELITE);
+    pdf.rect(0, 0, 210, 22, 'F');
+    pdf.setTextColor(255, 255, 255);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(13);
+    pdf.text('FIDELITÉ', 14, 14);
+    pdf.setFontSize(8);
+    pdf.setFont('helvetica', 'normal');
+    pdf.text('NEGÓCIOS IMOBILIÁRIOS', 14, 18.5);
+    pdf.setFontSize(11);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text(titulo, 196, 14, { align: 'right' });
+    pdf.setFontSize(8);
+    pdf.setFont('helvetica', 'normal');
+    pdf.text(`Gerado em ${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`, 196, 18.5, { align: 'right' });
+    pdf.setTextColor(0, 0, 0);
   };
 
-  // Relatório de pagamento do rateio de UMA locação específica — uma linha por corretor
-  // envolvido, mostrando o papel, percentual, valor devido, já pago e saldo em aberto.
-  const handleExportSingleRentalCSV = (r: any) => {
-    const header = ['Imóvel', 'Inquilino', 'Competência', 'Corretor', 'Papel', 'Porcentagem', 'Valor Devido', 'Total Pago', 'Saldo em Aberto', 'Status'];
-    const rows = (r.distribuicao || []).map((d: any) => [
-      r.imovel || '',
-      r.inquilino || '',
-      `${String(r.competencia.mes).padStart(2, '0')}/${r.competencia.ano}`,
-      d.corretorNome || '',
-      d.papel === 'captador' ? 'Captador' : d.papel === 'locacao' ? 'Locação' : 'Auxiliar',
-      `${Number(d.porcentagem || 0).toFixed(2).replace('.', ',')}%`,
-      Number(d.valor || 0).toFixed(2).replace('.', ','),
-      Number(d.totalPago || 0).toFixed(2).replace('.', ','),
-      Math.max(0, Number(d.valor || 0) - Number(d.totalPago || 0)).toFixed(2).replace('.', ','),
-      d.status === 'pago' ? 'Pago' : 'Pendente'
+  // Desenha uma tabela simples (cabeçalho cinza + linhas zebradas) a partir de colunas e linhas.
+  // Retorna a posição Y final, e quebra de página automaticamente quando necessário.
+  const desenharTabelaPdf = (
+    pdf: jsPDF,
+    startY: number,
+    colunas: { label: string; width: number }[],
+    linhas: string[][],
+    tituloPagina: string
+  ): number => {
+    let y = startY;
+    const xInicial = 14;
+    const alturaLinha = 7;
+
+    const desenharCabecalhoTabela = (yy: number) => {
+      pdf.setFillColor(241, 245, 249); // slate-100
+      pdf.rect(xInicial, yy - 5, 182, alturaLinha, 'F');
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(7.5);
+      pdf.setTextColor(71, 85, 105); // slate-600
+      let x = xInicial + 2;
+      colunas.forEach(col => {
+        pdf.text(col.label.toUpperCase(), x, yy);
+        x += col.width;
+      });
+      pdf.setTextColor(0, 0, 0);
+      return yy + alturaLinha;
+    };
+
+    y = desenharCabecalhoTabela(y);
+
+    linhas.forEach((linha, idx) => {
+      if (y > 275) {
+        pdf.addPage();
+        desenharCabecalhoPdf(pdf, tituloPagina);
+        y = 32;
+        y = desenharCabecalhoTabela(y);
+      }
+      if (idx % 2 === 1) {
+        pdf.setFillColor(248, 250, 252); // slate-50
+        pdf.rect(xInicial, y - 5, 182, alturaLinha, 'F');
+      }
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(7.5);
+      let x = xInicial + 2;
+      linha.forEach((valor, colIdx) => {
+        const maxWidth = colunas[colIdx].width - 3;
+        const texto = pdf.splitTextToSize(valor, maxWidth)[0] || '';
+        pdf.text(texto, x, y);
+        x += colunas[colIdx].width;
+      });
+      y += alturaLinha;
+    });
+
+    return y;
+  };
+
+  const baixarPdf = (pdf: jsPDF, nomeArquivo: string) => {
+    pdf.save(nomeArquivo);
+  };
+
+  // Relatório de pagamento do rateio de UMA locação específica — cabeçalho com dados do
+  // imóvel/inquilino e uma tabela com cada corretor envolvido (papel, %, devido, pago, saldo, status).
+  const handleExportSingleRentalPDF = (r: any) => {
+    const pdf = new jsPDF();
+    desenharCabecalhoPdf(pdf, 'RELATÓRIO DE RATEIO — LOCAÇÃO');
+
+    let y = 34;
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(12);
+    pdf.text(r.imovel || 'Imóvel não informado', 14, y);
+    y += 6;
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(9);
+    pdf.setTextColor(100, 116, 139);
+    pdf.text(`Inquilino: ${r.inquilino || 'Não informado'}   ·   Competência: ${String(r.competencia.mes).padStart(2, '0')}/${r.competencia.ano}   ·   Cód: LOC-${r.id.slice(0, 5).toUpperCase()}`, 14, y);
+    pdf.setTextColor(0, 0, 0);
+    y += 10;
+
+    const primeiroAluguel = r.legacyDoc.primeiroAluguel || r.valorAluguel || 0;
+    pdf.setFillColor(239, 246, 255); // blue-50
+    pdf.roundedRect(14, y - 5, 182, 12, 2, 2, 'F');
+    pdf.setFontSize(9);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text(`Valor do 1º Aluguel: ${formatCurrency(primeiroAluguel)}`, 18, y + 2);
+    pdf.text(`Taxa Imobiliária (${r.legacyDoc.porcentagemFidelite ?? 40}%): ${formatCurrency(r.legacyDoc.valorFidelite || 0)}`, 105, y + 2);
+    y += 16;
+
+    const colunas = [
+      { label: 'Corretor', width: 44 },
+      { label: 'Papel', width: 22 },
+      { label: '%', width: 16 },
+      { label: 'Devido', width: 28 },
+      { label: 'Pago', width: 28 },
+      { label: 'Saldo', width: 28 },
+      { label: 'Status', width: 16 }
+    ];
+
+    const linhas = (r.distribuicao || []).map((d: any) => [
+      formatPersonName(d.corretorNome || ''),
+      d.papel === 'captador' ? 'Captador' : d.papel === 'locacao' ? 'Locador' : 'Auxiliar',
+      `${Number(d.porcentagem || 0).toFixed(1)}%`,
+      formatCurrency(d.valor || 0),
+      formatCurrency(d.totalPago || 0),
+      formatCurrency(Math.max(0, Number(d.valor || 0) - Number(d.totalPago || 0))),
+      d.status === 'pago' ? 'Pago' : 'Pend.'
     ]);
+
+    if (linhas.length === 0) {
+      pdf.setFont('helvetica', 'italic');
+      pdf.setFontSize(9);
+      pdf.setTextColor(148, 163, 184);
+      pdf.text('Nenhum corretor cadastrado no rateio desta locação.', 14, y);
+    } else {
+      desenharTabelaPdf(pdf, y, colunas, linhas, 'RELATÓRIO DE RATEIO — LOCAÇÃO');
+    }
+
     const dataAtual = new Date().toISOString().split('T')[0];
-    const nomeArquivo = `rateio_${(r.imovel || 'locacao').replace(/[^a-zA-Z0-9]/g, '_')}_${dataAtual}.csv`;
-    downloadCsv(nomeArquivo, header, rows);
+    const nomeArquivo = `rateio_${(r.imovel || 'locacao').replace(/[^a-zA-Z0-9]/g, '_')}_${dataAtual}.pdf`;
+    baixarPdf(pdf, nomeArquivo);
     toast.success('Relatório da locação exportado!');
   };
 
-  // Exporta TODAS as locações atualmente filtradas na tela (mês, status, busca) —
-  // uma linha por corretor/rateio, igual ao relatório individual, mas consolidado.
-  const handleExportAllFilteredCSV = () => {
-    const header = ['Imóvel', 'Inquilino', 'Competência', 'Corretor', 'Papel', 'Porcentagem', 'Valor Devido', 'Total Pago', 'Saldo em Aberto', 'Status Rateio', 'Status Locação'];
-    const rows: string[][] = [];
+  // Exporta TODAS as locações atualmente filtradas na tela (mês, status, busca) — uma
+  // tabela consolidada, uma linha por corretor/rateio, igual ao relatório individual.
+  const handleExportAllFilteredPDF = () => {
+    const linhas: string[][] = [];
     currentFiltered.forEach(r => {
       const st = getRowStatus(r);
+      const stLabel = st === 'concluido' ? 'Concluída' : st === 'atrasado' ? 'Atrasada' : 'Em Aberto';
       (r.distribuicao || []).forEach((d: any) => {
-        rows.push([
+        linhas.push([
           r.imovel || '',
-          r.inquilino || '',
-          `${String(r.competencia.mes).padStart(2, '0')}/${r.competencia.ano}`,
-          d.corretorNome || '',
-          d.papel === 'captador' ? 'Captador' : d.papel === 'locacao' ? 'Locação' : 'Auxiliar',
-          `${Number(d.porcentagem || 0).toFixed(2).replace('.', ',')}%`,
-          Number(d.valor || 0).toFixed(2).replace('.', ','),
-          Number(d.totalPago || 0).toFixed(2).replace('.', ','),
-          Math.max(0, Number(d.valor || 0) - Number(d.totalPago || 0)).toFixed(2).replace('.', ','),
-          d.status === 'pago' ? 'Pago' : 'Pendente',
-          st === 'concluido' ? 'Concluído' : st === 'atrasado' ? 'Atrasado' : 'Em Aberto'
+          formatPersonName(d.corretorNome || ''),
+          d.papel === 'captador' ? 'Captador' : d.papel === 'locacao' ? 'Locador' : 'Auxiliar',
+          formatCurrency(d.valor || 0),
+          formatCurrency(d.totalPago || 0),
+          formatCurrency(Math.max(0, Number(d.valor || 0) - Number(d.totalPago || 0))),
+          stLabel
         ]);
       });
     });
-    if (rows.length === 0) {
+
+    if (linhas.length === 0) {
       toast.error('Nenhuma locação encontrada com os filtros atuais.');
       return;
     }
+
+    const pdf = new jsPDF();
+    const tituloPagina = 'RELATÓRIO DE COMISSÕES DE LOCAÇÃO';
+    desenharCabecalhoPdf(pdf, tituloPagina);
+
+    let y = 34;
+    const mesLabel = selectedMonthFilter === 'TODOS' ? 'Todas as competências' : formatMesReferencia(selectedMonthFilter);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(9);
+    pdf.setTextColor(100, 116, 139);
+    pdf.text(`Período: ${mesLabel}${filterText.trim() ? `   ·   Filtro: "${filterText.trim()}"` : ''}   ·   ${currentFiltered.length} locação(ões)`, 14, y);
+    pdf.setTextColor(0, 0, 0);
+    y += 8;
+
+    pdf.setFillColor(239, 246, 255);
+    pdf.roundedRect(14, y - 5, 182, 12, 2, 2, 'F');
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(9);
+    pdf.text(`Total Pago: ${formatCurrency(card4Data.pagos)}`, 18, y + 2);
+    pdf.text(`Total em Aberto: ${formatCurrency(card4Data.aPagar)}`, 105, y + 2);
+    y += 16;
+
+    const colunas = [
+      { label: 'Imóvel', width: 46 },
+      { label: 'Corretor', width: 36 },
+      { label: 'Papel', width: 20 },
+      { label: 'Devido', width: 24 },
+      { label: 'Pago', width: 24 },
+      { label: 'Saldo', width: 24 },
+      { label: 'Status', width: 20 }
+    ];
+
+    desenharTabelaPdf(pdf, y, colunas, linhas, tituloPagina);
+
     const dataAtual = new Date().toISOString().split('T')[0];
-    const mesLabel = selectedMonthFilter === 'TODOS' ? 'todos_os_meses' : selectedMonthFilter;
-    downloadCsv(`comissoes_locacao_${mesLabel}_${dataAtual}.csv`, header, rows);
+    const nomeArquivoMes = selectedMonthFilter === 'TODOS' ? 'todos_os_meses' : selectedMonthFilter;
+    baixarPdf(pdf, `comissoes_locacao_${nomeArquivoMes}_${dataAtual}.pdf`);
     toast.success(`${currentFiltered.length} locação(ões) exportada(s)!`);
   };
 
@@ -974,7 +1115,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
             {/* Exportar (respeita o filtro de competência/status/busca atual) */}
             <button
               type="button"
-              onClick={handleExportAllFilteredCSV}
+              onClick={handleExportAllFilteredPDF}
               title="Exportar relatório de pagamento do rateio de todas as locações filtradas"
               className="flex items-center gap-2 px-5 py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-2xl text-xs font-bold tracking-wide cursor-pointer transition-all shrink-0"
             >
@@ -2127,7 +2268,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                             <div className="flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
                               <button
                                 type="button"
-                                onClick={() => handleExportSingleRentalCSV(r)}
+                                onClick={() => handleExportSingleRentalPDF(r)}
                                 title="Exportar relatório de pagamento desta locação"
                                 className="p-2 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-xl cursor-pointer transition-all"
                               >
