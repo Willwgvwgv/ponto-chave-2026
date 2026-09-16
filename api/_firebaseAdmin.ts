@@ -8,7 +8,7 @@ let adminDb: any = null;
 let adminAuthInstance: any = null;
 
 export function getFirebaseAdmin() {
-  if (adminDb && adminAuthInstance) {
+  if (adminDb) {
     return { adminDb, adminAuthInstance };
   }
 
@@ -42,7 +42,16 @@ export function getFirebaseAdmin() {
       initAdminApp(adminConfig);
     }
     adminDb = getFirestore(databaseId || "(default)");
-    adminAuthInstance = getAdminAuth();
+
+    // O Auth do Admin SDK quebra neste ambiente serverless (conflito ESM/CommonJS
+    // de uma dependência interna, jwks-rsa/jose) — isola numa tentativa separada
+    // pra não impedir o Firestore (adminDb) de funcionar normalmente.
+    try {
+      adminAuthInstance = getAdminAuth();
+    } catch (authErr) {
+      console.warn("Firebase Admin Auth indisponível neste ambiente (usar verificação própria de token):", authErr);
+      adminAuthInstance = null;
+    }
   } catch (err) {
     console.warn("Could not initialize Firebase Admin DB/Auth:", err);
   }
