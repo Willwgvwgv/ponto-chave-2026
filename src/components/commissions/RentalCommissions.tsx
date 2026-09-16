@@ -540,6 +540,45 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
     });
   }, [rateios, porcentagemLocador, valorLocadorValue, aluguelMensal]);
 
+  // Mescla linhas do mesmo corretor (ex: Locador + Captador) numa única linha —
+  // evita ambiguidade no controle de pagamento (que hoje rastreia só por corretorId),
+  // mas preserva o detalhamento de cada parte para exibição.
+  const computedRateiosMerged = useMemo(() => {
+    const porId = new Map<string, RateioComissao[]>();
+    computedRateios.forEach(rt => {
+      const lista = porId.get(rt.corretorId) || [];
+      lista.push(rt);
+      porId.set(rt.corretorId, lista);
+    });
+
+    const resultado: RateioComissao[] = [];
+    porId.forEach((entradas) => {
+      if (entradas.length === 1) {
+        resultado.push(entradas[0]);
+        return;
+      }
+      const somaValor = entradas.reduce((acc, e) => acc + (e.valor || 0), 0);
+      const somaPct = entradas.reduce((acc, e) => acc + (e.porcentagem || 0), 0);
+      resultado.push({
+        ...entradas[0],
+        papel: "locacao",
+        valor: Number(somaValor.toFixed(2)),
+        porcentagem: Number(somaPct.toFixed(2)),
+        composicao: entradas.map(e => ({
+          papel: e.papel as "captador" | "locacao",
+          porcentagem: e.porcentagem || 0,
+          valor: e.valor || 0
+        }))
+      });
+    });
+    return resultado;
+  }, [computedRateios]);
+
+  const getRoleLabel = (rt: RateioComissao): string => {
+    if (rt.composicao && rt.composicao.length > 1) return "Locador + Captador";
+    return rt.papel === "locacao" ? "Locador" : rt.papel === "captador" ? "Captador" : "Auxiliar";
+  };
+
   // Status detection for each rental contract
   const getDistribuidoPct = (r: RentalFinancialViewModel): number => {
     const totalDevidoCorretores = r.legacyDoc.valorRepasseCorretores || 0;
@@ -730,8 +769,8 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
     const brokerObj = team.find(t => t.id === brokerId);
     if (!brokerObj) return;
 
-    if (rateios.some(rt => rt.corretorId === brokerId)) {
-      toast.error("Este corretor já está adicionado no rateio.");
+    if (rateios.some(rt => rt.corretorId === brokerId && rt.papel === "captador")) {
+      toast.error("Este corretor já está adicionado como captador.");
       return;
     }
 
@@ -762,10 +801,9 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
     setSelectedCaptadorId("");
   };
 
-  const handleRemoveBrokerFromRateio = (id: string) => {
-    const itemToRemove = rateios.find(rt => rt.corretorId === id);
-    const papel = itemToRemove?.papel || "";
-    const afterRemoval = rateios.filter(rt => rt.corretorId !== id);
+  const handleRemoveBrokerFromRateio = (id: string, papelAlvo?: "captador" | "locacao" | "auxiliar") => {
+    const afterRemoval = rateios.filter(rt => !(rt.corretorId === id && (papelAlvo ? rt.papel === papelAlvo : true)));
+    const papel = papelAlvo || rateios.find(rt => rt.corretorId === id)?.papel || "";
 
     if (papel === "captador") {
       const remainingCaptadores = afterRemoval.filter(r => r.papel === "captador");
@@ -850,7 +888,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
       return;
     }
 
-    const updatedRateiosWithRecalculatedValues = computedRateios;
+    const updatedRateiosWithRecalculatedValues = computedRateiosMerged;
 
     if (editingRental) {
       const updatedRec: Comissao = {
@@ -1397,7 +1435,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                             <span className="font-extrabold text-slate-855 font-mono">{formatCurrency(rt.valor)}</span>
                             <button
                               type="button"
-                              onClick={() => handleRemoveBrokerFromRateio(rt.corretorId)}
+                              onClick={() => handleRemoveBrokerFromRateio(rt.corretorId, rt.papel)}
                               className="p-1.5 text-red-500 hover:bg-red-50 rounded-full transition-all"
                             >
                               <Trash2 className="w-4 h-4" />
@@ -1406,6 +1444,16 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                         </div>
                       );
                     })}
+                  </div>
+                )}
+
+                {computedRateiosMerged.some(rt => rt.composicao && rt.composicao.length > 1) && (
+                  <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-xl text-[11px] text-indigo-700 font-medium flex items-start gap-2">
+                    <Users className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>
+                      {computedRateiosMerged.filter(rt => rt.composicao && rt.composicao.length > 1).map(rt => formatPersonName(rt.corretorNome)).join(', ')}{' '}
+                      {computedRateiosMerged.filter(rt => rt.composicao && rt.composicao.length > 1).length === 1 ? 'está' : 'estão'} definido(s) em mais de um papel (Locador + Captador) — os valores serão somados numa única linha de pagamento, com o detalhamento de cada parte.
+                    </span>
                   </div>
                 )}
               </div>
@@ -2080,8 +2128,11 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                                               const saldoRestante = Math.max(0, rt.valor - totalPagoCorretor);
                                               const isBrokerFullyPaid = totalPagoCorretor >= rt.valor - 0.01;
 
-                                              const roleLabel = rt.papel === "locacao" ? "Locador" : rt.papel === "captador" ? "Captador" : "Auxiliar";
-                                              const avatarBg = rt.papel === "locacao"
+                                              const roleLabel = getRoleLabel(rt);
+                                              const isCombinado = !!(rt.composicao && rt.composicao.length > 1);
+                                              const avatarBg = isCombinado
+                                                ? "bg-indigo-600 text-white"
+                                                : rt.papel === "locacao"
                                                 ? "bg-purple-600 text-white"
                                                 : "bg-blue-600 text-white";
 
@@ -2103,13 +2154,15 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                                                       <div className="flex items-center gap-2">
                                                         <span className="text-sm font-bold text-slate-900">{formatPersonName(rt.corretorNome)}</span>
                                                         <span className={`px-2 py-0.5 text-[10px] font-extrabold rounded-md uppercase ${
-                                                          rt.papel === "locacao" ? "bg-purple-100 text-purple-800" : "bg-blue-100 text-blue-800"
+                                                          isCombinado ? "bg-indigo-100 text-indigo-800" : rt.papel === "locacao" ? "bg-purple-100 text-purple-800" : "bg-blue-100 text-blue-800"
                                                         }`}>
                                                           {roleLabel}
                                                         </span>
                                                       </div>
                                                       <span className="text-xs text-slate-500 block mt-0.5">
-                                                        {rt.porcentagem || 0}% do rateio
+                                                        {isCombinado
+                                                          ? rt.composicao!.map(c => `${c.porcentagem}% ${c.papel === 'locacao' ? 'Locador' : 'Captador'}`).join(' + ')
+                                                          : `${rt.porcentagem || 0}% do rateio`}
                                                       </span>
                                                     </div>
                                                   </div>

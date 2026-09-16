@@ -219,6 +219,10 @@ export interface RateioComissao {
   porcentagem?: number;
   totalPago?: number;
   status?: "pendente" | "pago";
+  // Preenchido quando o mesmo corretor acumula mais de um papel na mesma locação
+  // (ex: Locador + Captador) — o valor/porcentagem acima já vêm somados; isto aqui
+  // é só para exibir o detalhamento de cada parte na interface.
+  composicao?: { papel: "captador" | "locacao"; porcentagem: number; valor: number }[];
 }
 
 export interface PagamentoCorretor {
