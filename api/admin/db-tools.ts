@@ -65,7 +65,7 @@ async function verifyFirebaseIdToken(idToken: string): Promise<{ uid: string } |
 }
 
 // Só estas coleções podem ser lidas/corrigidas por esta ferramenta.
-const ALLOWED_COLLECTIONS = ["comissoes", "vistorias", "financial_transactions"];
+const ALLOWED_COLLECTIONS = ["comissoes", "vistorias", "financial_transactions", "users"];
 
 export default async function handler(req: any, res: any) {
   res.setHeader("Content-Type", "application/json");
@@ -134,7 +134,16 @@ export default async function handler(req: any, res: any) {
         return res.status(200).json({ companyIds });
       }
 
-      return res.status(400).json({ error: "Ação desconhecida. Use list-orphans, despesas ou list-companies." });
+      if (action === "list-users") {
+        const snap = await adminDb.collection("users").get();
+        const users = snap.docs.map((d: any) => {
+          const data = d.data();
+          return { id: d.id, displayName: data.displayName, email: data.email, companyId: data.companyId, role: data.role };
+        });
+        return res.status(200).json({ users });
+      }
+
+      return res.status(400).json({ error: "Ação desconhecida. Use list-orphans, despesas, list-companies ou list-users." });
     }
 
     if (req.method === "POST") {

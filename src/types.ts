@@ -203,6 +203,11 @@ export interface ItemVistoria {
   nome: string;
   ok: boolean;
   ressalva?: string;
+  // Estado de conservação — mesma escala usada no texto "CRITÉRIOS DE ESTADO DE
+  // CONSERVAÇÃO" do laudo. Opcional para não quebrar vistorias antigas (que só
+  // tinham ok/ressalva): quando ausente, cai no padrão por `ok` (true→"bom",
+  // false→"ruim").
+  estado?: 'novo' | 'bom' | 'regular' | 'ruim';
 }
 
 export interface ComodoVistoria {

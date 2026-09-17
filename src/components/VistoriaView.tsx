@@ -1178,16 +1178,20 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
         pdf.setTextColor(51, 65, 85); // slate-700
         pdf.text(item.nome, 25, y);
 
-        // Selo colorido (pill) do status, alinhado à direita — estilo mais moderno que "[ OK ]"
-        const pillLabel = item.ok ? 'OK' : 'RESSALVA';
+        // Selo colorido (pill) do estado de conservação, alinhado à direita
+        const estadoItem = item.estado || (item.ok ? 'bom' : 'ruim');
+        const pillLabel = estadoItem.toUpperCase();
         pdf.setFontSize(7.5);
         pdf.setFont('helvetica', 'bold');
         const pillTextWidth = pdf.getTextWidth(pillLabel);
         const pillWidth = pillTextWidth + 6;
         const pillX = 188 - pillWidth;
-        if (item.ok) {
+        if (estadoItem === 'novo' || estadoItem === 'bom') {
           pdf.setFillColor(220, 252, 231); // green-100
           pdf.setTextColor(21, 128, 61); // green-700
+        } else if (estadoItem === 'regular') {
+          pdf.setFillColor(254, 243, 199); // amber-100
+          pdf.setTextColor(180, 83, 9); // amber-700
         } else {
           pdf.setFillColor(254, 226, 226); // red-100
           pdf.setTextColor(185, 28, 28); // red-700
@@ -2093,41 +2097,59 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
                   </div>
 
                   <div className="space-y-4">
-                    {comodo.itens.map((item, iIdx) => (
+                    {comodo.itens.map((item, iIdx) => {
+                      const estadoAtual = item.estado || (item.ok ? 'bom' : 'ruim');
+                      const setEstado = (novoEstado: 'novo' | 'bom' | 'regular' | 'ruim') => {
+                        const newComodos = [...comodos];
+                        newComodos[cIdx].itens[iIdx].estado = novoEstado;
+                        newComodos[cIdx].itens[iIdx].ok = (novoEstado === 'novo' || novoEstado === 'bom');
+                        setComodos(newComodos);
+                      };
+                      return (
                       <div key={item.nome} className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center p-3 rounded-2xl bg-slate-50/50">
                         <div className="flex items-center justify-between">
                           <span className="text-sm font-bold text-slate-700">{item.nome}</span>
                           <div className="flex bg-white rounded-lg p-1 border border-slate-100">
                             <button
-                              onClick={() => {
-                                const newComodos = [...comodos];
-                                newComodos[cIdx].itens[iIdx].ok = true;
-                                setComodos(newComodos);
-                              }}
+                              onClick={() => setEstado('novo')}
                               className={cn(
-                                "px-3 py-1 rounded text-[10px] font-black transition-all",
-                                item.ok ? "bg-green-500 text-white shadow-sm" : "text-slate-400 hover:bg-slate-50"
+                                "px-2.5 py-1 rounded text-[9px] font-black transition-all",
+                                estadoAtual === 'novo' ? "bg-emerald-500 text-white shadow-sm" : "text-slate-400 hover:bg-slate-50"
                               )}
                             >
-                              OK
+                              NOVO
                             </button>
                             <button
-                              onClick={() => {
-                                const newComodos = [...comodos];
-                                newComodos[cIdx].itens[iIdx].ok = false;
-                                setComodos(newComodos);
-                              }}
+                              onClick={() => setEstado('bom')}
                               className={cn(
-                                "px-3 py-1 rounded text-[10px] font-black transition-all",
-                                !item.ok ? "bg-red-500 text-white shadow-sm" : "text-slate-400 hover:bg-slate-50"
+                                "px-2.5 py-1 rounded text-[9px] font-black transition-all",
+                                estadoAtual === 'bom' ? "bg-green-500 text-white shadow-sm" : "text-slate-400 hover:bg-slate-50"
                               )}
                             >
-                              RESSALVA
+                              BOM
+                            </button>
+                            <button
+                              onClick={() => setEstado('regular')}
+                              className={cn(
+                                "px-2.5 py-1 rounded text-[9px] font-black transition-all",
+                                estadoAtual === 'regular' ? "bg-amber-500 text-white shadow-sm" : "text-slate-400 hover:bg-slate-50"
+                              )}
+                            >
+                              REGULAR
+                            </button>
+                            <button
+                              onClick={() => setEstado('ruim')}
+                              className={cn(
+                                "px-2.5 py-1 rounded text-[9px] font-black transition-all",
+                                estadoAtual === 'ruim' ? "bg-red-500 text-white shadow-sm" : "text-slate-400 hover:bg-slate-50"
+                              )}
+                            >
+                              RUIM
                             </button>
                           </div>
                         </div>
                         
-                        {!item.ok && (
+                        {(estadoAtual === 'regular' || estadoAtual === 'ruim') && (
                           <input 
                             type="text"
                             placeholder="Descreva a ressalva..."
@@ -2141,7 +2163,8 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
                           />
                         )}
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
 
                   {/* Room Photos */}

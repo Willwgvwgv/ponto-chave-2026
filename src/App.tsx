@@ -76,6 +76,18 @@ import {
   Droplet
 } from "lucide-react";
 import { format, addDays, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, isToday, parseISO, isBefore, startOfDay } from "date-fns";
+
+// Formata uma data com segurança — evita o crash "RangeError: Invalid time value"
+// quando o campo vem vazio/indefinido/corrompido (ex: histórico antigo sem timestamp).
+const formatSafeDate = (value: any, pattern: string, fallback: string = "Data não registrada"): string => {
+  try {
+    const date = value?.toDate ? value.toDate() : new Date(value);
+    if (isNaN(date.getTime())) return fallback;
+    return format(date, pattern);
+  } catch {
+    return fallback;
+  }
+};
 import { ptBR } from "date-fns/locale";
 import { 
   BarChart, 
@@ -6962,7 +6974,7 @@ const ProcessesView = ({
                                 <div className="flex items-center gap-2 mt-2">
                                   <div className="flex items-center gap-1 text-[9px] font-black text-slate-400 uppercase tracking-tighter bg-slate-100 px-1.5 py-0.5 rounded">
                                     <Clock className="w-2.5 h-2.5" />
-                                    {format(new Date(entry.timestamp), "dd/MM/yyyy 'às' HH:mm")}
+                                    {formatSafeDate(entry.timestamp, "dd/MM/yyyy 'às' HH:mm")}
                                   </div>
                                   <span className="text-[9px] text-slate-300 font-bold">•</span>
                                   <div className="flex items-center gap-1 text-[9px] font-black text-slate-500 uppercase tracking-tighter">
@@ -7000,7 +7012,7 @@ const ProcessesView = ({
                                 <p className="text-sm font-bold text-slate-800 leading-tight">{entry.label}</p>
                                 <div className="flex items-center gap-1 text-[9px] font-black text-slate-400 uppercase tracking-tighter bg-slate-100 px-1.5 py-0.5 rounded mt-2 w-fit">
                                   <Clock className="w-2.5 h-2.5" />
-                                  Concluído em {entry.completedAt.toDate ? format(entry.completedAt.toDate(), "dd/MM/yyyy 'às' HH:mm") : format(new Date(entry.completedAt), "dd/MM/yyyy 'às' HH:mm")}
+                                  Concluído em {formatSafeDate(entry.completedAt, "dd/MM/yyyy 'às' HH:mm")}
                                 </div>
                               </div>
                             </div>
