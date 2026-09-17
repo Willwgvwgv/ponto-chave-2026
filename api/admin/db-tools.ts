@@ -88,7 +88,12 @@ export default async function handler(req: any, res: any) {
   }
 
   if (!authorized) {
-    return res.status(401).json({ error: "Acesso não autorizado" });
+    return res.status(401).json({
+      error: "Acesso não autorizado",
+      debug_secretConfigured: !!expectedSecret,
+      debug_secretLength: expectedSecret.length,
+      debug_providedLength: providedSecret.length
+    });
   }
 
   const { adminDb } = getFirebaseAdmin();
