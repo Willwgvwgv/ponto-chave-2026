@@ -39,7 +39,8 @@ import {
   deleteDoc, 
   doc, 
   serverTimestamp,
-  limit
+  limit,
+  getDoc
 } from '../firebase';
 import { Vistoria, ComodoVistoria, ItemVistoria, CompanySettings, LocatarioVistoria } from '../types';
 import { cn } from '../lib/utils';
@@ -657,6 +658,28 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
         c.itens.filter(i => !i.ok).map(i => `${c.nome} - ${i.nome}: ${i.ressalva || 'sem detalhes'}`)
       );
 
+      // Se for vistoria de saída vinculada a uma vistoria de entrada, busca os dados dela
+      // (ressalvas + descrição + laudo já gerado) para a IA comparar de verdade o que mudou.
+      let comparativoEntrada: { ressalvasEntrada: string[]; descricaoGeralEntrada: string; textoLaudoEntrada: string } | null = null;
+      if (tipoVistoria === 'saida' && vistoriaEntradaId) {
+        try {
+          const entradaSnap = await getDoc(doc(db, 'vistorias', vistoriaEntradaId));
+          if (entradaSnap.exists()) {
+            const entradaData = entradaSnap.data() as Vistoria;
+            const ressalvasEntrada = (entradaData.comodos || []).flatMap(c =>
+              c.itens.filter(i => !i.ok).map(i => `${c.nome} - ${i.nome}: ${i.ressalva || 'sem detalhes'}`)
+            );
+            comparativoEntrada = {
+              ressalvasEntrada,
+              descricaoGeralEntrada: entradaData.descricaoGeral || '',
+              textoLaudoEntrada: entradaData.textoLaudo || ''
+            };
+          }
+        } catch (err) {
+          console.error('Não foi possível carregar a vistoria de entrada vinculada:', err);
+        }
+      }
+
       // As fotos aqui são só os destaques de danos (usadas pra IA dar ênfase no laudo).
       // O total real de fotos da vistoria inclui também as fotos gerais de cada cômodo,
       // adicionadas na etapa seguinte — por isso contamos as duas coisas separadamente.
@@ -676,6 +699,7 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
           enderecoImovel: imovel.endereco,
           descricaoGeral,
           ressalvas,
+          comparativoEntrada,
           quantidadeFotosDestaque,
           quantidadeFotosTotal,
           textoLaudoAtual: textoLaudo
@@ -1125,52 +1149,66 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
     y = drawSectionHeader('CONDIÇÕES DO IMÓVEL', y);
     pdf.setTextColor(0, 0, 0);
 
-    vistoria.comodos.forEach((comodo) => {
+    vistoria.comodos.forEach((comodo, comodoIdx) => {
       y = checkPageBreak(y, 25);
       pdf.setFontSize(12);
       pdf.setFont('helvetica', 'bold');
-      pdf.setTextColor(0, 48, 102); // Azul Marinho
-      const comodoNomeStr = comodo.nome.toUpperCase();
+      pdf.setTextColor(0, 48, 102); // Azul Marinho Fidelité
+      const numeroStr = String(comodoIdx + 1).padStart(2, '0');
+      const comodoNomeStr = `${numeroStr} · ${comodo.nome.toUpperCase()}`;
       pdf.text(comodoNomeStr, 20, y);
-      
-      const comodoTextWidth = pdf.getTextWidth(comodoNomeStr);
-      y += 2;
-      pdf.setDrawColor(0, 48, 102); // Azul Marinho
-      pdf.setLineWidth(0.2);
-      pdf.line(20, y, 20 + comodoTextWidth, y); // Somente em baixo do texto
+
+      y += 3;
+      pdf.setDrawColor(226, 232, 240); // slate-200 — linha completa, não só sob o texto
+      pdf.setLineWidth(0.3);
+      pdf.line(20, y, 190, y);
       y += 8;
 
       pdf.setTextColor(0, 0, 0);
       comodo.itens.forEach((item) => {
         const ressalvaText = item.ok ? '' : (item.ressalva || 'Nenhuma ressalva');
-        const ressalvaLines = ressalvaText ? pdf.splitTextToSize(`Ressalva: ${ressalvaText}`, 155) : [];
+        const ressalvaLines = ressalvaText ? pdf.splitTextToSize(`Ressalva: ${ressalvaText}`, 145) : [];
         const itemHeight = ressalvaText ? 15 + (ressalvaLines.length * 4) : 10;
-        
+
         y = checkPageBreak(y, itemHeight);
         y += 5; // Padding superior
 
         pdf.setFontSize(9);
         pdf.setFont('helvetica', 'bold');
-        pdf.setTextColor(0, 0, 0);
+        pdf.setTextColor(51, 65, 85); // slate-700
         pdf.text(item.nome, 25, y);
-        
-        pdf.setTextColor(item.ok ? 22 : 180, item.ok ? 163 : 0, item.ok ? 74 : 0);
-        pdf.text(item.ok ? '[ OK ]' : '[ RESSALVA ]', 160, y);
+
+        // Selo colorido (pill) do status, alinhado à direita — estilo mais moderno que "[ OK ]"
+        const pillLabel = item.ok ? 'OK' : 'RESSALVA';
+        pdf.setFontSize(7.5);
+        pdf.setFont('helvetica', 'bold');
+        const pillTextWidth = pdf.getTextWidth(pillLabel);
+        const pillWidth = pillTextWidth + 6;
+        const pillX = 188 - pillWidth;
+        if (item.ok) {
+          pdf.setFillColor(220, 252, 231); // green-100
+          pdf.setTextColor(21, 128, 61); // green-700
+        } else {
+          pdf.setFillColor(254, 226, 226); // red-100
+          pdf.setTextColor(185, 28, 28); // red-700
+        }
+        pdf.roundedRect(pillX, y - 3.6, pillWidth, 5, 2.5, 2.5, 'F');
+        pdf.text(pillLabel, pillX + 3, y);
         pdf.setTextColor(0, 0, 0);
 
         if (!item.ok) {
           y += 4; // Ajuste entre linha as opções de ressalvas
           pdf.setFontSize(8);
           pdf.setFont('helvetica', 'italic');
-          pdf.setTextColor(110, 110, 110);
+          pdf.setTextColor(100, 116, 139); // slate-500
           pdf.text(ressalvaLines, 25, y);
           y += (ressalvaLines.length * 3.5); // Espaçamento entre linhas reduzido
         } else {
           y += 3;
         }
-        
+
         y += 2;
-        pdf.setDrawColor(240, 240, 240); // Linha bem clara como na imagem
+        pdf.setDrawColor(241, 245, 249); // slate-100 — linha bem clara
         pdf.setLineWidth(0.1);
         pdf.line(20, y, 190, y);
         y += 2; // Espaço após a linha
