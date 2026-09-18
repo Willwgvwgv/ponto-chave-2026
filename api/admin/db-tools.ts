@@ -139,6 +139,20 @@ export default async function handler(req: any, res: any) {
         return res.status(200).json({ companyIds });
       }
 
+      if (action === "debug-env") {
+        const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON || "";
+        return res.status(200).json({
+          length: raw.length,
+          first15: raw.slice(0, 15),
+          last15: raw.slice(-15),
+          startsWithBrace: raw.trim().startsWith("{"),
+          endsWithBrace: raw.trim().endsWith("}"),
+          hasPrivateKeyField: raw.includes('"private_key"'),
+          hasProjectIdField: raw.includes('"project_id"'),
+          newlineCount: (raw.match(/\n/g) || []).length
+        });
+      }
+
       if (action === "list-users") {
         const snap = await adminDb.collection("users").get();
         const users = snap.docs.map((d: any) => {
