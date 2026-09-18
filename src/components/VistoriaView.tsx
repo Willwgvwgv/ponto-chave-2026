@@ -819,52 +819,7 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
     // --- REUSABLE HEADER & FOOTER FUNCTION ---
     const addHeaderAndFooter = (doc: jsPDF, isFirstPage: boolean) => {
       if (isFirstPage) {
-        // Cabeçalho completo (apenas na pág 1)
-        doc.setDrawColor(0, 157, 160); 
-        doc.setLineWidth(0.4);
-        doc.roundedRect(6, 12, 198, 38, 4, 4, 'S');
-
-        if (logoToUse) {
-          try {
-            const imgProps = doc.getImageProperties(logoToUse);
-            const maxW = 55;
-            const maxH = 28;
-            const ratio = imgProps.width / imgProps.height;
-            let targetW = maxW;
-            let targetH = targetW / ratio;
-            if (targetH > maxH) {
-              targetH = maxH;
-              targetW = targetH * ratio;
-            }
-            const logoX = 195 - targetW;
-            const logoY = 16 + (maxH - targetH) / 2;
-
-            doc.setFillColor(15, 23, 42); 
-            const barEndX = logoX - 5;
-            doc.rect(0, 22, Math.max(80, barEndX - 10), 18, 'F');
-            doc.roundedRect(barEndX - 20, 22, 20, 18, 9, 9, 'F');
-
-            doc.setTextColor(255, 255, 255);
-            doc.setFont('helvetica', 'bold');
-            let tituloFontSize = 13;
-            doc.setFontSize(tituloFontSize);
-            const maxTituloWidth = barEndX - 25; // espaço disponível antes da logo
-            while (doc.getTextWidth(tituloDocumento) > maxTituloWidth && tituloFontSize > 8) {
-              tituloFontSize -= 0.5;
-              doc.setFontSize(tituloFontSize);
-            }
-            doc.text(tituloDocumento, 20, 33.5);
-
-            const format = logoToUse.toLowerCase().includes('png') || logoToUse.includes('image/png') ? 'PNG' : 'JPEG';
-            doc.addImage(logoToUse, format, logoX, logoY, targetW, targetH, undefined, 'SLOW');
-          } catch (e) {
-            renderFallbackHeader(doc);
-          }
-        } else {
-          renderFallbackHeader(doc);
-        }
-
-        // Rodapé completo (apenas na pág 1)
+        // Rodapé completo (apenas na pág 1) — mantido exatamente como estava
         const footerY = 285;
         doc.setDrawColor(0, 48, 102); // Azul Marinho
         doc.setLineWidth(0.3);
@@ -897,29 +852,6 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
       }
     };
 
-    const renderFallbackHeader = (doc: jsPDF) => {
-      doc.setFillColor(15, 23, 42); 
-      doc.rect(0, 22, 115, 18, 'F');
-      doc.roundedRect(100, 22, 25, 18, 9, 9, 'F');
-      doc.setTextColor(255, 255, 255);
-      doc.setFont('helvetica', 'bold');
-      let tituloFontSizeFallback = 13;
-      doc.setFontSize(tituloFontSizeFallback);
-      const maxTituloWidthFallback = 95; // espaço disponível antes do nome da marca (x=140)
-      while (doc.getTextWidth(tituloDocumento) > maxTituloWidthFallback && tituloFontSizeFallback > 8) {
-        tituloFontSizeFallback -= 0.5;
-        doc.setFontSize(tituloFontSizeFallback);
-      }
-      doc.text(tituloDocumento, 20, 33.5);
-      
-      if (brandName) {
-        doc.setTextColor(0, 48, 102);
-        doc.setFontSize(18);
-        const splitBrand = doc.splitTextToSize(brandName.toUpperCase(), 55);
-        doc.text(splitBrand, 140, 28);
-      }
-    };
-
     const checkPageBreak = (currentY: number, needed: number) => {
       if (currentY + needed > 280) {
         pdf.addPage();
@@ -929,27 +861,7 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
       return currentY;
     };
 
-    // --- INÍCIO DA RENDERIZAÇÃO ---
-    addHeaderAndFooter(pdf, true);
-    y = 70;
-
-    // CAPA — dados essenciais de identificação (endereço, data, vistoriador responsável)
-    pdf.setFont('helvetica', 'bold');
-    pdf.setFontSize(11);
-    pdf.setTextColor(0, 48, 102);
-    const enderecoCapa = pdf.splitTextToSize((vistoria.imovel?.endereco || '').toUpperCase(), 170);
-    pdf.text(enderecoCapa, 20, y);
-    y += enderecoCapa.length * 6 + 8;
-
-    pdf.setFont('helvetica', 'normal');
-    pdf.setFontSize(9.5);
-    pdf.setTextColor(60, 60, 60);
-    pdf.text(`DATA DA VISTORIA: ${formatDateHelper((vistoria as any).dataVistoria || vistoria.data)}`, 20, y);
-    y += 6;
-    pdf.text(`VISTORIADOR RESPONSÁVEL: ${(vistoria.vistoriadorNome || vistoria.corretorNome || '').toUpperCase()}`, 20, y);
-    pdf.setTextColor(0, 0, 0);
-    y += 12;
-
+    // --- REUSABLE SECTION HEADER (usado em IDENTIFICAÇÃO, CONSIDERAÇÕES, cômodos etc.) ---
     const drawSectionHeader = (title: string, yPos: number) => {
       const upperTitle = title.toUpperCase();
       pdf.setFontSize(10);
@@ -958,16 +870,114 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
       const boxWidth = textWidth + 10;
 
       pdf.setFillColor(0, 48, 102); // Azul Marinho Fidelité
-      pdf.roundedRect(20, yPos - 6, boxWidth, 8, 2, 2, 'F'); 
-      
+      pdf.roundedRect(20, yPos - 6, boxWidth, 8, 2, 2, 'F');
+
       pdf.setTextColor(255, 255, 255);
       pdf.text(upperTitle, 25, yPos);
       pdf.setTextColor(0, 0, 0);
       return yPos + 10;
     };
 
-    // CONSIDERAÇÕES PRELIMINARES, CONTESTAÇÃO E CRITÉRIOS DE VISTORIA (nova página, logo após a capa)
-    pdf.addPage();
+    // --- INÍCIO DA RENDERIZAÇÃO ---
+    addHeaderAndFooter(pdf, true); // desenha o rodapé da página 1 (cabeçalho é o novo bloco de capa abaixo)
+
+    // --- CABEÇALHO DA CAPA: barra sólida no topo, logo centralizada, título centralizado ---
+    pdf.setFillColor(0, 48, 102); // Azul Marinho Fidelité — largura total da página
+    pdf.rect(0, 0, width, 4, 'F');
+
+    y = 16;
+    if (logoToUse) {
+      try {
+        const imgProps = pdf.getImageProperties(logoToUse);
+        const maxW = 42;
+        const maxH = 20;
+        const ratio = imgProps.width / imgProps.height;
+        let targetW = maxW;
+        let targetH = targetW / ratio;
+        if (targetH > maxH) {
+          targetH = maxH;
+          targetW = targetH * ratio;
+        }
+        const logoX = (width - targetW) / 2;
+        const format = logoToUse.toLowerCase().includes('png') || logoToUse.includes('image/png') ? 'PNG' : 'JPEG';
+        pdf.addImage(logoToUse, format, logoX, y, targetW, targetH, undefined, 'SLOW');
+        y += targetH + 8;
+      } catch (e) {
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(15);
+        pdf.setTextColor(0, 48, 102);
+        pdf.text((brandName || 'FIDELITÉ').toUpperCase(), width / 2, y + 8, { align: 'center' });
+        y += 18;
+      }
+    } else {
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(15);
+      pdf.setTextColor(0, 48, 102);
+      pdf.text((brandName || 'FIDELITÉ').toUpperCase(), width / 2, y + 8, { align: 'center' });
+      y += 18;
+    }
+
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(16);
+    pdf.setTextColor(0, 48, 102);
+    const tituloLinesCapa = pdf.splitTextToSize(tituloDocumento, 170);
+    pdf.text(tituloLinesCapa, width / 2, y, { align: 'center' });
+    y += tituloLinesCapa.length * 7 + 6;
+
+    pdf.setDrawColor(0, 48, 102);
+    pdf.setLineWidth(0.4);
+    pdf.line(20, y, 190, y);
+    y += 12;
+
+    // --- BLOCO "IDENTIFICAÇÃO" — tabela label/valor, substitui o texto corrido anterior ---
+    y = drawSectionHeader('IDENTIFICAÇÃO', y);
+
+    const locatariosNomes = (vistoria.locatarios && vistoria.locatarios.length > 0
+      ? vistoria.locatarios.map(l => l.nome).filter(Boolean)
+      : [vistoria.locatario?.nome].filter(Boolean)
+    ).join(', ') || 'Não informado';
+
+    const linhasIdentificacao: [string, string][] = [
+      ['ENDEREÇO DO IMÓVEL', vistoria.imovel?.endereco || 'Não informado'],
+      ['LOCADOR (PROPRIETÁRIO)', locadorToUse.nome || 'Não informado'],
+      ['LOCATÁRIO(S)', locatariosNomes],
+      ['FINALIDADE', 'Locação'],
+      ['DATA DA VISTORIA', formatDateHelper((vistoria as any).dataVistoria || vistoria.data)],
+      ['VISTORIADOR RESPONSÁVEL', (vistoria.vistoriadorNome || vistoria.corretorNome || 'Não informado').toUpperCase()]
+    ];
+
+    const idLabelX = 22;
+    const idValueX = 75;
+    const idValueMaxWidth = 112;
+    const idRowPaddingY = 4;
+
+    linhasIdentificacao.forEach(([label, value]) => {
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(7.5);
+      pdf.setTextColor(71, 85, 105); // slate-600
+      const valueLines = pdf.splitTextToSize(value, idValueMaxWidth);
+      const rowHeight = Math.max(6, valueLines.length * 4.2) + idRowPaddingY;
+
+      // Fundo levemente colorido (tom claro do azul Fidelité), alternado por linha pra facilitar leitura
+      pdf.setFillColor(240, 245, 251);
+      pdf.rect(20, y - 4.5, 170, rowHeight, 'F');
+
+      pdf.text(label, idLabelX, y);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(9);
+      pdf.setTextColor(15, 23, 42); // slate-900
+      pdf.text(valueLines, idValueX, y);
+
+      y += rowHeight;
+      pdf.setDrawColor(226, 232, 240);
+      pdf.setLineWidth(0.15);
+      pdf.line(20, y - idRowPaddingY / 2, 190, y - idRowPaddingY / 2);
+    });
+
+    y += 8;
+    pdf.setTextColor(0, 0, 0);
+
+
     addHeaderAndFooter(pdf, false);
     y = 35;
     y = drawSectionHeader('CONSIDERAÇÕES PRELIMINARES', y);
