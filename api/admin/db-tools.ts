@@ -105,6 +105,30 @@ export default async function handler(req: any, res: any) {
     if (req.method === "GET") {
       const action = req.query?.action;
 
+      if (action === "fix-corretor-id") {
+        const oldId = req.query?.oldId;
+        const newId = req.query?.newId;
+        if (!oldId || !newId) return res.status(400).json({ error: "oldId e newId são obrigatórios" });
+
+        const snap = await adminDb.collection("comissoes").get();
+        let corrigidos = 0;
+        const batch = adminDb.batch();
+
+        snap.docs.forEach((d: any) => {
+          const data = d.data();
+          const rateio = data.rateio || [];
+          const temMatch = rateio.some((r: any) => r.corretorId === oldId);
+          if (temMatch) {
+            const novoRateio = rateio.map((r: any) => r.corretorId === oldId ? { ...r, corretorId: newId } : r);
+            batch.update(d.ref, { rateio: novoRateio });
+            corrigidos++;
+          }
+        });
+
+        if (corrigidos > 0) await batch.commit();
+        return res.status(200).json({ ok: true, corrigidos });
+      }
+
       if (action === "find-by-corretor") {
         const corretorId = req.query?.corretorId;
         if (!corretorId) return res.status(400).json({ error: "corretorId é obrigatório" });
