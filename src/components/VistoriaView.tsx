@@ -936,13 +936,7 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
       ? vistoria.locatarios
       : (vistoria.locatario ? [vistoria.locatario] : [{ ...DEFAULT_LOCATARIO }]);
 
-    const printSubBloco = (titulo: string, linhas: string[]) => {
-      y = checkPageBreak(y, 12);
-      pdf.setFont('helvetica', 'bold');
-      pdf.setFontSize(9);
-      pdf.setTextColor(0, 48, 102);
-      pdf.text(titulo, 20, y);
-      y += 5;
+    const printCamposSimples = (linhas: string[]) => {
       pdf.setFont('helvetica', 'normal');
       pdf.setFontSize(9);
       pdf.setTextColor(0, 0, 0);
@@ -952,12 +946,14 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
         pdf.text(split, 20, y);
         y += split.length * 5;
       });
-      y += 6;
+      y += 5;
     };
 
     // Sub-bloco: IMOBILIÁRIA (dados da própria empresa, quando disponíveis)
     if (brandName) {
-      printSubBloco('IMOBILIÁRIA', [
+      y = checkPageBreak(y, 20);
+      y = drawSectionHeader('IMOBILIÁRIA', y);
+      printCamposSimples([
         brandName.toUpperCase(),
         brandCnpj ? `CNPJ: ${brandCnpj}` : '',
         brandAddress ? `ENDEREÇO: ${brandAddress}` : '',
@@ -967,25 +963,24 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
     }
 
     // Sub-bloco: LOCADOR
-    printSubBloco('LOCADOR (PROPRIETÁRIO)', [
-      (locadorToUse.nome || 'Não informado').toUpperCase(),
+    y = checkPageBreak(y, 20);
+    y = drawSectionHeader('DADOS DO LOCADOR', y);
+    printCamposSimples([
+      `LOCADOR: ${(locadorToUse.nome || 'Não informado').toUpperCase()}`,
       locadorToUse.cnpj ? `CNPJ: ${locadorToUse.cnpj}` : '',
       locadorToUse.endereco ? `ENDEREÇO: ${locadorToUse.endereco}` : ''
     ].filter(Boolean));
 
     // Sub-bloco: LOCATÁRIO(S)
-    y = checkPageBreak(y, 12);
-    pdf.setFont('helvetica', 'bold');
-    pdf.setFontSize(9);
-    pdf.setTextColor(0, 48, 102);
-    pdf.text(locatariosList.length > 1 ? 'LOCATÁRIOS' : 'LOCATÁRIO', 20, y);
-    y += 5;
+    y = checkPageBreak(y, 20);
+    const sectionTitleLocatario = locatariosList.length > 1 ? 'DADOS DOS LOCATÁRIOS' : 'DADOS DO LOCATÁRIO';
+    y = drawSectionHeader(sectionTitleLocatario, y);
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(9);
     pdf.setTextColor(0, 0, 0);
 
     locatariosList.forEach((loc, idx) => {
-      const prefix = locatariosList.length > 1 ? `LOCATÁRIO ${idx + 1}: ` : '';
+      const prefix = locatariosList.length > 1 ? `LOCATÁRIO ${idx + 1}: ` : 'LOCATÁRIO: ';
       const locatarioInfo = [
         `${prefix}${(loc.nome || '').toUpperCase()}`,
         `CPF: ${loc.cpf || ''}${loc.rg ? `  |  RG: ${loc.rg}` : ''}`,
@@ -1194,9 +1189,7 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
     });
 
     // DECLARAÇÃO DE RECEBIMENTO/DEVOLUÇÃO DE CHAVES (logo após os cômodos, antes das fotos)
-    pdf.addPage();
-    addHeaderAndFooter(pdf, false);
-    y = 35;
+    y = checkPageBreak(y, 30);
     y = drawSectionHeader(
       vistoria.tipo === 'saida' ? 'DECLARAÇÃO DE DEVOLUÇÃO DE CHAVES' : 'DECLARAÇÃO DE RECEBIMENTO DE CHAVES',
       y
