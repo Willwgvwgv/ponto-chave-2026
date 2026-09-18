@@ -929,54 +929,105 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
     pdf.line(20, y, 190, y);
     y += 12;
 
-    // --- BLOCO "IDENTIFICAÇÃO" — tabela label/valor, substitui o texto corrido anterior ---
-    y = drawSectionHeader('IDENTIFICAÇÃO', y);
+    // --- PÁGINA 1: "ENVOLVIDOS" — Imobiliária, Locador e Locatário(s). Sem dados do imóvel aqui. ---
+    y = drawSectionHeader('ENVOLVIDOS', y);
 
-    const locatariosNomes = (vistoria.locatarios && vistoria.locatarios.length > 0
-      ? vistoria.locatarios.map(l => l.nome).filter(Boolean)
-      : [vistoria.locatario?.nome].filter(Boolean)
-    ).join(', ') || 'Não informado';
+    const locatariosList: LocatarioVistoria[] = (vistoria.locatarios && vistoria.locatarios.length > 0)
+      ? vistoria.locatarios
+      : (vistoria.locatario ? [vistoria.locatario] : [{ ...DEFAULT_LOCATARIO }]);
 
-    const linhasIdentificacao: [string, string][] = [
-      ['ENDEREÇO DO IMÓVEL', vistoria.imovel?.endereco || 'Não informado'],
-      ['LOCADOR (PROPRIETÁRIO)', locadorToUse.nome || 'Não informado'],
-      ['LOCATÁRIO(S)', locatariosNomes],
-      ['FINALIDADE', 'Locação'],
-      ['DATA DA VISTORIA', formatDateHelper((vistoria as any).dataVistoria || vistoria.data)],
-      ['VISTORIADOR RESPONSÁVEL', (vistoria.vistoriadorNome || vistoria.corretorNome || 'Não informado').toUpperCase()]
-    ];
-
-    const idLabelX = 22;
-    const idValueX = 75;
-    const idValueMaxWidth = 112;
-    const idRowPaddingY = 4;
-
-    linhasIdentificacao.forEach(([label, value]) => {
+    const printSubBloco = (titulo: string, linhas: string[]) => {
+      y = checkPageBreak(y, 12);
       pdf.setFont('helvetica', 'bold');
-      pdf.setFontSize(7.5);
-      pdf.setTextColor(71, 85, 105); // slate-600
-      const valueLines = pdf.splitTextToSize(value, idValueMaxWidth);
-      const rowHeight = Math.max(6, valueLines.length * 4.2) + idRowPaddingY;
-
-      // Fundo levemente colorido (tom claro do azul Fidelité), alternado por linha pra facilitar leitura
-      pdf.setFillColor(240, 245, 251);
-      pdf.rect(20, y - 4.5, 170, rowHeight, 'F');
-
-      pdf.text(label, idLabelX, y);
+      pdf.setFontSize(9);
+      pdf.setTextColor(0, 48, 102);
+      pdf.text(titulo, 20, y);
+      y += 5;
       pdf.setFont('helvetica', 'normal');
       pdf.setFontSize(9);
-      pdf.setTextColor(15, 23, 42); // slate-900
-      pdf.text(valueLines, idValueX, y);
+      pdf.setTextColor(0, 0, 0);
+      linhas.forEach(line => {
+        const split = pdf.splitTextToSize(line, 170);
+        y = checkPageBreak(y, split.length * 5);
+        pdf.text(split, 20, y);
+        y += split.length * 5;
+      });
+      y += 6;
+    };
 
-      y += rowHeight;
-      pdf.setDrawColor(226, 232, 240);
-      pdf.setLineWidth(0.15);
-      pdf.line(20, y - idRowPaddingY / 2, 190, y - idRowPaddingY / 2);
-    });
+    // Sub-bloco: IMOBILIÁRIA (dados da própria empresa, quando disponíveis)
+    if (brandName) {
+      printSubBloco('IMOBILIÁRIA', [
+        brandName.toUpperCase(),
+        brandCnpj ? `CNPJ: ${brandCnpj}` : '',
+        brandAddress ? `ENDEREÇO: ${brandAddress}` : '',
+        [brandPhone, brandEmail].filter(Boolean).join('  |  '),
+        brandCreci ? `CRECI: ${brandCreci}` : ''
+      ].filter(Boolean));
+    }
 
-    y += 8;
+    // Sub-bloco: LOCADOR
+    printSubBloco('LOCADOR (PROPRIETÁRIO)', [
+      (locadorToUse.nome || 'Não informado').toUpperCase(),
+      locadorToUse.cnpj ? `CNPJ: ${locadorToUse.cnpj}` : '',
+      locadorToUse.endereco ? `ENDEREÇO: ${locadorToUse.endereco}` : ''
+    ].filter(Boolean));
+
+    // Sub-bloco: LOCATÁRIO(S)
+    y = checkPageBreak(y, 12);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(9);
+    pdf.setTextColor(0, 48, 102);
+    pdf.text(locatariosList.length > 1 ? 'LOCATÁRIOS' : 'LOCATÁRIO', 20, y);
+    y += 5;
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(9);
     pdf.setTextColor(0, 0, 0);
 
+    locatariosList.forEach((loc, idx) => {
+      const prefix = locatariosList.length > 1 ? `LOCATÁRIO ${idx + 1}: ` : '';
+      const locatarioInfo = [
+        `${prefix}${(loc.nome || '').toUpperCase()}`,
+        `CPF: ${loc.cpf || ''}${loc.rg ? `  |  RG: ${loc.rg}` : ''}`,
+        `E-MAIL: ${loc.email || ''}  |  TEL: ${loc.telefone || ''}`,
+        ...(loc.endereco ? [`ENDEREÇO: ${loc.endereco}${loc.cep ? `  -  CEP: ${loc.cep}` : ''}`] : [])
+      ];
+      locatarioInfo.forEach(line => {
+        const splitLine = pdf.splitTextToSize(line, 170);
+        y = checkPageBreak(y, splitLine.length * 5);
+        pdf.text(splitLine, 20, y);
+        y += (splitLine.length * 5);
+      });
+      if (idx < locatariosList.length - 1) {
+        y += 2;
+        pdf.setDrawColor(220, 220, 220);
+        pdf.setLineWidth(0.1);
+        pdf.line(20, y, 190, y);
+        y += 4;
+      }
+    });
+
+    // --- PÁGINA 2: "DADOS DO IMÓVEL" seguido dos "TERMOS DA VISTORIA" ---
+    pdf.addPage();
+    addHeaderAndFooter(pdf, false);
+    y = 35;
+
+    y = drawSectionHeader('DADOS DO IMÓVEL', y);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(9);
+    pdf.setTextColor(0, 0, 0);
+    [
+      `ENDEREÇO: ${(vistoria.imovel?.endereco || 'Não informado').toUpperCase()}`,
+      'FINALIDADE: Locação',
+      `DATA DA VISTORIA: ${formatDateHelper((vistoria as any).dataVistoria || vistoria.data)}`,
+      `VISTORIADOR RESPONSÁVEL: ${(vistoria.vistoriadorNome || vistoria.corretorNome || 'Não informado').toUpperCase()}`
+    ].forEach(line => {
+      const split = pdf.splitTextToSize(line, 170);
+      y = checkPageBreak(y, split.length * 5);
+      pdf.text(split, 20, y);
+      y += split.length * 5;
+    });
+    y += 8;
 
     y = checkPageBreak(y, 20);
     y = drawSectionHeader('CONSIDERAÇÕES PRELIMINARES', y);
@@ -1043,115 +1094,7 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
       y += Math.max(5, descLines.length * 4.2) + 2;
     });
 
-    // DADOS DO LOCATÁRIO (nova página)
-    pdf.addPage();
-    addHeaderAndFooter(pdf, false);
-    y = 35;
-
-    // DADOS DO LOCATÁRIO
-    const locatariosList: LocatarioVistoria[] = (vistoria.locatarios && vistoria.locatarios.length > 0)
-      ? vistoria.locatarios
-      : (vistoria.locatario ? [vistoria.locatario] : [{ ...DEFAULT_LOCATARIO }]);
-
-    const sectionTitle = locatariosList.length > 1 ? 'DADOS DOS LOCATÁRIOS' : 'DADOS DO LOCATÁRIO';
-    y = drawSectionHeader(sectionTitle, y);
-    pdf.setFont('helvetica', 'normal');
-    pdf.setFontSize(9);
-    
-    locatariosList.forEach((loc, idx) => {
-      const prefix = locatariosList.length > 1 ? `LOCATÁRIO ${idx + 1}: ` : 'LOCATÁRIO: ';
-      const locatarioInfo = [
-        `${prefix}${(loc.nome || '').toUpperCase()}`,
-        `CPF: ${loc.cpf || ''}${loc.rg ? `  |  RG: ${loc.rg}` : ''}`,
-        `E-MAIL: ${loc.email || ''}  |  TEL: ${loc.telefone || ''}`,
-        ...(loc.endereco ? [`ENDEREÇO: ${loc.endereco}${loc.cep ? `  -  CEP: ${loc.cep}` : ''}`] : [])
-      ];
-      
-      locatarioInfo.forEach(line => {
-        const splitLine = pdf.splitTextToSize(line, 170);
-        y = checkPageBreak(y, splitLine.length * 5);
-        pdf.text(splitLine, 20, y);
-        y += (splitLine.length * 5);
-      });
-
-      if (idx < locatariosList.length - 1) {
-        y += 2;
-        pdf.setDrawColor(220, 220, 220);
-        pdf.setLineWidth(0.1);
-        pdf.line(20, y, 190, y);
-        y += 4;
-      }
-    });
-
-    // DADOS DO LOCADOR
-    y += 5;
-    y = checkPageBreak(y, 35);
-    y = drawSectionHeader('DADOS DO LOCADOR', y);
-    pdf.setFont('helvetica', 'normal');
-    pdf.setFontSize(9);
-    
-    const locadorNameText = pdf.splitTextToSize(`LOCADOR: ${(locadorToUse.nome || '').toUpperCase()}`, 170);
-    pdf.text(locadorNameText, 20, y);
-    y += (locadorNameText.length * 5);
-    pdf.text(`CNPJ: ${locadorToUse.cnpj || ''}`, 20, y);
-    y += 5;
-    const locadorEndText = pdf.splitTextToSize(`ENDEREÇO: ${locadorToUse.endereco || ''}`, 170);
-    pdf.text(locadorEndText, 20, y);
-    y += (locadorEndText.length * 5);
-
-    if (brandPhone) {
-      pdf.text(`TEL: ${brandPhone}`, 20, y);
-      y += 5;
-    }
-    if (brandEmail) {
-      pdf.text(`E-MAIL: ${brandEmail}`, 20, y);
-      y += 5;
-    }
-    if (brandCreci) {
-      pdf.text(`CRECI: ${brandCreci}`, 20, y);
-      y += 5;
-    }
-    y += 5;
-
-    // DADOS DO IMÓVEL
-    y = checkPageBreak(y, 20);
-    y = drawSectionHeader('DADOS DO IMÓVEL', y);
-    pdf.setFont('helvetica', 'normal');
-    pdf.setFontSize(9);
-    
-    pdf.text(`ENDEREÇO: ${(vistoria.imovel.endereco || '').toUpperCase()}`, 20, y, { maxWidth: 170 });
-    y += 15;
-
-    // DECLARAÇÃO DE RECEBIMENTO/DEVOLUÇÃO DE CHAVES
-    y = checkPageBreak(y, 30);
-    y = drawSectionHeader(
-      vistoria.tipo === 'saida' ? 'DECLARAÇÃO DE DEVOLUÇÃO DE CHAVES' : 'DECLARAÇÃO DE RECEBIMENTO DE CHAVES',
-      y
-    );
-    
-    const sC = {
-      fontSize: vistoria.styleContrato?.fontSize || 9,
-      textAlign: vistoria.styleContrato?.textAlign || 'justify' as const,
-      isBold: !!vistoria.styleContrato?.isBold
-    };
-    
-    pdf.setFontSize(sC.fontSize);
-    pdf.setFont('helvetica', sC.isBold ? 'bold' : 'normal');
-    y += 3; 
-
-    const splitContract = pdf.splitTextToSize(vistoria.textoContrato || '', 170);
-    splitContract.forEach((line: string) => {
-      y = checkPageBreak(y, 5);
-      // Reinforce font after potential page break
-      pdf.setFont('helvetica', sC.isBold ? 'bold' : 'normal');
-      pdf.setFontSize(sC.fontSize);
-      
-      const xPos = sC.textAlign === 'center' ? 105 : sC.textAlign === 'right' ? 190 : 20;
-      pdf.text(line, xPos, y, { align: sC.textAlign });
-      y += sC.fontSize * 0.55;
-    });
-
-    // CONDIÇÕES DO IMÓVEL (Início na página 2)
+    // CONDIÇÕES DO IMÓVEL (Início em nova página, logo após os termos da vistoria)
     pdf.addPage();
     addHeaderAndFooter(pdf, false);
     y = 35;
@@ -1248,6 +1191,36 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
         }
       }
       y += 10;
+    });
+
+    // DECLARAÇÃO DE RECEBIMENTO/DEVOLUÇÃO DE CHAVES (logo após os cômodos, antes das fotos)
+    pdf.addPage();
+    addHeaderAndFooter(pdf, false);
+    y = 35;
+    y = drawSectionHeader(
+      vistoria.tipo === 'saida' ? 'DECLARAÇÃO DE DEVOLUÇÃO DE CHAVES' : 'DECLARAÇÃO DE RECEBIMENTO DE CHAVES',
+      y
+    );
+
+    const sC = {
+      fontSize: vistoria.styleContrato?.fontSize || 9,
+      textAlign: vistoria.styleContrato?.textAlign || 'justify' as const,
+      isBold: !!vistoria.styleContrato?.isBold
+    };
+
+    pdf.setFontSize(sC.fontSize);
+    pdf.setFont('helvetica', sC.isBold ? 'bold' : 'normal');
+    y += 3;
+
+    const splitContract = pdf.splitTextToSize(vistoria.textoContrato || '', 170);
+    splitContract.forEach((line: string) => {
+      y = checkPageBreak(y, 5);
+      pdf.setFont('helvetica', sC.isBold ? 'bold' : 'normal');
+      pdf.setFontSize(sC.fontSize);
+
+      const xPos = sC.textAlign === 'center' ? 105 : sC.textAlign === 'right' ? 190 : 20;
+      pdf.text(line, xPos, y, { align: sC.textAlign });
+      y += sC.fontSize * 0.55;
     });
 
     // FOTOS GERAIS DA VISTORIA (fotos soltas, não vinculadas a um cômodo específico)
@@ -1562,7 +1535,26 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
                     </label>
                     <select
                       value={vistoriaEntradaId || ''}
-                      onChange={e => setVistoriaEntradaId(e.target.value || null)}
+                      onChange={async (e) => {
+                        const novoId = e.target.value || null;
+                        setVistoriaEntradaId(novoId);
+                        if (!novoId) return;
+                        try {
+                          const entradaSnap = await getDoc(doc(db, 'vistorias', novoId));
+                          if (entradaSnap.exists()) {
+                            const entradaData = entradaSnap.data() as Vistoria;
+                            const locatariosEntrada = (entradaData.locatarios && entradaData.locatarios.length > 0)
+                              ? entradaData.locatarios
+                              : (entradaData.locatario ? [entradaData.locatario] : null);
+                            if (locatariosEntrada && locatariosEntrada.length > 0) {
+                              setLocatarios(locatariosEntrada);
+                              toast.success(`${locatariosEntrada.length > 1 ? 'Locatários preenchidos' : 'Locatário preenchido'} a partir da vistoria de entrada.`);
+                            }
+                          }
+                        } catch (err) {
+                          console.error('Não foi possível carregar os dados da vistoria de entrada:', err);
+                        }
+                      }}
                       className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 transition-all"
                     >
                       <option value="">Nenhuma / não localizada</option>
