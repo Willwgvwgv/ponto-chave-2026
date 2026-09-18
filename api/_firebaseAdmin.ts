@@ -23,9 +23,11 @@ function resolveAdminConfig() {
 
   if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
     try {
-      const sa = typeof process.env.FIREBASE_SERVICE_ACCOUNT_JSON === "string"
-        ? JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON)
-        : process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+      let rawValue = process.env.FIREBASE_SERVICE_ACCOUNT_JSON.trim();
+      // Corrige um erro comum de copiar/colar: faltar a chave { ou } externa do JSON.
+      if (!rawValue.startsWith("{")) rawValue = "{" + rawValue;
+      if (!rawValue.endsWith("}")) rawValue = rawValue + "}";
+      const sa = JSON.parse(rawValue);
       adminConfig.credential = cert(sa);
       if (sa.project_id) adminConfig.projectId = sa.project_id;
     } catch (e) {
