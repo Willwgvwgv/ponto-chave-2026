@@ -105,6 +105,16 @@ export default async function handler(req: any, res: any) {
     if (req.method === "GET") {
       const action = req.query?.action;
 
+      if (action === "find-by-corretor") {
+        const corretorId = req.query?.corretorId;
+        if (!corretorId) return res.status(400).json({ error: "corretorId é obrigatório" });
+        const snap = await adminDb.collection("comissoes").get();
+        const matches = snap.docs
+          .filter((d: any) => (d.data().rateio || []).some((r: any) => r.corretorId === corretorId))
+          .map((d: any) => ({ id: d.id, imovel: d.data().imovel, mesReferencia: d.data().mesReferencia, rateio: d.data().rateio }));
+        return res.status(200).json({ matches, total: matches.length });
+      }
+
       if (action === "list-orphans") {
         const results: Record<string, any[]> = {};
         for (const col of ["comissoes", "vistorias"]) {
