@@ -978,8 +978,7 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
     pdf.setTextColor(0, 0, 0);
 
 
-    addHeaderAndFooter(pdf, false);
-    y = 35;
+    y = checkPageBreak(y, 20);
     y = drawSectionHeader('CONSIDERAÇÕES PRELIMINARES', y);
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(8.5);
