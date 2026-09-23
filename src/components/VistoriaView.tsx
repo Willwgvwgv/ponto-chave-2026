@@ -75,6 +75,7 @@ export const VistoriaView = ({ isAdmin, user, profile, companySettings }: { isAd
   const [isAddingComodo, setIsAddingComodo] = useState(false);
   const [newComodoName, setNewComodoName] = useState('');
   const [selectedTemplate, setSelectedTemplate] = useState(COMODOS_PADRAO[0].nome);
+  const [novoItemPorComodo, setNovoItemPorComodo] = useState<Record<number, string>>({});
   const [editingVistoria, setEditingVistoria] = useState<Vistoria | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [isConfigOpen, setIsConfigOpen] = useState(false);
@@ -794,6 +795,31 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
     toast.success("Cômodo removido.");
   };
 
+  // Checklist editável por cômodo: cada ambiente nasce com a lista padrão do template,
+  // mas qualquer item pode ser removido (ex: "Ar Condicionado" num cômodo que não tem)
+  // ou um item novo com nome livre pode ser adicionado.
+  const handleRemoveItem = (cIdx: number, iIdx: number) => {
+    const newComodos = [...comodos];
+    if (newComodos[cIdx].itens.length <= 1) {
+      toast.error("O cômodo deve ter pelo menos um item.");
+      return;
+    }
+    newComodos[cIdx].itens.splice(iIdx, 1);
+    setComodos(newComodos);
+  };
+
+  const handleAddItem = (cIdx: number, nomeItem: string) => {
+    const nome = nomeItem.trim();
+    if (!nome) return;
+    const newComodos = [...comodos];
+    if (newComodos[cIdx].itens.some(i => i.nome.toLowerCase() === nome.toLowerCase())) {
+      toast.error("Esse item já existe nesse cômodo.");
+      return;
+    }
+    newComodos[cIdx].itens.push({ nome, ok: true, ressalva: '' });
+    setComodos(newComodos);
+  };
+
   const handleDelete = async (id: string) => {
     setIsDeleting(true);
     try {
@@ -878,13 +904,9 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
         const companyLines = [brandName?.toUpperCase(), creciText].filter(Boolean).join('\n');
         const splitCompany = doc.splitTextToSize(companyLines, 55);
         doc.text(splitCompany, 135, footerY);
-      } else {
-        // Cabeçalho minimalista para outras páginas (apenas número da página)
-        doc.setTextColor(150, 150, 150);
-        doc.setFontSize(8);
-        doc.setFont('helvetica', 'normal');
-        doc.text(`Página ${doc.getNumberOfPages()}`, 190, 10);
       }
+      // Número de página é escrito numa segunda passada ao final (addPageNumbers),
+      // quando o total de páginas já é conhecido — evita "Página N" sem contexto.
     };
 
     const checkPageBreak = (currentY: number, needed: number) => {
@@ -911,6 +933,44 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
       pdf.text(upperTitle, 25, yPos);
       pdf.setTextColor(0, 0, 0);
       return yPos + 10;
+    };
+
+    // --- TABELA DE INFORMAÇÕES (rótulo | valor) — usada em IDENTIFICAÇÃO e ENVOLVIDOS,
+    // no estilo compacto de referência (linhas com separador fino, sem repetir cabeçalhos) ---
+    const LABEL_X = 22;
+    const LABEL_W = 52;
+    const VALUE_X = 78;
+    const VALUE_W = 112;
+    const drawInfoTable = (rows: [string, string][], startY: number): number => {
+      let yy = startY;
+      rows.forEach(([label, value]) => {
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(7.5);
+        const labelLines = pdf.splitTextToSize(label.toUpperCase(), LABEL_W);
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(9);
+        const valueLines = pdf.splitTextToSize(value || 'Não informado', VALUE_W);
+        const rowH = Math.max(labelLines.length, valueLines.length) * 4.2 + 3.5;
+
+        yy = checkPageBreak(yy, rowH);
+
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(7.5);
+        pdf.setTextColor(100, 116, 139); // slate-500
+        pdf.text(labelLines, LABEL_X, yy + 3);
+
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(9);
+        pdf.setTextColor(15, 23, 42); // slate-900
+        pdf.text(valueLines, VALUE_X, yy + 3);
+
+        yy += rowH;
+        pdf.setDrawColor(226, 232, 240); // slate-200
+        pdf.setLineWidth(0.15);
+        pdf.line(20, yy - 1.5, 190, yy - 1.5);
+      });
+      pdf.setTextColor(0, 0, 0);
+      return yy + 5;
     };
 
     // --- INÍCIO DA RENDERIZAÇÃO ---
@@ -964,121 +1024,53 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
     pdf.line(20, y, 190, y);
     y += 12;
 
-    // --- IDENTIFICAÇÃO DO IMÓVEL (capa) — resumo rápido antes dos blocos detalhados ---
-    y = drawSectionHeader('IDENTIFICAÇÃO DO IMÓVEL', y);
-    pdf.setFont('helvetica', 'normal');
-    pdf.setFontSize(9);
-    pdf.setTextColor(0, 0, 0);
-    [
-      `ENDEREÇO: ${(vistoria.imovel?.endereco || 'Não informado').toUpperCase()}`,
-      `TIPO DE IMÓVEL: ${(vistoria.tipoImovel || 'Não informado').toUpperCase()}`,
-      'FINALIDADE: Locação',
-      `DATA DA VISTORIA: ${formatDateHelper((vistoria as any).dataVistoria || vistoria.data)}`,
-      `VISTORIADOR RESPONSÁVEL: ${(vistoria.vistoriadorNome || vistoria.corretorNome || 'Não informado').toUpperCase()}`
-    ].forEach(line => {
-      const split = pdf.splitTextToSize(line, 170);
-      y = checkPageBreak(y, split.length * 5);
-      pdf.text(split, 20, y);
-      y += split.length * 5;
-    });
-    y += 6;
-
-    // --- PÁGINA 1: "ENVOLVIDOS" — Imobiliária, Locador e Locatário(s). Sem dados do imóvel aqui. ---
-    y = checkPageBreak(y, 20);
-    y = drawSectionHeader('ENVOLVIDOS', y);
-
     const locatariosList: LocatarioVistoria[] = (vistoria.locatarios && vistoria.locatarios.length > 0)
       ? vistoria.locatarios
       : (vistoria.locatario ? [vistoria.locatario] : [{ ...DEFAULT_LOCATARIO }]);
+    const locatarioNomes = locatariosList.map(l => l.nome).filter(Boolean).join(', ') || 'Não informado';
 
-    const printCamposSimples = (linhas: string[]) => {
-      pdf.setFont('helvetica', 'normal');
-      pdf.setFontSize(9);
-      pdf.setTextColor(0, 0, 0);
-      linhas.forEach(line => {
-        const split = pdf.splitTextToSize(line, 170);
-        y = checkPageBreak(y, split.length * 5);
-        pdf.text(split, 20, y);
-        y += split.length * 5;
-      });
-      y += 5;
-    };
+    // --- IDENTIFICAÇÃO — resumo único em tabela (endereço, imóvel, partes, data) ---
+    // Antes esse bloco existia duplicado (capa + página 2); agora é um só, direto após o título.
+    y = drawSectionHeader('IDENTIFICAÇÃO', y);
+    y = drawInfoTable([
+      ['Endereço do Imóvel', (vistoria.imovel?.endereco || 'Não informado').toUpperCase()],
+      ['Tipo de Imóvel', (vistoria.tipoImovel || 'Não informado').toUpperCase()],
+      ['Locador (Proprietário)', (locadorToUse.nome || 'Não informado').toUpperCase()],
+      [locatariosList.length > 1 ? 'Locatários' : 'Locatário', locatarioNomes.toUpperCase()],
+      ['Finalidade', 'LOCAÇÃO'],
+      ['Data da Vistoria', formatDateHelper((vistoria as any).dataVistoria || vistoria.data)],
+      ['Vistoriador Responsável', (vistoria.vistoriadorNome || vistoria.corretorNome || 'Não informado').toUpperCase()]
+    ], y);
 
-    // Sub-bloco: IMOBILIÁRIA (dados da própria empresa, quando disponíveis)
+    // --- ENVOLVIDOS — detalhamento de imobiliária, locador e locatário(s) em tabelas compactas ---
+    y = checkPageBreak(y, 20);
+    y = drawSectionHeader('ENVOLVIDOS', y);
+
     if (brandName) {
-      y = checkPageBreak(y, 20);
-      y = drawSectionHeader('IMOBILIÁRIA', y);
-      printCamposSimples([
-        brandName.toUpperCase(),
-        brandCnpj ? `CNPJ: ${brandCnpj}` : '',
-        brandAddress ? `ENDEREÇO: ${brandAddress}` : '',
-        [brandPhone, brandEmail].filter(Boolean).join('  |  '),
-        brandCreci ? `CRECI: ${brandCreci}` : ''
-      ].filter(Boolean));
+      y = drawInfoTable([
+        ['Imobiliária', brandName.toUpperCase()],
+        ...(brandCnpj ? [['CNPJ', brandCnpj] as [string, string]] : []),
+        ...(brandAddress ? [['Endereço', brandAddress] as [string, string]] : []),
+        ...(([brandPhone, brandEmail].filter(Boolean).length) ? [['Contato', [brandPhone, brandEmail].filter(Boolean).join('  |  ')] as [string, string]] : []),
+        ...(brandCreci ? [['CRECI', brandCreci] as [string, string]] : [])
+      ], y);
     }
 
-    // Sub-bloco: LOCADOR
-    y = checkPageBreak(y, 20);
-    y = drawSectionHeader('DADOS DO LOCADOR', y);
-    printCamposSimples([
-      `LOCADOR: ${(locadorToUse.nome || 'Não informado').toUpperCase()}`,
-      locadorToUse.cnpj ? `CNPJ: ${locadorToUse.cnpj}` : '',
-      locadorToUse.endereco ? `ENDEREÇO: ${locadorToUse.endereco}` : ''
-    ].filter(Boolean));
-
-    // Sub-bloco: LOCATÁRIO(S)
-    y = checkPageBreak(y, 20);
-    const sectionTitleLocatario = locatariosList.length > 1 ? 'DADOS DOS LOCATÁRIOS' : 'DADOS DO LOCATÁRIO';
-    y = drawSectionHeader(sectionTitleLocatario, y);
-    pdf.setFont('helvetica', 'normal');
-    pdf.setFontSize(9);
-    pdf.setTextColor(0, 0, 0);
+    y = drawInfoTable([
+      ['Locador', (locadorToUse.nome || 'Não informado').toUpperCase()],
+      ...(locadorToUse.cnpj ? [['CNPJ', locadorToUse.cnpj] as [string, string]] : []),
+      ...(locadorToUse.endereco ? [['Endereço', locadorToUse.endereco] as [string, string]] : [])
+    ], y);
 
     locatariosList.forEach((loc, idx) => {
-      const prefix = locatariosList.length > 1 ? `LOCATÁRIO ${idx + 1}: ` : 'LOCATÁRIO: ';
-      const locatarioInfo = [
-        `${prefix}${(loc.nome || '').toUpperCase()}`,
-        `CPF: ${loc.cpf || ''}${loc.rg ? `  |  RG: ${loc.rg}` : ''}`,
-        `E-MAIL: ${loc.email || ''}  |  TEL: ${loc.telefone || ''}`,
-        ...(loc.endereco ? [`ENDEREÇO: ${loc.endereco}${loc.cep ? `  -  CEP: ${loc.cep}` : ''}`] : [])
-      ];
-      locatarioInfo.forEach(line => {
-        const splitLine = pdf.splitTextToSize(line, 170);
-        y = checkPageBreak(y, splitLine.length * 5);
-        pdf.text(splitLine, 20, y);
-        y += (splitLine.length * 5);
-      });
-      if (idx < locatariosList.length - 1) {
-        y += 2;
-        pdf.setDrawColor(220, 220, 220);
-        pdf.setLineWidth(0.1);
-        pdf.line(20, y, 190, y);
-        y += 4;
-      }
+      const label = locatariosList.length > 1 ? `Locatário ${idx + 1}` : 'Locatário';
+      y = drawInfoTable([
+        [label, (loc.nome || 'Não informado').toUpperCase()],
+        ['CPF / RG', `${loc.cpf || 'Não informado'}${loc.rg ? `  |  RG: ${loc.rg}` : ''}`],
+        ['Contato', [loc.email, loc.telefone].filter(Boolean).join('  |  ') || 'Não informado'],
+        ...(loc.endereco ? [['Endereço', `${loc.endereco}${loc.cep ? `  -  CEP: ${loc.cep}` : ''}`] as [string, string]] : [])
+      ], y);
     });
-
-    // --- PÁGINA 2: "DADOS DO IMÓVEL" seguido dos "TERMOS DA VISTORIA" ---
-    pdf.addPage();
-    addHeaderAndFooter(pdf, false);
-    y = 35;
-
-    y = drawSectionHeader('DADOS DO IMÓVEL', y);
-    pdf.setFont('helvetica', 'normal');
-    pdf.setFontSize(9);
-    pdf.setTextColor(0, 0, 0);
-    [
-      `ENDEREÇO: ${(vistoria.imovel?.endereco || 'Não informado').toUpperCase()}`,
-      `TIPO DE IMÓVEL: ${(vistoria.tipoImovel || 'Não informado').toUpperCase()}`,
-      'FINALIDADE: Locação',
-      `DATA DA VISTORIA: ${formatDateHelper((vistoria as any).dataVistoria || vistoria.data)}`,
-      `VISTORIADOR RESPONSÁVEL: ${(vistoria.vistoriadorNome || vistoria.corretorNome || 'Não informado').toUpperCase()}`
-    ].forEach(line => {
-      const split = pdf.splitTextToSize(line, 170);
-      y = checkPageBreak(y, split.length * 5);
-      pdf.text(split, 20, y);
-      y += split.length * 5;
-    });
-    y += 8;
 
     y = checkPageBreak(y, 20);
     y = drawSectionHeader('CONSIDERAÇÕES PRELIMINARES', y);
@@ -1145,10 +1137,9 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
       y += Math.max(5, descLines.length * 4.2) + 2;
     });
 
-    // AMBIENTES VISTORIADOS (Início em nova página, logo após os termos da vistoria)
-    pdf.addPage();
-    addHeaderAndFooter(pdf, false);
-    y = 35;
+    // AMBIENTES VISTORIADOS — flui direto após os critérios, sem forçar nova página
+    // (só quebra quando realmente não cabe mais, evitando página final quase em branco)
+    y = checkPageBreak(y, 20);
     y = drawSectionHeader('AMBIENTES VISTORIADOS', y);
     pdf.setTextColor(0, 0, 0);
 
@@ -1411,38 +1402,41 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
       y += 4;
     }
 
-    // DECLARAÇÃO DE RECEBIMENTO/DEVOLUÇÃO DE CHAVES (logo após os cômodos, antes das fotos)
-    y = checkPageBreak(y, 30);
-    y = drawSectionHeader(
-      vistoria.tipo === 'saida' ? 'DECLARAÇÃO DE DEVOLUÇÃO DE CHAVES' : 'DECLARAÇÃO DE RECEBIMENTO DE CHAVES',
-      y
-    );
+    // DECLARAÇÃO DE RECEBIMENTO/DEVOLUÇÃO DE CHAVES — só entra se houver texto de fato,
+    // evitando uma página com só o título e nada embaixo (era o caso quando o campo ficava vazio)
+    if (vistoria.textoContrato && vistoria.textoContrato.trim()) {
+      y = checkPageBreak(y, 30);
+      y = drawSectionHeader(
+        vistoria.tipo === 'saida' ? 'DECLARAÇÃO DE DEVOLUÇÃO DE CHAVES' : 'DECLARAÇÃO DE RECEBIMENTO DE CHAVES',
+        y
+      );
 
-    const sC = {
-      fontSize: vistoria.styleContrato?.fontSize || 9,
-      textAlign: vistoria.styleContrato?.textAlign || 'justify' as const,
-      isBold: !!vistoria.styleContrato?.isBold
-    };
+      const sC = {
+        fontSize: vistoria.styleContrato?.fontSize || 9,
+        textAlign: vistoria.styleContrato?.textAlign || 'justify' as const,
+        isBold: !!vistoria.styleContrato?.isBold
+      };
 
-    pdf.setFontSize(sC.fontSize);
-    pdf.setFont('helvetica', sC.isBold ? 'bold' : 'normal');
-    y += 3;
-
-    const splitContract = pdf.splitTextToSize(vistoria.textoContrato || '', 170);
-    splitContract.forEach((line: string) => {
-      y = checkPageBreak(y, 5);
-      pdf.setFont('helvetica', sC.isBold ? 'bold' : 'normal');
       pdf.setFontSize(sC.fontSize);
+      pdf.setFont('helvetica', sC.isBold ? 'bold' : 'normal');
+      y += 3;
 
-      const xPos = sC.textAlign === 'center' ? 105 : sC.textAlign === 'right' ? 190 : 20;
-      pdf.text(line, xPos, y, { align: sC.textAlign });
-      y += sC.fontSize * 0.55;
-    });
+      const splitContract = pdf.splitTextToSize(vistoria.textoContrato, 170);
+      splitContract.forEach((line: string) => {
+        y = checkPageBreak(y, 5);
+        pdf.setFont('helvetica', sC.isBold ? 'bold' : 'normal');
+        pdf.setFontSize(sC.fontSize);
 
-    // LAUDO DE VISTORIA (Nova página) — cláusulas finais definidas no formulário
-    pdf.addPage();
-    addHeaderAndFooter(pdf, false);
-    y = 35;
+        const xPos = sC.textAlign === 'center' ? 105 : sC.textAlign === 'right' ? 190 : 20;
+        pdf.text(line, xPos, y, { align: sC.textAlign });
+        y += sC.fontSize * 0.55;
+      });
+    }
+
+    // LAUDO DE VISTORIA — só quebra página se o bloco não couber onde estamos
+    // (cláusulas finais definidas no formulário)
+    if (vistoria.textoLaudo && vistoria.textoLaudo.trim()) {
+    y = checkPageBreak(y, 30);
     y = drawSectionHeader('LAUDO DE VISTORIA', y);
     y += 3;
 
@@ -1480,11 +1474,10 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
         y += sL.fontSize * 0.55;
       });
     });
+    } // fim do bloco condicional do LAUDO DE VISTORIA
 
-    // LGPD E PROTEÇÃO DE DADOS (Nova página)
-    pdf.addPage();
-    addHeaderAndFooter(pdf, false);
-    y = 35;
+    // LGPD E PROTEÇÃO DE DADOS — só quebra página se não couber, sem forçar página nova
+    y = checkPageBreak(y, 25);
     y = drawSectionHeader('LGPD E PROTEÇÃO DE DADOS', y);
     y += 5;
 
@@ -1611,9 +1604,27 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
     pdf.line(25, y, 100, y);
     pdf.text('2-', 25, y + 4);
 
+    // Numeração final "Página X de Y" — feita numa segunda passada porque o total
+    // de páginas só é conhecido depois que todo o conteúdo já foi desenhado.
+    const totalPaginas = pdf.getNumberOfPages();
+    const enderecoRodape = (vistoria.imovel?.endereco || '').toUpperCase();
+    // A página 1 já tem seu próprio rodapé rico (endereço/contato/empresa); aqui só
+    // completamos as páginas seguintes, que antes não tinham nenhuma numeração confiável.
+    for (let p = 2; p <= totalPaginas; p++) {
+      pdf.setPage(p);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(7.5);
+      pdf.setTextColor(150, 150, 150);
+      if (enderecoRodape) {
+        pdf.text(enderecoRodape, 20, 292, { maxWidth: 130 });
+      }
+      pdf.text(`Página ${p} de ${totalPaginas}`, 190, 292, { align: 'right' });
+      pdf.setTextColor(0, 0, 0);
+    }
+
     const primaryTenantName = locatariosList[0]?.nome || vistoria.locatario?.nome || 'Doc';
     const fileName = `Vistoria_${primaryTenantName.replace(/\s/g, '_')}.pdf`;
-    
+
     // Output as Blob to open in new window
     const blob = pdf.output('blob');
     const url = URL.createObjectURL(blob);
@@ -2376,10 +2387,19 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
                         setComodos(newComodos);
                       };
                       return (
-                      <div key={item.nome} className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center p-3 rounded-2xl bg-slate-50/50">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-bold text-slate-700">{item.nome}</span>
-                          <div className="flex bg-white rounded-lg p-1 border border-slate-100">
+                      <div key={`${item.nome}-${iIdx}`} className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center p-3 rounded-2xl bg-slate-50/50">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <button
+                              onClick={() => handleRemoveItem(cIdx, iIdx)}
+                              title="Remover item"
+                              className="p-1 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all shrink-0"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                            <span className="text-sm font-bold text-slate-700 truncate">{item.nome}</span>
+                          </div>
+                          <div className="flex bg-white rounded-lg p-1 border border-slate-100 shrink-0">
                             <button
                               onClick={() => setEstado('novo')}
                               className={cn(
@@ -2435,6 +2455,34 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
                       </div>
                       );
                     })}
+
+                    {/* Adicionar item avulso ao cômodo — nome livre (ex: "Janela", "Ar Condicionado") */}
+                    <div className="flex items-center gap-2 p-1">
+                      <input
+                        type="text"
+                        value={novoItemPorComodo[cIdx] || ''}
+                        onChange={e => setNovoItemPorComodo(prev => ({ ...prev, [cIdx]: e.target.value }))}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAddItem(cIdx, novoItemPorComodo[cIdx] || '');
+                            setNovoItemPorComodo(prev => ({ ...prev, [cIdx]: '' }));
+                          }
+                        }}
+                        placeholder="Adicionar item (ex: Janela, Porta...)"
+                        className="flex-1 px-3 py-2.5 bg-slate-50 border-none rounded-xl text-xs font-medium focus:ring-2 focus:ring-blue-500/20 text-slate-900 placeholder:text-slate-300 transition-all"
+                      />
+                      <button
+                        onClick={() => {
+                          handleAddItem(cIdx, novoItemPorComodo[cIdx] || '');
+                          setNovoItemPorComodo(prev => ({ ...prev, [cIdx]: '' }));
+                        }}
+                        className="px-3 py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-xl transition-all shrink-0"
+                        title="Adicionar item"
+                      >
+                        <Plus className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
 
                   {/* Room Photos */}
