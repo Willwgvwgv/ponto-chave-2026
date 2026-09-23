@@ -216,6 +216,17 @@ export interface ComodoVistoria {
   fotos: string[];
 }
 
+export interface MedidorLeitura {
+  numero?: string;
+  leitura?: string;
+}
+
+export interface ChavesEntregues {
+  quantidade?: string;
+  identificacao?: string;
+  funcionamento?: string;
+}
+
 export interface RateioComissao {
   corretorId: string;
   corretorNome: string;
@@ -315,6 +326,11 @@ export interface Vistoria {
   imovel: {
     endereco: string;
   };
+  tipoImovel?: string;
+  medidorEnergia?: MedidorLeitura;
+  medidorAgua?: MedidorLeitura;
+  medidorGas?: MedidorLeitura;
+  chaves?: ChavesEntregues;
   locador: {
     nome: string;
     cnpj: string;
@@ -659,5 +675,3 @@ export interface FaturaHidrometro {
   criadoPorUid?: string;
   criadoPorNome?: string;
 }
-
-
