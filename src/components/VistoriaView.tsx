@@ -266,6 +266,16 @@ export const VistoriaView = ({ isAdmin, user, profile, companySettings }: { isAd
   const [styleContrato, setStyleContrato] = useState({ fontSize: 9, textAlign: 'justify' as const, isBold: false });
   const [styleLaudo, setStyleLaudo] = useState({ fontSize: 9, textAlign: 'justify' as const, isBold: false });
   const [imovel, setImovel] = useState({ endereco: '' });
+  const [tipoImovel, setTipoImovel] = useState('');
+  const [medidorEnergiaNumero, setMedidorEnergiaNumero] = useState('');
+  const [medidorEnergiaLeitura, setMedidorEnergiaLeitura] = useState('');
+  const [medidorAguaNumero, setMedidorAguaNumero] = useState('');
+  const [medidorAguaLeitura, setMedidorAguaLeitura] = useState('');
+  const [medidorGasNumero, setMedidorGasNumero] = useState('');
+  const [medidorGasLeitura, setMedidorGasLeitura] = useState('');
+  const [chavesQuantidade, setChavesQuantidade] = useState('');
+  const [chavesIdentificacao, setChavesIdentificacao] = useState('');
+  const [chavesFuncionamento, setChavesFuncionamento] = useState('');
   const [locador, setLocador] = useState({
     nome: companySettings?.name || 'FIDELITE NEGOCIOS IMOBILIARIOS LTDA',
     cnpj: companySettings?.name ? '' : '37.194.924/0001-86',
@@ -353,6 +363,11 @@ export const VistoriaView = ({ isAdmin, user, profile, companySettings }: { isAd
         locatario: primaryLocatario,
         locatarios,
         imovel,
+        tipoImovel,
+        medidorEnergia: { numero: medidorEnergiaNumero, leitura: medidorEnergiaLeitura },
+        medidorAgua: { numero: medidorAguaNumero, leitura: medidorAguaLeitura },
+        medidorGas: { numero: medidorGasNumero, leitura: medidorGasLeitura },
+        chaves: { quantidade: chavesQuantidade, identificacao: chavesIdentificacao, funcionamento: chavesFuncionamento },
         locador,
         comodos: sanitizedComodos,
         status: statusVistoria,
@@ -404,6 +419,16 @@ export const VistoriaView = ({ isAdmin, user, profile, companySettings }: { isAd
 
 Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em bom estado de conservação, com todos os seus pertences, utensílios e acessórios em perfeito estado de funcionamento e conservação, sendo que dessa forma o(a) LOCATÁRIO(a) se compromete a devolvê-lo, findo o prazo contratual, em igual situação.`);
     setImovel({ endereco: '' });
+    setTipoImovel('');
+    setMedidorEnergiaNumero('');
+    setMedidorEnergiaLeitura('');
+    setMedidorAguaNumero('');
+    setMedidorAguaLeitura('');
+    setMedidorGasNumero('');
+    setMedidorGasLeitura('');
+    setChavesQuantidade('');
+    setChavesIdentificacao('');
+    setChavesFuncionamento('');
     setComodos(COMODOS_PADRAO.map(c => ({
       nome: c.nome,
       itens: c.itens.map(i => ({ nome: i, ok: true, ressalva: '' })),
@@ -440,6 +465,16 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
     setStyleContrato(v.styleContrato || { fontSize: 9, textAlign: 'justify', isBold: false });
     setStyleLaudo(v.styleLaudo || { fontSize: 9, textAlign: 'justify', isBold: false });
     setImovel(v.imovel);
+    setTipoImovel(v.tipoImovel || '');
+    setMedidorEnergiaNumero(v.medidorEnergia?.numero || '');
+    setMedidorEnergiaLeitura(v.medidorEnergia?.leitura || '');
+    setMedidorAguaNumero(v.medidorAgua?.numero || '');
+    setMedidorAguaLeitura(v.medidorAgua?.leitura || '');
+    setMedidorGasNumero(v.medidorGas?.numero || '');
+    setMedidorGasLeitura(v.medidorGas?.leitura || '');
+    setChavesQuantidade(v.chaves?.quantidade || '');
+    setChavesIdentificacao(v.chaves?.identificacao || '');
+    setChavesFuncionamento(v.chaves?.funcionamento || '');
     setLocador(v.locador);
     setComodos(v.comodos);
     setDataVistoria(v.data);
@@ -929,7 +964,27 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
     pdf.line(20, y, 190, y);
     y += 12;
 
+    // --- IDENTIFICAÇÃO DO IMÓVEL (capa) — resumo rápido antes dos blocos detalhados ---
+    y = drawSectionHeader('IDENTIFICAÇÃO DO IMÓVEL', y);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(9);
+    pdf.setTextColor(0, 0, 0);
+    [
+      `ENDEREÇO: ${(vistoria.imovel?.endereco || 'Não informado').toUpperCase()}`,
+      `TIPO DE IMÓVEL: ${(vistoria.tipoImovel || 'Não informado').toUpperCase()}`,
+      'FINALIDADE: Locação',
+      `DATA DA VISTORIA: ${formatDateHelper((vistoria as any).dataVistoria || vistoria.data)}`,
+      `VISTORIADOR RESPONSÁVEL: ${(vistoria.vistoriadorNome || vistoria.corretorNome || 'Não informado').toUpperCase()}`
+    ].forEach(line => {
+      const split = pdf.splitTextToSize(line, 170);
+      y = checkPageBreak(y, split.length * 5);
+      pdf.text(split, 20, y);
+      y += split.length * 5;
+    });
+    y += 6;
+
     // --- PÁGINA 1: "ENVOLVIDOS" — Imobiliária, Locador e Locatário(s). Sem dados do imóvel aqui. ---
+    y = checkPageBreak(y, 20);
     y = drawSectionHeader('ENVOLVIDOS', y);
 
     const locatariosList: LocatarioVistoria[] = (vistoria.locatarios && vistoria.locatarios.length > 0)
@@ -1013,6 +1068,7 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
     pdf.setTextColor(0, 0, 0);
     [
       `ENDEREÇO: ${(vistoria.imovel?.endereco || 'Não informado').toUpperCase()}`,
+      `TIPO DE IMÓVEL: ${(vistoria.tipoImovel || 'Não informado').toUpperCase()}`,
       'FINALIDADE: Locação',
       `DATA DA VISTORIA: ${formatDateHelper((vistoria as any).dataVistoria || vistoria.data)}`,
       `VISTORIADOR RESPONSÁVEL: ${(vistoria.vistoriadorNome || vistoria.corretorNome || 'Não informado').toUpperCase()}`
@@ -1089,15 +1145,46 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
       y += Math.max(5, descLines.length * 4.2) + 2;
     });
 
-    // CONDIÇÕES DO IMÓVEL (Início em nova página, logo após os termos da vistoria)
+    // AMBIENTES VISTORIADOS (Início em nova página, logo após os termos da vistoria)
     pdf.addPage();
     addHeaderAndFooter(pdf, false);
     y = 35;
-    y = drawSectionHeader('CONDIÇÕES DO IMÓVEL', y);
+    y = drawSectionHeader('AMBIENTES VISTORIADOS', y);
     pdf.setTextColor(0, 0, 0);
 
+    // Colunas da tabela ITEM | ESTADO | OBSERVAÇÃO
+    const COL_ITEM_X = 25;
+    const COL_ITEM_W = 78;
+    const COL_ESTADO_X = 105;
+    const COL_ESTADO_W = 28;
+    const COL_OBS_X = 137;
+    const COL_OBS_W = 51;
+
+    const drawTableHeader = (yy: number): number => {
+      pdf.setFillColor(241, 245, 249); // slate-100
+      pdf.rect(20, yy - 4.5, 170, 6.5, 'F');
+      pdf.setFontSize(7.5);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor(71, 85, 105); // slate-600
+      pdf.text('ITEM', COL_ITEM_X, yy);
+      pdf.text('ESTADO', COL_ESTADO_X, yy);
+      pdf.text('OBSERVAÇÃO', COL_OBS_X, yy);
+      pdf.setTextColor(0, 0, 0);
+      return yy + 6;
+    };
+
     vistoria.comodos.forEach((comodo, comodoIdx) => {
-      y = checkPageBreak(y, 25);
+      // Estima a altura total do bloco do ambiente (título + tabela) para decidir
+      // se cabe inteiro na página atual, evitando título órfão no fim da página.
+      const estimatedTableHeight = comodo.itens.reduce((acc, item) => {
+        const obsText = item.ok ? '' : (item.ressalva || 'Nenhuma ressalva');
+        const obsLines = obsText ? pdf.splitTextToSize(obsText, COL_OBS_W) : [''];
+        return acc + Math.max(6, obsLines.length * 3.6 + 2);
+      }, 0);
+      const blockHeaderHeight = 21; // título + linha + cabeçalho da tabela
+      const neededForFirstRows = blockHeaderHeight + Math.min(estimatedTableHeight, 30);
+      y = checkPageBreak(y, neededForFirstRows);
+
       pdf.setFontSize(12);
       pdf.setFont('helvetica', 'bold');
       pdf.setTextColor(0, 48, 102); // Azul Marinho Fidelité
@@ -1111,28 +1198,40 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
       pdf.line(20, y, 190, y);
       y += 8;
 
+      y = drawTableHeader(y);
       pdf.setTextColor(0, 0, 0);
+
       comodo.itens.forEach((item) => {
-        const ressalvaText = item.ok ? '' : (item.ressalva || 'Nenhuma ressalva');
-        const ressalvaLines = ressalvaText ? pdf.splitTextToSize(`Ressalva: ${ressalvaText}`, 145) : [];
-        const itemHeight = ressalvaText ? 15 + (ressalvaLines.length * 4) : 10;
+        const obsText = item.ok ? '—' : (item.ressalva || 'Nenhuma ressalva');
+        const obsLines = pdf.splitTextToSize(obsText, COL_OBS_W);
+        const rowHeight = Math.max(6.5, obsLines.length * 3.6 + 2.5);
 
-        y = checkPageBreak(y, itemHeight);
-        y += 5; // Padding superior
+        // Se a linha não couber, quebra a página e repete o cabeçalho da tabela
+        if (y + rowHeight > 280) {
+          pdf.addPage();
+          addHeaderAndFooter(pdf, false);
+          y = 25;
+          pdf.setFontSize(10.5);
+          pdf.setFont('helvetica', 'bold');
+          pdf.setTextColor(0, 48, 102);
+          pdf.text(`${comodoNomeStr} (continuação)`, 20, y);
+          y += 8;
+          y = drawTableHeader(y);
+        }
 
-        pdf.setFontSize(9);
+        const itemNameLines = pdf.splitTextToSize(item.nome, COL_ITEM_W);
+        const textRowHeight = Math.max(itemNameLines.length, obsLines.length) * 3.6 + 2.5;
+
+        pdf.setFontSize(8.2);
         pdf.setFont('helvetica', 'bold');
         pdf.setTextColor(51, 65, 85); // slate-700
-        pdf.text(item.nome, 25, y);
+        pdf.text(itemNameLines, COL_ITEM_X, y);
 
-        // Selo colorido (pill) do estado de conservação, alinhado à direita
+        // Selo colorido (pill) do estado de conservação
         const estadoItem = item.estado || (item.ok ? 'bom' : 'ruim');
         const pillLabel = estadoItem.toUpperCase();
-        pdf.setFontSize(7.5);
+        pdf.setFontSize(6.8);
         pdf.setFont('helvetica', 'bold');
-        const pillTextWidth = pdf.getTextWidth(pillLabel);
-        const pillWidth = pillTextWidth + 6;
-        const pillX = 188 - pillWidth;
         if (estadoItem === 'novo' || estadoItem === 'bom') {
           pdf.setFillColor(220, 252, 231); // green-100
           pdf.setTextColor(21, 128, 61); // green-700
@@ -1143,50 +1242,174 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
           pdf.setFillColor(254, 226, 226); // red-100
           pdf.setTextColor(185, 28, 28); // red-700
         }
-        pdf.roundedRect(pillX, y - 3.6, pillWidth, 5, 2.5, 2.5, 'F');
-        pdf.text(pillLabel, pillX + 3, y);
+        const pillTextWidth = pdf.getTextWidth(pillLabel);
+        const pillWidth = pillTextWidth + 5;
+        pdf.roundedRect(COL_ESTADO_X, y - 3.2, pillWidth, 4.6, 2, 2, 'F');
+        pdf.text(pillLabel, COL_ESTADO_X + 2.5, y);
+
+        pdf.setFontSize(7.8);
+        pdf.setFont('helvetica', item.ok ? 'normal' : 'italic');
+        pdf.setTextColor(100, 116, 139); // slate-500
+        pdf.text(obsLines, COL_OBS_X, y);
         pdf.setTextColor(0, 0, 0);
 
-        if (!item.ok) {
-          y += 4; // Ajuste entre linha as opções de ressalvas
-          pdf.setFontSize(8);
-          pdf.setFont('helvetica', 'italic');
-          pdf.setTextColor(100, 116, 139); // slate-500
-          pdf.text(ressalvaLines, 25, y);
-          y += (ressalvaLines.length * 3.5); // Espaçamento entre linhas reduzido
-        } else {
-          y += 3;
-        }
-
-        y += 2;
+        y += textRowHeight;
         pdf.setDrawColor(241, 245, 249); // slate-100 — linha bem clara
         pdf.setLineWidth(0.1);
-        pdf.line(20, y, 190, y);
-        y += 2; // Espaço após a linha
+        pdf.line(20, y - 1, 190, y - 1);
       });
 
-      // Fotos do Cômodo (Imediatamente após o checklist) - 3 por linha (6 por página)
+      // Observação do ambiente (se houver, agrupada logo após a tabela)
+      y += 3;
+
+      // Fotos do Cômodo — identificadas como pertencentes a este ambiente, com
+      // layout responsivo: 1 foto maior, 2 lado a lado, 3+ em grade de 3 colunas.
       if (comodo.fotos && comodo.fotos.length > 0) {
+        y = checkPageBreak(y, 12);
+        pdf.setFontSize(7.5);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(100, 116, 139);
+        pdf.text(`FOTOS — ${comodo.nome.toUpperCase()}`, 20, y);
+        pdf.setTextColor(0, 0, 0);
         y += 5;
-        for (let i = 0; i < comodo.fotos.length; i++) {
-          if (i % 3 === 0) {
-            y = checkPageBreak(y, 65);
-          }
+
+        if (comodo.fotos.length === 1) {
+          y = checkPageBreak(y, 75);
           try {
-            const rowIdx = i % 3;
-            const x = 20 + (rowIdx * 60); // 3 fotos de 55mm com 5mm de gap
-            pdf.addImage(comodo.fotos[i], 'JPEG', x, y, 55, 45, undefined, 'FAST');
-            
-            if (rowIdx === 2 || i === comodo.fotos.length - 1) {
-              y += 50; // Altura da foto + gap
+            pdf.addImage(comodo.fotos[0], 'JPEG', 20, y, 100, 70, undefined, 'FAST');
+          } catch (e) { console.error('Error adding image', e); }
+          y += 75;
+        } else if (comodo.fotos.length === 2) {
+          y = checkPageBreak(y, 65);
+          try {
+            pdf.addImage(comodo.fotos[0], 'JPEG', 20, y, 82, 60, undefined, 'FAST');
+            pdf.addImage(comodo.fotos[1], 'JPEG', 108, y, 82, 60, undefined, 'FAST');
+          } catch (e) { console.error('Error adding image', e); }
+          y += 65;
+        } else {
+          for (let i = 0; i < comodo.fotos.length; i++) {
+            if (i % 3 === 0) {
+              y = checkPageBreak(y, 60);
             }
-          } catch (e) {
-            console.error("Error adding image", e);
+            try {
+              const rowIdx = i % 3;
+              const x = 20 + (rowIdx * 60); // 3 fotos de 55mm com 5mm de gap
+              pdf.addImage(comodo.fotos[i], 'JPEG', x, y, 55, 45, undefined, 'FAST');
+              if (rowIdx === 2 || i === comodo.fotos.length - 1) {
+                y += 50;
+              }
+            } catch (e) {
+              console.error('Error adding image', e);
+            }
           }
         }
       }
-      y += 10;
+      y += 8;
     });
+
+    // MEDIDORES E LEITURAS
+    const temMedidores = vistoria.medidorEnergia?.numero || vistoria.medidorEnergia?.leitura
+      || vistoria.medidorAgua?.numero || vistoria.medidorAgua?.leitura
+      || vistoria.medidorGas?.numero || vistoria.medidorGas?.leitura;
+    if (temMedidores) {
+      y = checkPageBreak(y, 35);
+      y = drawSectionHeader('MEDIDORES E LEITURAS', y);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(9);
+      pdf.setTextColor(0, 0, 0);
+      const linhasMedidores = [
+        (vistoria.medidorEnergia?.numero || vistoria.medidorEnergia?.leitura)
+          ? `ENERGIA — Medidor Nº: ${vistoria.medidorEnergia?.numero || 'Não informado'}  |  Leitura: ${vistoria.medidorEnergia?.leitura || 'Não informado'}`
+          : '',
+        (vistoria.medidorAgua?.numero || vistoria.medidorAgua?.leitura)
+          ? `ÁGUA — Hidrômetro Nº: ${vistoria.medidorAgua?.numero || 'Não informado'}  |  Leitura: ${vistoria.medidorAgua?.leitura || 'Não informado'}`
+          : '',
+        (vistoria.medidorGas?.numero || vistoria.medidorGas?.leitura)
+          ? `GÁS — Medidor Nº: ${vistoria.medidorGas?.numero || 'Não informado'}  |  Leitura: ${vistoria.medidorGas?.leitura || 'Não informado'}`
+          : ''
+      ].filter(Boolean);
+      linhasMedidores.forEach(line => {
+        const split = pdf.splitTextToSize(line, 170);
+        y = checkPageBreak(y, split.length * 5);
+        pdf.text(split, 20, y);
+        y += split.length * 5;
+      });
+      y += 5;
+    }
+
+    // OBSERVAÇÕES FINAIS — chaves/tags/controles entregues, avarias e observações gerais
+    const temChaves = vistoria.chaves?.quantidade || vistoria.chaves?.identificacao || vistoria.chaves?.funcionamento;
+    if (temChaves || vistoria.descricaoGeral) {
+      y = checkPageBreak(y, 25);
+      y = drawSectionHeader('OBSERVAÇÕES FINAIS', y);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(9);
+      pdf.setTextColor(0, 0, 0);
+
+      if (temChaves) {
+        pdf.setFont('helvetica', 'bold');
+        y = checkPageBreak(y, 5);
+        pdf.text('CHAVES, TAGS E CONTROLES ENTREGUES', 20, y);
+        y += 5;
+        pdf.setFont('helvetica', 'normal');
+        [
+          vistoria.chaves?.quantidade ? `QUANTIDADE: ${vistoria.chaves.quantidade}` : '',
+          vistoria.chaves?.identificacao ? `IDENTIFICAÇÃO: ${vistoria.chaves.identificacao}` : '',
+          vistoria.chaves?.funcionamento ? `FUNCIONAMENTO: ${vistoria.chaves.funcionamento}` : ''
+        ].filter(Boolean).forEach(line => {
+          const split = pdf.splitTextToSize(line, 170);
+          y = checkPageBreak(y, split.length * 5);
+          pdf.text(split, 20, y);
+          y += split.length * 5;
+        });
+        y += 4;
+      }
+
+      if (vistoria.descricaoGeral) {
+        pdf.setFont('helvetica', 'bold');
+        y = checkPageBreak(y, 5);
+        pdf.text('AVARIAS E OBSERVAÇÕES GERAIS', 20, y);
+        y += 5;
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(8.5);
+        const split = pdf.splitTextToSize(vistoria.descricaoGeral, 170);
+        split.forEach((line: string) => {
+          y = checkPageBreak(y, 4.5);
+          pdf.text(line, 20, y);
+          y += 4.2;
+        });
+      }
+      y += 4;
+    }
+
+    // FOTOS GERAIS DA VISTORIA — soltas, não vinculadas a um cômodo específico (parte de Observações Finais)
+    if (vistoria.fotosGerais && vistoria.fotosGerais.length > 0) {
+      y = checkPageBreak(y, 30);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(9);
+      pdf.setTextColor(0, 48, 102);
+      y = checkPageBreak(y, 8);
+      pdf.text('REGISTRO FOTOGRÁFICO GERAL', 20, y);
+      pdf.setTextColor(0, 0, 0);
+      y += 6;
+
+      for (let i = 0; i < vistoria.fotosGerais.length; i++) {
+        if (i % 3 === 0) {
+          y = checkPageBreak(y, 60);
+        }
+        try {
+          const rowIdx = i % 3;
+          const x = 20 + (rowIdx * 60);
+          pdf.addImage(vistoria.fotosGerais[i], 'JPEG', x, y, 55, 45, undefined, 'FAST');
+          if (rowIdx === 2 || i === vistoria.fotosGerais.length - 1) {
+            y += 50;
+          }
+        } catch (e) {
+          console.error('Error adding general photo', e);
+        }
+      }
+      y += 4;
+    }
 
     // DECLARAÇÃO DE RECEBIMENTO/DEVOLUÇÃO DE CHAVES (logo após os cômodos, antes das fotos)
     y = checkPageBreak(y, 30);
@@ -1215,36 +1438,6 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
       pdf.text(line, xPos, y, { align: sC.textAlign });
       y += sC.fontSize * 0.55;
     });
-
-    // FOTOS GERAIS DA VISTORIA (fotos soltas, não vinculadas a um cômodo específico)
-    if (vistoria.fotosGerais && vistoria.fotosGerais.length > 0) {
-      pdf.addPage();
-      addHeaderAndFooter(pdf, false);
-      y = 35;
-      y = drawSectionHeader('REGISTRO FOTOGRÁFICO GERAL', y);
-      y += 5;
-
-      for (let i = 0; i < vistoria.fotosGerais.length; i++) {
-        if (i % 3 === 0) {
-          y = checkPageBreak(y, 65);
-          if (y === 35 && i > 0) {
-            // checkPageBreak já adicionou nova página; garante o cabeçalho
-            addHeaderAndFooter(pdf, false);
-          }
-        }
-        try {
-          const rowIdx = i % 3;
-          const x = 20 + (rowIdx * 60);
-          pdf.addImage(vistoria.fotosGerais[i], 'JPEG', x, y, 55, 45, undefined, 'FAST');
-
-          if (rowIdx === 2 || i === vistoria.fotosGerais.length - 1) {
-            y += 50;
-          }
-        } catch (e) {
-          console.error('Error adding general photo', e);
-        }
-      }
-    }
 
     // LAUDO DE VISTORIA (Nova página) — cláusulas finais definidas no formulário
     pdf.addPage();
@@ -1389,14 +1582,16 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
       y += 20;
     }
 
-    // Linha AVALISTA centralizado
+    // Linha VISTORIADOR / REPRESENTANTE DA IMOBILIÁRIA centralizada
     y = checkPageBreak(y, 30);
     pdf.line(65, y, 145, y);
     y += 5;
     pdf.setFont('helvetica', 'bold');
-    pdf.setFontSize(9);
-    pdf.text('AVALISTA', 105, y, { align: 'center' });
-    y += 20;
+    pdf.setFontSize(8.5);
+    const vistoriadorLabel = `VISTORIADOR / REPRESENTANTE DA IMOBILIÁRIA${vistoria.vistoriadorNome ? `: ${vistoria.vistoriadorNome.toUpperCase()}` : ''}`;
+    const splitVistoriador = pdf.splitTextToSize(vistoriadorLabel, 90);
+    pdf.text(splitVistoriador, 105, y, { align: 'center' });
+    y += Math.max(splitVistoriador.length * 4.5, 5) + 15;
 
     // Caixa TESTEMUNHAS
     y = checkPageBreak(y, 45);
@@ -1961,6 +2156,25 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
                 
                 <div className="grid md:grid-cols-3 gap-4">
                   <div className="space-y-1.5 md:col-span-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Tipo de Imóvel</label>
+                    <select
+                      value={tipoImovel}
+                      onChange={e => setTipoImovel(e.target.value)}
+                      className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 transition-all"
+                    >
+                      <option value="">Selecione...</option>
+                      <option value="Casa">Casa</option>
+                      <option value="Apartamento">Apartamento</option>
+                      <option value="Sobrado">Sobrado</option>
+                      <option value="Kitnet">Kitnet</option>
+                      <option value="Sala Comercial">Sala Comercial</option>
+                      <option value="Loja">Loja</option>
+                      <option value="Galpão">Galpão</option>
+                      <option value="Terreno">Terreno</option>
+                      <option value="Outro">Outro</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1.5 md:col-span-1">
                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Data da Vistoria</label>
                     <input 
                       type="date" 
@@ -1988,6 +2202,68 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
                       className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 transition-all"
                       placeholder="Ex: GO"
                     />
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-6">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-8 h-8 rounded-xl bg-cyan-50 flex items-center justify-center">
+                    <Settings className="w-4 h-4 text-cyan-600" />
+                  </div>
+                  <h3 className="font-bold text-slate-900">MEDIDORES E CHAVES</h3>
+                </div>
+
+                <div className="grid md:grid-cols-3 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Energia — Nº Medidor</label>
+                    <input type="text" value={medidorEnergiaNumero} onChange={e => setMedidorEnergiaNumero(e.target.value)}
+                      className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 transition-all" placeholder="Nº do medidor" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Energia — Leitura</label>
+                    <input type="text" value={medidorEnergiaLeitura} onChange={e => setMedidorEnergiaLeitura(e.target.value)}
+                      className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 transition-all" placeholder="Leitura atual" />
+                  </div>
+                  <div />
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Água — Nº Hidrômetro</label>
+                    <input type="text" value={medidorAguaNumero} onChange={e => setMedidorAguaNumero(e.target.value)}
+                      className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 transition-all" placeholder="Nº do hidrômetro" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Água — Leitura</label>
+                    <input type="text" value={medidorAguaLeitura} onChange={e => setMedidorAguaLeitura(e.target.value)}
+                      className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 transition-all" placeholder="Leitura atual" />
+                  </div>
+                  <div />
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Gás — Nº Medidor (se houver)</label>
+                    <input type="text" value={medidorGasNumero} onChange={e => setMedidorGasNumero(e.target.value)}
+                      className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 transition-all" placeholder="Nº do medidor" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Gás — Leitura</label>
+                    <input type="text" value={medidorGasLeitura} onChange={e => setMedidorGasLeitura(e.target.value)}
+                      className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 transition-all" placeholder="Leitura atual" />
+                  </div>
+                </div>
+
+                <div className="border-t border-slate-100 pt-5 grid md:grid-cols-3 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Chaves — Quantidade</label>
+                    <input type="text" value={chavesQuantidade} onChange={e => setChavesQuantidade(e.target.value)}
+                      className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 transition-all" placeholder="Ex: 3 chaves, 2 tags" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Identificação</label>
+                    <input type="text" value={chavesIdentificacao} onChange={e => setChavesIdentificacao(e.target.value)}
+                      className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 transition-all" placeholder="Ex: portão, porta social, tag garagem" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Funcionamento</label>
+                    <input type="text" value={chavesFuncionamento} onChange={e => setChavesFuncionamento(e.target.value)}
+                      className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 transition-all" placeholder="Ex: todas testadas e funcionando" />
                   </div>
                 </div>
               </div>
@@ -2274,6 +2550,11 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
                       locatario: locatarios[0] || DEFAULT_LOCATARIO,
                       locatarios: locatarios,
                       imovel,
+                      tipoImovel,
+                      medidorEnergia: { numero: medidorEnergiaNumero, leitura: medidorEnergiaLeitura },
+                      medidorAgua: { numero: medidorAguaNumero, leitura: medidorAguaLeitura },
+                      medidorGas: { numero: medidorGasNumero, leitura: medidorGasLeitura },
+                      chaves: { quantidade: chavesQuantidade, identificacao: chavesIdentificacao, funcionamento: chavesFuncionamento },
                       locador,
                       comodos,
                       status: 'rascunho',
@@ -2324,6 +2605,11 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
                       locatario: locatarios[0] || DEFAULT_LOCATARIO,
                       locatarios: locatarios,
                       imovel,
+                      tipoImovel,
+                      medidorEnergia: { numero: medidorEnergiaNumero, leitura: medidorEnergiaLeitura },
+                      medidorAgua: { numero: medidorAguaNumero, leitura: medidorAguaLeitura },
+                      medidorGas: { numero: medidorGasNumero, leitura: medidorGasLeitura },
+                      chaves: { quantidade: chavesQuantidade, identificacao: chavesIdentificacao, funcionamento: chavesFuncionamento },
                       locador,
                       comodos,
                       status: 'rascunho',
