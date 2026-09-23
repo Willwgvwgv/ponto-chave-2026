@@ -51,6 +51,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
+const CIDADES_PADRAO = ['Bela Vista de Goiás', 'Goiânia', 'Aparecida de Goiânia'];
+
 const COMODOS_PADRAO = [
   { nome: 'QUARTOS', itens: ['Portas', 'Janelas', 'Piso', 'Pintura', 'Instalações Elétricas', 'Móveis Planejados', 'Ar Condicionado'] },
   { nome: 'BANHEIROS', itens: ['Portas', 'Janelas', 'Piso', 'Revestimento', 'Instalações Elétricas', 'Registros e Metais', 'Vaso Sanitário', 'Bancadas de Granito', 'Box de Vidro', 'Instalações Hidráulicas'] },
@@ -961,7 +963,7 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
 
         pdf.setFont('helvetica', 'normal');
         pdf.setFontSize(9);
-        pdf.setTextColor(15, 23, 42); // slate-900
+        pdf.setTextColor(24, 41, 74); // azul petróleo escuro — leve tom azulado no lugar do preto puro
         pdf.text(valueLines, VALUE_X, yy + 3);
 
         yy += rowH;
@@ -1042,19 +1044,10 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
       ['Vistoriador Responsável', (vistoria.vistoriadorNome || vistoria.corretorNome || 'Não informado').toUpperCase()]
     ], y);
 
-    // --- ENVOLVIDOS — detalhamento de imobiliária, locador e locatário(s) em tabelas compactas ---
+    // --- ENVOLVIDOS — locador e locatário(s), sem repetir os dados da própria imobiliária
+    // (já aparecem no rodapé da página) ---
     y = checkPageBreak(y, 20);
     y = drawSectionHeader('ENVOLVIDOS', y);
-
-    if (brandName) {
-      y = drawInfoTable([
-        ['Imobiliária', brandName.toUpperCase()],
-        ...(brandCnpj ? [['CNPJ', brandCnpj] as [string, string]] : []),
-        ...(brandAddress ? [['Endereço', brandAddress] as [string, string]] : []),
-        ...(([brandPhone, brandEmail].filter(Boolean).length) ? [['Contato', [brandPhone, brandEmail].filter(Boolean).join('  |  ')] as [string, string]] : []),
-        ...(brandCreci ? [['CRECI', brandCreci] as [string, string]] : [])
-      ], y);
-    }
 
     y = drawInfoTable([
       ['Locador', (locadorToUse.nome || 'Não informado').toUpperCase()],
@@ -1502,9 +1495,30 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
       y += (splitP.length * 4.5) + 3;
     });
 
-    // SEÇÃO ASSINATURAS
-    y += 5;
-    y = checkPageBreak(y, 110);
+    // SEÇÃO ASSINATURAS — página própria, com o bloco centralizado verticalmente
+    // (antes ficava colado no topo, com muito espaço em branco sobrando embaixo)
+    pdf.addPage();
+    addHeaderAndFooter(pdf, false);
+
+    const estValidadeLines = pdf.splitTextToSize(
+      "Permanecem válidas e inalteradas todas as demais cláusulas do contrato principal de locação e dos termos firmados entre as partes, que não conflitarem com o presente instrumento.",
+      170
+    ).length;
+    let estBlocoAssinaturasHeight = 18 + (estValidadeLines * 4.5 + 10) + 25; // cabeçalho + cláusula + data
+    if (locatariosList.length <= 1) {
+      estBlocoAssinaturasHeight += 25; // linha locatário + locador
+    } else {
+      const paresLocatarios = Math.ceil(locatariosList.length / 2);
+      estBlocoAssinaturasHeight += paresLocatarios * 25 + 25; // pares + locador
+    }
+    estBlocoAssinaturasHeight += 25; // vistoriador
+    estBlocoAssinaturasHeight += 40; // caixa de testemunhas
+
+    const assinaturasTopo = 20;
+    const assinaturasFundo = 280;
+    const espacoDisponivel = assinaturasFundo - assinaturasTopo;
+    y = assinaturasTopo + Math.max(10, (espacoDisponivel - estBlocoAssinaturasHeight) / 2);
+
     y = drawSectionHeader('CLÁUSULA – DA VALIDADE E INTEGRIDADE DO INSTRUMENTO', y);
     y += 8;
 
@@ -1517,7 +1531,10 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
     // Data alinhada à direita
     pdf.setFontSize(9.5);
     pdf.setFont('helvetica', 'normal');
-    const dataCityStr = `${brandCity || 'Bela Vista de Goiás'}, ${formatDateHelper((vistoria as any).dataVistoria || vistoria.data)}.`;
+    // Usa a cidade escolhida NESTA vistoria (campo "Cidade da Vistoria" no formulário);
+    // antes esse valor era ignorado e a cidade fixa da imobiliária era usada sempre.
+    const cidadeDaAssinatura = vistoria.companyCity || brandCity || 'Bela Vista de Goiás';
+    const dataCityStr = `${cidadeDaAssinatura}, ${formatDateHelper((vistoria as any).dataVistoria || vistoria.data)}.`;
     pdf.text(dataCityStr, 190, y, { align: 'right' });
     y += 25;
 
@@ -2196,13 +2213,25 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
                   </div>
                   <div className="space-y-1.5 md:col-span-1">
                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Cidade da Vistoria</label>
-                    <input 
-                      type="text" 
-                      value={vistoriaCity}
-                      onChange={e => setVistoriaCity(e.target.value)}
+                    <select
+                      value={CIDADES_PADRAO.includes(vistoriaCity) ? vistoriaCity : '__outra__'}
+                      onChange={e => setVistoriaCity(e.target.value === '__outra__' ? '' : e.target.value)}
                       className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 transition-all"
-                      placeholder="Ex: Bela Vista de Goiás"
-                    />
+                    >
+                      {CIDADES_PADRAO.map(c => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                      <option value="__outra__">Outra cidade...</option>
+                    </select>
+                    {!CIDADES_PADRAO.includes(vistoriaCity) && (
+                      <input
+                        type="text"
+                        value={vistoriaCity}
+                        onChange={e => setVistoriaCity(e.target.value)}
+                        className="w-full mt-1.5 px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 transition-all"
+                        placeholder="Digite a cidade..."
+                      />
+                    )}
                   </div>
                   <div className="space-y-1.5 md:col-span-1">
                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">UF (Estado)</label>
