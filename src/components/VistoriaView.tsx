@@ -963,7 +963,7 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
 
         pdf.setFont('helvetica', 'normal');
         pdf.setFontSize(9);
-        pdf.setTextColor(24, 41, 74); // azul petróleo escuro — leve tom azulado no lugar do preto puro
+        pdf.setTextColor(37, 99, 235); // azul vivo (mesmo contraste do Vistor365, só que em azul em vez de laranja)
         pdf.text(valueLines, VALUE_X, yy + 3);
 
         yy += rowH;
