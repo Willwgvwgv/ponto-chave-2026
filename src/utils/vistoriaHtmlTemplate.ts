@@ -108,7 +108,7 @@ export const generateVistoriaFullHTML = (
   <style>
     @page {
       size: A4 portrait;
-      margin: 10mm 12mm 12mm 12mm;
+      margin: 12mm 14mm 16mm 14mm;
     }
     *, *::before, *::after {
       box-sizing: border-box;
@@ -125,14 +125,18 @@ export const generateVistoriaFullHTML = (
       font-size: 8.5pt;
       line-height: 1.35;
       width: 100%;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
     }
 
     /* Container do documento */
     .document-container {
       width: 100%;
-      max-width: 210mm;
+      max-width: 100%;
       margin: 0 auto;
       background: #FFFFFF;
+      box-sizing: border-box;
+      padding: 0;
     }
 
     /* Topo e Cabeçalho */
@@ -212,27 +216,35 @@ export const generateVistoriaFullHTML = (
       font-size: 8pt;
       break-inside: avoid;
       page-break-inside: avoid;
+      table-layout: fixed;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
     }
     .table-info td {
-      padding: 2.5px 6px;
+      padding: 3px 6px;
       border: 1px solid #E5E7EB;
       vertical-align: middle;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
     }
     .table-info .label {
       font-weight: 700;
       color: #334155;
       background-color: #F1F5F9;
-      width: 18%;
+      width: 20%;
       white-space: nowrap;
     }
     .table-info .value {
       color: #0F172A;
       font-weight: 500;
+      word-break: break-word;
+      overflow-wrap: break-word;
     }
     .table-info .nested-split {
       display: flex;
       justify-content: space-between;
       gap: 8px;
+      flex-wrap: wrap;
     }
 
     /* Cláusulas e Textos */
@@ -243,11 +255,15 @@ export const generateVistoriaFullHTML = (
       color: #1E293B;
       break-inside: avoid;
       page-break-inside: avoid;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
     }
     .contract-p {
       margin: 0 0 5px 0;
       text-indent: 14px;
       line-height: 1.35;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
     }
 
     /* Ambientes e Itens */
@@ -274,6 +290,9 @@ export const generateVistoriaFullHTML = (
       border-collapse: collapse;
       margin-bottom: 6px;
       font-size: 8pt;
+      table-layout: fixed;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
     }
     .table-items th {
       background-color: #E2E8F0;
@@ -284,11 +303,15 @@ export const generateVistoriaFullHTML = (
       border: 1px solid #CBD5E1;
       text-transform: uppercase;
       font-size: 7.5pt;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
     }
     .table-items td {
       padding: 3px 6px;
       border: 1px solid #E2E8F0;
       vertical-align: middle;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
     }
     .table-items tr {
       break-inside: avoid;
@@ -323,6 +346,8 @@ export const generateVistoriaFullHTML = (
     .table-items .item-detail {
       color: #475569;
       font-size: 7.5pt;
+      word-break: break-word;
+      overflow-wrap: break-word;
     }
 
     /* Fotos com Rigor Absoluto */
@@ -383,15 +408,19 @@ export const generateVistoriaFullHTML = (
       text-align: justify;
       break-inside: avoid;
       page-break-inside: avoid;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
     }
     .lgpd-box p {
       margin: 0 0 4px 0;
       line-height: 1.3;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
     }
 
-    /* Bloco de Assinaturas e Testemunhas - Indivisível */
+    /* Bloco de Assinaturas - Espaçado e Confortável */
     .signatures-block {
-      margin-top: 14px;
+      margin-top: 26px;
       break-inside: avoid !important;
       page-break-inside: avoid !important;
     }
@@ -400,89 +429,64 @@ export const generateVistoriaFullHTML = (
       color: #1E293B;
       text-align: justify;
       margin-bottom: 8px;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
     }
     .data-local-row {
       text-align: right;
       font-size: 8.5pt;
       font-weight: 800;
       color: #000000;
-      margin-top: 14px;
-      margin-bottom: 26px;
+      margin-top: 22px;
+      margin-bottom: 48px;
     }
     .signatures-grid {
       display: flex;
       flex-wrap: wrap;
-      gap: 16px;
-      justify-content: space-between;
-      margin-bottom: 18px;
+      gap: 32px 24px;
+      justify-content: space-around;
+      margin-bottom: 36px;
     }
     .sig-col {
-      flex: 1 1 calc(50% - 10px);
+      flex: 1 1 calc(45% - 12px);
+      max-width: 48%;
+      min-width: 200px;
       text-align: center;
+      padding-top: 28px;
     }
     .sig-line {
-      border-top: 1px solid #000000;
-      width: 85%;
-      margin: 0 auto 4px auto;
+      border-top: 1.2px solid #000000;
+      width: 90%;
+      margin: 0 auto 6px auto;
     }
     .sig-label {
       font-size: 8pt;
       font-weight: 700;
       color: #0F172A;
       text-transform: uppercase;
+      margin-bottom: 2px;
     }
     .sig-sub {
       font-size: 7.5pt;
       color: #475569;
+      line-height: 1.35;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
     }
 
-    /* Testemunhas */
-    .witnesses-box {
-      border: 1px solid #003F7F;
-      border-radius: 3px;
-      padding: 6px 10px;
-      margin-top: 6px;
-      background-color: #FAFAFA;
-    }
-    .witnesses-title {
-      font-size: 8pt;
-      font-weight: 800;
-      color: #003F7F;
-      margin-bottom: 8px;
-    }
-    .witnesses-grid {
-      display: flex;
-      gap: 16px;
-    }
-    .witness-item {
-      flex: 1;
-    }
-    .witness-line {
-      border-bottom: 1px solid #94A3B8;
-      height: 12px;
-      margin-bottom: 3px;
-    }
-    .witness-desc {
-      font-size: 7pt;
-      color: #64748B;
-    }
-
-    /* Rodapé Discreto */
+    /* Rodapé Posicionado */
     .document-footer {
-      margin-top: 14px;
-      padding-top: 6px;
+      margin-top: 50px;
+      padding-top: 8px;
+      padding-bottom: 6px;
       border-top: 1px solid #CBD5E1;
       display: flex;
-      justify-content: space-between;
+      justify-content: center;
       align-items: center;
       font-size: 7pt;
       color: #64748B;
       break-inside: avoid;
       page-break-inside: avoid;
-    }
-    .footer-left {
-      font-weight: 700;
-      color: #003F7F;
     }
 
     /* Utilitários de Impressão */
@@ -492,6 +496,18 @@ export const generateVistoriaFullHTML = (
       }
       .no-print {
         display: none !important;
+      }
+      .document-footer {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        width: 100%;
+        background-color: #FFFFFF;
+        padding-top: 6px;
+        padding-bottom: 4px;
+        border-top: 1px solid #CBD5E1;
+        margin-top: 0;
       }
     }
   </style>
@@ -563,8 +579,8 @@ export const generateVistoriaFullHTML = (
         <td class="value" colspan="3">${locadorToUse.endereco || companyAddress}</td>
       </tr>
       <tr>
-        <td class="label">CONTATOS:</td>
-        <td class="value" colspan="3">${companyPhone} | ${companyEmail} | ${companyWebsite}</td>
+        <td class="label">CONTATO:</td>
+        <td class="value" colspan="3">${companyPhone ? `Tel: ${companyPhone}` : ''}${companyEmail ? ` | E-mail: ${companyEmail}` : ''}${companyWebsite ? ` | Site: ${companyWebsite}` : ''}</td>
       </tr>
     </table>
 
@@ -692,21 +708,13 @@ export const generateVistoriaFullHTML = (
           ${locadorToUse.cnpj ? `<div class="sig-sub">CNPJ: ${locadorToUse.cnpj}</div>` : ''}
         </div>
       </div>
-
-      <!-- TESTEMUNHAS -->
-      <div class="witnesses-box">
-        <div class="witnesses-title">TESTEMUNHAS:</div>
-        <div style="display: flex; justify-content: space-between; gap: 20px; font-size: 7pt; color: #475569;">
-          <div>1- Nome: _______________________ &nbsp; CPF: _______________________</div>
-          <div>2- Nome: _______________________ &nbsp; CPF: _______________________</div>
-        </div>
-      </div>
     </div>
 
     <!-- RODAPÉ DISCRETO -->
     <footer class="document-footer">
-      <div style="width: 100%; text-align: center; font-size: 6.5pt; color: #64748B;">
-        <strong style="color: #003F7F;">${companyName.toUpperCase()} — ${companyCreci}</strong> &nbsp; ${companyAddress} &nbsp; ${companyPhone}
+      <div style="width: 100%; text-align: center; font-size: 6.5pt; color: #64748B; line-height: 1.4;">
+        <strong style="color: #003F7F;">${companyName.toUpperCase()} &nbsp;|&nbsp; CRECI: ${companyCreci}</strong><br />
+        ${companyAddress} &nbsp;•&nbsp; ${companyPhone ? `Tel: ${companyPhone}` : ''}${companyEmail ? ` &nbsp;•&nbsp; ${companyEmail}` : ''}${companyWebsite ? ` &nbsp;•&nbsp; ${companyWebsite}` : ''}
       </div>
     </footer>
 
