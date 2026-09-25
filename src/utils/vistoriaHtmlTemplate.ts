@@ -3,43 +3,14 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 // Logo SVG embutido de alta fidelidade Fidélité
-export const FIDELITE_LOGO_SVG = `
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 92" width="220" height="60" fill="none">
-  <!-- Fidēlitē Text -->
-  <g fill="#003F7F">
-    <!-- F -->
-    <path d="M 22 20 L 31 20 L 31 36 L 50 36 L 50 43 L 31 43 L 31 66 L 22 66 Z"/>
-    <!-- i -->
-    <rect x="58" y="32" width="8" height="34" rx="1.5"/>
-    <circle cx="62" cy="24" r="4.5" fill="#003F7F"/>
-    <!-- d -->
-    <path d="M 91 18 L 99 18 L 99 66 L 91.5 66 L 91.5 61.2 C 89 64.8 84.3 67.2 78.5 67.2 C 69 67.2 62 59.2 62 49 C 62 38.8 69 31 78.5 31 C 84.3 31 89 33.4 91.5 37 Z M 91.5 49 C 91.5 43.2 87.2 38.5 80.8 38.5 C 74.5 38.5 70.2 43.2 70.2 49 C 70.2 54.8 74.5 59.5 80.8 59.5 C 87.2 59.5 91.5 54.8 91.5 49 Z"/>
-    <!-- e with macron bar -->
-    <path d="M 132 50.5 L 111 50.5 C 111.8 56 116 59.8 122 59.8 C 126.2 59.8 129.5 58 131 55.2 L 138.5 59 C 135.2 64.5 129.2 67.2 122 67.2 C 110.5 67.2 103 59 103 49 C 103 39 110.5 31 121.5 31 C 132 31 138.5 38.5 138.5 49 C 138.5 49.6 138.4 50.1 138.3 50.5 Z M 111 44.5 L 130.5 44.5 C 129.7 40 126 38 121.5 38 C 116.8 38 112.5 40.2 111 44.5 Z"/>
-    <!-- l -->
-    <rect x="146" y="18" width="8" height="48" rx="1.5"/>
-    <!-- i -->
-    <rect x="162" y="32" width="8" height="34" rx="1.5"/>
-    <circle cx="166" cy="24" r="4.5" fill="#003F7F"/>
-    <!-- t -->
-    <path d="M 184 23 L 192 23 L 192 32 L 202 32 L 202 39 L 192 39 L 192 56.5 C 192 59.2 193.5 60.2 196.2 60.2 L 201.5 60.2 L 201.5 66.8 C 198.2 67.1 195 67.2 192.5 67.2 C 185.5 67.2 184 63.5 184 57.5 L 184 39 L 176.5 39 L 176.5 32 L 184 32 Z"/>
-    <!-- e (or é) -->
-    <path d="M 236 50.5 L 215 50.5 C 215.8 56 220 59.8 226 59.8 C 230.2 59.8 233.5 58 235 55.2 L 242.5 59 C 239.2 64.5 233.2 67.2 226 67.2 C 214.5 67.2 207 59 207 49 C 207 39 214.5 31 225.5 31 C 236 31 242.5 38.5 242.5 49 C 242.5 49.6 242.4 50.1 242.3 50.5 Z M 215 44.5 L 234.5 44.5 C 233.7 40 230 38 225.5 38 C 220.8 38 216.5 40.2 215 44.5 Z"/>
-  </g>
-  <!-- Barra de destaque vermelha (Macron) -->
-  <rect x="114" y="20" width="22" height="5.5" rx="2.75" fill="#D71920" />
-  <!-- Subtítulo: negócios imobiliários -->
-  <text 
-    x="22" 
-    y="83" 
-    fill="#D71920" 
-    font-family="Arial, Helvetica, sans-serif" 
-    font-size="14" 
-    font-weight="700" 
-    letter-spacing="0.12em"
-  >negócios imobiliários</text>
-</svg>
-`;
+export const FIDELITE_LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 70" width="190" height="52" fill="none">
+  <!-- Fidēlitē -->
+  <text x="50%" y="38" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="31" font-weight="800" fill="#003F7F" letter-spacing="-0.5px">Fidēlitē</text>
+  <!-- Macron acento vermelho sobre o primeiro 'e' -->
+  <rect x="111" y="14" width="15" height="3.5" rx="1.5" fill="#D71920" />
+  <!-- negócios imobiliários -->
+  <text x="50%" y="54" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="8.5" font-weight="700" fill="#D71920" letter-spacing="2px">negócios imobiliários</text>
+</svg>`;
 
 export const generateVistoriaFullHTML = (
   vistoria: Vistoria,
@@ -203,26 +174,30 @@ export const generateVistoriaFullHTML = (
       margin-bottom: 10px;
     }
 
-    /* Faixas de Seção */
+    /* Faixas de Seção - Idêntico à referência */
     .section-banner {
       display: flex;
       align-items: center;
       background-color: #F8FAFC;
-      border: 1px solid #E2E8F0;
       border-left: 4px solid #003F7F;
-      padding: 4px 8px;
-      margin-top: 8px;
-      margin-bottom: 6px;
-      border-radius: 0 3px 3px 0;
+      padding: 3px 8px;
+      margin-top: 10px;
+      margin-bottom: 5px;
       break-inside: avoid;
       page-break-inside: avoid;
     }
     .section-title {
-      font-size: 8.5pt;
+      font-size: 8pt;
       font-weight: 800;
       color: #003F7F;
       text-transform: uppercase;
-      letter-spacing: 0.05em;
+      letter-spacing: 0.03em;
+    }
+    /* Protege o bloco LGPD para não deixar título órfão */
+    .lgpd-section-wrapper {
+      break-inside: avoid;
+      page-break-inside: avoid;
+      margin-top: 12px;
     }
 
     /* Tabelas de Identificação */
@@ -278,15 +253,14 @@ export const generateVistoriaFullHTML = (
       page-break-inside: auto;
     }
     .comodo-header {
-      background-color: #F1F5F9;
-      border: 1px solid #CBD5E1;
-      border-left: 3.5px solid #003F7F;
-      padding: 3.5px 8px;
+      padding: 4px 2px;
       font-size: 8.5pt;
       font-weight: 800;
       color: #003F7F;
       text-transform: uppercase;
       letter-spacing: 0.04em;
+      border-bottom: 1.5px solid #003F7F;
+      margin-top: 8px;
       margin-bottom: 4px;
       break-inside: avoid;
       page-break-inside: avoid;
@@ -715,29 +689,17 @@ export const generateVistoriaFullHTML = (
       <!-- TESTEMUNHAS -->
       <div class="witnesses-box">
         <div class="witnesses-title">TESTEMUNHAS:</div>
-        <div class="witnesses-grid">
-          <div class="witness-item">
-            <div class="witness-line"></div>
-            <div class="witness-desc">1- Nome: _______________________ CPF: _______________________</div>
-          </div>
-          <div class="witness-item">
-            <div class="witness-line"></div>
-            <div class="witness-desc">2- Nome: _______________________ CPF: _______________________</div>
-          </div>
+        <div style="display: flex; justify-content: space-between; gap: 20px; font-size: 7pt; color: #475569;">
+          <div>1- Nome: _______________________ &nbsp; CPF: _______________________</div>
+          <div>2- Nome: _______________________ &nbsp; CPF: _______________________</div>
         </div>
       </div>
     </div>
 
     <!-- RODAPÉ DISCRETO -->
     <footer class="document-footer">
-      <div class="footer-left">
-        ${companyName.toUpperCase()} — ${companyCreci}
-      </div>
-      <div class="footer-center">
-        ${companyAddress}
-      </div>
-      <div class="footer-right">
-        ${companyPhone}
+      <div style="width: 100%; text-align: center; font-size: 6.5pt; color: #64748B;">
+        <strong style="color: #003F7F;">${companyName.toUpperCase()} — ${companyCreci}</strong> &nbsp; ${companyAddress} &nbsp; ${companyPhone}
       </div>
     </footer>
 
