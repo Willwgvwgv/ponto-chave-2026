@@ -185,6 +185,8 @@ export const generateVistoriaFullHTML = (
       margin-bottom: 5px;
       break-inside: avoid;
       page-break-inside: avoid;
+      break-after: avoid;
+      page-break-after: avoid;
     }
     .section-title {
       font-size: 8pt;
@@ -195,9 +197,11 @@ export const generateVistoriaFullHTML = (
     }
     /* Protege o bloco LGPD para não deixar título órfão */
     .lgpd-section-wrapper {
-      break-inside: avoid;
-      page-break-inside: avoid;
-      margin-top: 12px;
+      display: block;
+      break-inside: avoid !important;
+      page-break-inside: avoid !important;
+      page-break-before: auto;
+      margin-top: 10px;
     }
 
     /* Tabelas de Identificação */
@@ -210,9 +214,9 @@ export const generateVistoriaFullHTML = (
       page-break-inside: avoid;
     }
     .table-info td {
-      padding: 3px 6px;
-      border: 1px solid #E2E8F0;
-      vertical-align: top;
+      padding: 2.5px 6px;
+      border: 1px solid #E5E7EB;
+      vertical-align: middle;
     }
     .table-info .label {
       font-weight: 700;
@@ -303,10 +307,10 @@ export const generateVistoriaFullHTML = (
       letter-spacing: 0.05em;
     }
     .status-ok {
-      color: #15803D;
-      background-color: #F0FDF4;
-      border-radius: 2px;
-      padding: 1px 4px;
+      color: #16A34A;
+      font-weight: 800;
+      font-size: 7.5pt;
+      letter-spacing: 0.05em;
       display: inline-block;
     }
     .status-ressalva {
@@ -400,9 +404,10 @@ export const generateVistoriaFullHTML = (
     .data-local-row {
       text-align: right;
       font-size: 8.5pt;
-      font-weight: 700;
-      color: #0F172A;
-      margin-bottom: 22px;
+      font-weight: 800;
+      color: #000000;
+      margin-top: 14px;
+      margin-bottom: 26px;
     }
     .signatures-grid {
       display: flex;
@@ -642,16 +647,18 @@ export const generateVistoriaFullHTML = (
       </div>
     ` : ''}
 
-    <!-- LGPD E PROTEÇÃO DE DADOS -->
-    <div class="section-banner">
-      <span class="section-title">LGPD E PROTEÇÃO DE DADOS</span>
-    </div>
-    <div class="lgpd-box">
-      <p>As partes declaram estar cientes e de acordo com o tratamento de seus dados pessoais, nos termos da Lei nº 13.709/2018 (Lei Geral de Proteção de Dados – LGPD).</p>
-      <p><strong>§1º.</strong> Para os fins deste instrumento, a IMOBILIÁRIA atuará como CONTROLADORA dos dados pessoais, podendo tratá-los diretamente ou por meio de terceiros contratados, na qualidade de OPERADORES, exclusivamente para as finalidades de intermediação, administração e execução do contrato de locação.</p>
-      <p><strong>§2º.</strong> O tratamento dos dados pessoais terá como fundamentos legais o cumprimento de obrigação legal ou regulatória (art. 7º, II, LGPD) e a execução do contrato de locação (art. 7º, V, LGPD).</p>
-      <p><strong>§3º.</strong> As partes comprometem-se a não divulgar, compartilhar ou utilizar os dados pessoais obtidos em razão deste instrumento para finalidades diversas das pactuadas, salvo ordem legal ou judicial.</p>
-      <p><strong>§4º.</strong> A IMOBILIÁRIA adotará medidas técnicas e de segurança adequadas para proteger os dados pessoais contra acessos não autorizados ou formas inadequadas de tratamento.</p>
+    <!-- LGPD E PROTEÇÃO DE DADOS (TÍTULO E TEXTO JUNTOS NA MESMA TELA/PÁGINA) -->
+    <div class="lgpd-section-wrapper">
+      <div class="section-banner">
+        <span class="section-title">LGPD E PROTEÇÃO DE DADOS</span>
+      </div>
+      <div class="lgpd-box">
+        <p>As partes declaram estar cientes e de acordo com o tratamento de seus dados pessoais, nos termos da Lei nº 13.709/2018 (Lei Geral de Proteção de Dados – LGPD).</p>
+        <p><strong>§1º.</strong> Para os fins deste instrumento, a IMOBILIÁRIA atuará como CONTROLADORA dos dados pessoais, podendo tratá-los diretamente ou por meio de terceiros contratados, na qualidade de OPERADORES, exclusivamente para as finalidades de intermediação, administração e execução do contrato de locação.</p>
+        <p><strong>§2º.</strong> O tratamento dos dados pessoais terá como fundamentos legais o cumprimento de obrigação legal ou regulatória (art. 7º, II, LGPD) e a execução do contrato de locação (art. 7º, V, LGPD).</p>
+        <p><strong>§3º.</strong> As partes comprometem-se a não divulgar, compartilhar ou utilizar os dados pessoais obtidos em razão deste instrumento para finalidades diversas das pactuadas, salvo ordem legal ou judicial.</p>
+        <p><strong>§4º.</strong> A IMOBILIÁRIA adotará medidas técnicas e de segurança adequadas para proteger os dados pessoais contra acessos não autorizados ou formas inadequadas de tratamento.</p>
+      </div>
     </div>
 
     <!-- CLÁUSULA DE VALIDADE, DATA E ASSINATURAS (BLOCO INDIVISÍVEL) -->
