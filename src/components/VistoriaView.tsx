@@ -22,10 +22,7 @@ import {
   Save,
   Printer,
   Upload,
-  Settings,
-  Mic,
-  PenTool,
-  UserCheck
+  Settings
 } from 'lucide-react';
 import { 
   db, 
@@ -39,8 +36,7 @@ import {
   deleteDoc, 
   doc, 
   serverTimestamp,
-  limit,
-  getDoc
+  limit
 } from '../firebase';
 import { Vistoria, ComodoVistoria, ItemVistoria, CompanySettings, LocatarioVistoria } from '../types';
 import { cn } from '../lib/utils';
@@ -50,8 +46,7 @@ import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
-
-const CIDADES_PADRAO = ['Bela Vista de Goiás', 'Goiânia', 'Aparecida de Goiânia'];
+import { printVistoriaHTML } from '../utils/vistoriaHtmlTemplate';
 
 const COMODOS_PADRAO = [
   { nome: 'QUARTOS', itens: ['Portas', 'Janelas', 'Piso', 'Pintura', 'Instalações Elétricas', 'Móveis Planejados', 'Ar Condicionado'] },
@@ -77,7 +72,6 @@ export const VistoriaView = ({ isAdmin, user, profile, companySettings }: { isAd
   const [isAddingComodo, setIsAddingComodo] = useState(false);
   const [newComodoName, setNewComodoName] = useState('');
   const [selectedTemplate, setSelectedTemplate] = useState(COMODOS_PADRAO[0].nome);
-  const [novoItemPorComodo, setNovoItemPorComodo] = useState<Record<number, string>>({});
   const [editingVistoria, setEditingVistoria] = useState<Vistoria | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [isConfigOpen, setIsConfigOpen] = useState(false);
@@ -101,20 +95,6 @@ export const VistoriaView = ({ isAdmin, user, profile, companySettings }: { isAd
   const [brandDefaultTexto, setBrandDefaultTexto] = useState('');
   const [brandDefaultTextoLaudo, setBrandDefaultTextoLaudo] = useState('');
   const [isSavingConfig, setIsSavingConfig] = useState(false);
-
-  // Evita que o navegador abra/navegue para uma imagem arrastada acidentalmente
-  // fora de uma área de dropzone (o que faria perder o formulário preenchido).
-  useEffect(() => {
-    const preventDefault = (e: DragEvent) => {
-      e.preventDefault();
-    };
-    window.addEventListener('dragover', preventDefault);
-    window.addEventListener('drop', preventDefault);
-    return () => {
-      window.removeEventListener('dragover', preventDefault);
-      window.removeEventListener('drop', preventDefault);
-    };
-  }, []);
 
   useEffect(() => {
     if (companySettings) {
@@ -254,31 +234,11 @@ export const VistoriaView = ({ isAdmin, user, profile, companySettings }: { isAd
     toast.success("Endereço e CEP copiados do 1º inquilino!");
   };
 
-  const [tipoVistoria, setTipoVistoria] = useState<'entrada' | 'saida'>('entrada');
-  const [vistoriaEntradaId, setVistoriaEntradaId] = useState<string | null>(null);
-  const [vistoriadorNome, setVistoriadorNome] = useState('');
-  const [descricaoGeral, setDescricaoGeral] = useState('');
-  const [fotosGerais, setFotosGerais] = useState<string[]>([]);
-  const [isGerandoLaudo, setIsGerandoLaudo] = useState(false);
-  const [isGravandoAudio, setIsGravandoAudio] = useState(false);
-  const [statusAssinatura, setStatusAssinatura] = useState<'nao_enviado' | 'enviado' | 'assinado'>('nao_enviado');
-  const [linkAssinatura, setLinkAssinatura] = useState('');
-  const speechRecognitionRef = React.useRef<any>(null);
   const [textoContrato, setTextoContrato] = useState('');
   const [textoLaudo, setTextoLaudo] = useState('');
   const [styleContrato, setStyleContrato] = useState({ fontSize: 9, textAlign: 'justify' as const, isBold: false });
   const [styleLaudo, setStyleLaudo] = useState({ fontSize: 9, textAlign: 'justify' as const, isBold: false });
   const [imovel, setImovel] = useState({ endereco: '' });
-  const [tipoImovel, setTipoImovel] = useState('');
-  const [medidorEnergiaNumero, setMedidorEnergiaNumero] = useState('');
-  const [medidorEnergiaLeitura, setMedidorEnergiaLeitura] = useState('');
-  const [medidorAguaNumero, setMedidorAguaNumero] = useState('');
-  const [medidorAguaLeitura, setMedidorAguaLeitura] = useState('');
-  const [medidorGasNumero, setMedidorGasNumero] = useState('');
-  const [medidorGasLeitura, setMedidorGasLeitura] = useState('');
-  const [chavesQuantidade, setChavesQuantidade] = useState('');
-  const [chavesIdentificacao, setChavesIdentificacao] = useState('');
-  const [chavesFuncionamento, setChavesFuncionamento] = useState('');
   const [locador, setLocador] = useState({
     nome: companySettings?.name || 'FIDELITE NEGOCIOS IMOBILIARIOS LTDA',
     cnpj: companySettings?.name ? '' : '37.194.924/0001-86',
@@ -332,10 +292,6 @@ export const VistoriaView = ({ isAdmin, user, profile, companySettings }: { isAd
   }, [user, profile, isAdmin]);
 
   const handleSave = async (e: React.FormEvent) => {
-    if (!user || !profile) {
-      toast.error('Aguarde o carregamento do seu perfil antes de salvar. Tente novamente em alguns segundos.');
-      return;
-    }
     try {
       const primaryLocatario = locatarios[0] || DEFAULT_LOCATARIO;
       // Fotos são usadas exclusivamente em memória durante a sessão para geração do PDF
@@ -347,18 +303,10 @@ export const VistoriaView = ({ isAdmin, user, profile, companySettings }: { isAd
       const data = {
         corretorId: user?.uid || 'anonymous',
         corretorNome: user?.displayName || profile?.displayName || 'Corretor',
-        // Preserva o companyId original ao editar — nunca recalcula, pra evitar que a vistoria
-        // "suma" da lista caso o perfil ainda não tenha carregado no momento do salvamento.
-        companyId: editingVistoria?.companyId || profile?.companyId || 'default',
+        companyId: profile?.companyId || 'default',
         companyLogo: companySettings?.logoUrl || null,
         companyName: companySettings?.name || 'FIDELITE',
         companySubtitle: companySettings?.subtitle || 'Negócios Imobiliários',
-        tipo: tipoVistoria,
-        vistoriaEntradaId: tipoVistoria === 'saida' ? vistoriaEntradaId : null,
-        vistoriadorNome,
-        descricaoGeral,
-        statusAssinatura,
-        linkAssinatura,
         textoContrato,
         textoLaudo,
         styleContrato,
@@ -366,11 +314,6 @@ export const VistoriaView = ({ isAdmin, user, profile, companySettings }: { isAd
         locatario: primaryLocatario,
         locatarios,
         imovel,
-        tipoImovel,
-        medidorEnergia: { numero: medidorEnergiaNumero, leitura: medidorEnergiaLeitura },
-        medidorAgua: { numero: medidorAguaNumero, leitura: medidorAguaLeitura },
-        medidorGas: { numero: medidorGasNumero, leitura: medidorGasLeitura },
-        chaves: { quantidade: chavesQuantidade, identificacao: chavesIdentificacao, funcionamento: chavesFuncionamento },
         locador,
         comodos: sanitizedComodos,
         status: statusVistoria,
@@ -402,13 +345,6 @@ export const VistoriaView = ({ isAdmin, user, profile, companySettings }: { isAd
     setEditingVistoria(null);
     setStatusVistoria("Agendada");
     setFormStep(0);
-    setTipoVistoria('entrada');
-    setVistoriaEntradaId(null);
-    setVistoriadorNome(user?.displayName || profile?.displayName || '');
-    setDescricaoGeral('');
-    setFotosGerais([]);
-    setStatusAssinatura('nao_enviado');
-    setLinkAssinatura('');
     setStyleContrato({ fontSize: 9, textAlign: 'justify', isBold: false });
     setStyleLaudo({ fontSize: 9, textAlign: 'justify', isBold: false });
     setLocatarios([{ ...DEFAULT_LOCATARIO }]);
@@ -417,21 +353,15 @@ export const VistoriaView = ({ isAdmin, user, profile, companySettings }: { isAd
       cnpj: brandCnpj || companySettings?.cnpj || '',
       endereco: brandAddress || companySettings?.address || ''
     });
-    setTextoContrato(brandDefaultTexto || companySettings?.defaultTextoContrato || getDefaultTextoContrato('entrada'));
+    setTextoContrato(brandDefaultTexto || companySettings?.defaultTextoContrato || `O(A) LOCATÁRIO(A), acima qualificado(a), declara, para os devidos fins, que nesta data recebeu as chaves do imóvel locado, passando a ter a posse do referido bem.
+
+Declara, ainda, que teve ciência das condições do imóvel, conforme laudo de vistoria elaborado pela imobiliária, o qual foi devidamente apresentado, acompanhado e conferido, concordando integralmente com seu estado de conservação no ato da entrega.
+
+O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guarda, conservação e demais obrigações previstas no contrato de locação.`);
     setTextoLaudo(brandDefaultTextoLaudo || companySettings?.defaultTextoLaudo || `1) O presente laudo é parte integrante do contrato de locação celebrado entre o(a) locador(a) e o(a) locatário(a). Qualquer restrição ao registro deverá ser comunicada ao(à) LOCADOR(a) por escrito, dentro de 07 (sete) dias a contar da data da assinatura deste documento.
 
 Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em bom estado de conservação, com todos os seus pertences, utensílios e acessórios em perfeito estado de funcionamento e conservação, sendo que dessa forma o(a) LOCATÁRIO(a) se compromete a devolvê-lo, findo o prazo contratual, em igual situação.`);
     setImovel({ endereco: '' });
-    setTipoImovel('');
-    setMedidorEnergiaNumero('');
-    setMedidorEnergiaLeitura('');
-    setMedidorAguaNumero('');
-    setMedidorAguaLeitura('');
-    setMedidorGasNumero('');
-    setMedidorGasLeitura('');
-    setChavesQuantidade('');
-    setChavesIdentificacao('');
-    setChavesFuncionamento('');
     setComodos(COMODOS_PADRAO.map(c => ({
       nome: c.nome,
       itens: c.itens.map(i => ({ nome: i, ok: true, ressalva: '' })),
@@ -443,13 +373,6 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
 
   const handleEdit = (v: Vistoria) => {
     setEditingVistoria(v);
-    setTipoVistoria(v.tipo || 'entrada');
-    setVistoriaEntradaId(v.vistoriaEntradaId || null);
-    setVistoriadorNome(v.vistoriadorNome || v.corretorNome || user?.displayName || '');
-    setDescricaoGeral(v.descricaoGeral || '');
-    setStatusAssinatura(v.statusAssinatura || 'nao_enviado');
-    setLinkAssinatura(v.linkAssinatura || '');
-    setFotosGerais([]);
     if (v.locatarios && Array.isArray(v.locatarios) && v.locatarios.length > 0) {
       setLocatarios(v.locatarios.map(l => ({ ...DEFAULT_LOCATARIO, ...l })));
     } else if (v.locatario) {
@@ -468,16 +391,6 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
     setStyleContrato(v.styleContrato || { fontSize: 9, textAlign: 'justify', isBold: false });
     setStyleLaudo(v.styleLaudo || { fontSize: 9, textAlign: 'justify', isBold: false });
     setImovel(v.imovel);
-    setTipoImovel(v.tipoImovel || '');
-    setMedidorEnergiaNumero(v.medidorEnergia?.numero || '');
-    setMedidorEnergiaLeitura(v.medidorEnergia?.leitura || '');
-    setMedidorAguaNumero(v.medidorAgua?.numero || '');
-    setMedidorAguaLeitura(v.medidorAgua?.leitura || '');
-    setMedidorGasNumero(v.medidorGas?.numero || '');
-    setMedidorGasLeitura(v.medidorGas?.leitura || '');
-    setChavesQuantidade(v.chaves?.quantidade || '');
-    setChavesIdentificacao(v.chaves?.identificacao || '');
-    setChavesFuncionamento(v.chaves?.funcionamento || '');
     setLocador(v.locador);
     setComodos(v.comodos);
     setDataVistoria(v.data);
@@ -487,69 +400,49 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
     setIsCreating(true);
   };
 
-  const processImageFiles = async (fileList: File[]): Promise<string[]> => {
-    const processPromises = fileList.map(async (file) => {
-      return new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = (event) => {
-          const img = new Image();
-          img.src = event.target?.result as string;
-          img.onload = () => {
-            const canvas = document.createElement('canvas');
-            const MAX_WIDTH = 1000; // Resolução otimizada para PDF
-            let width = img.width;
-            let height = img.height;
+  const handlePhotoUpload = async (cIdx: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
-            if (width > MAX_WIDTH) {
-              height *= MAX_WIDTH / width;
-              width = MAX_WIDTH;
-            }
-
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            ctx?.drawImage(img, 0, 0, width, height);
-
-            // Converte direto para Data URL em memória (sem fetch e sem tráfego de rede)
-            const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
-            resolve(dataUrl);
-          };
-          img.onerror = () => reject(new Error("Erro ao carregar imagem"));
-        };
-        reader.onerror = () => reject(new Error("Erro ao ler arquivo"));
-      });
-    });
-
-    return Promise.all(processPromises);
-  };
-
-  // Suporte a arrastar-e-soltar (drag and drop) de imagens direto do computador/celular.
-  // Sem isso, o navegador tenta abrir o arquivo numa aba nova em vez de anexá-lo.
-  const extractImageFiles = (dataTransfer: DataTransfer): File[] => {
-    return Array.from(dataTransfer.files || []).filter(f => f.type.startsWith('image/'));
-  };
-
-  const handleDropZoneEvents = (onFiles: (files: File[]) => void) => ({
-    onDragOver: (e: React.DragEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-    },
-    onDrop: (e: React.DragEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const files = extractImageFiles(e.dataTransfer);
-      if (files.length > 0) onFiles(files);
-    }
-  });
-
-  const processAndAttachComodoPhotos = async (cIdx: number, fileList: File[]) => {
-    if (fileList.length === 0) return;
+    const fileList = Array.from(files) as File[];
     const toastId = "uploading-photo";
     toast.loading(`Processando e otimizando ${fileList.length} foto(s)...`, { id: toastId });
 
     try {
-      const processedDataUrls = await processImageFiles(fileList);
+      const processPromises = fileList.map(async (file) => {
+        return new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.readAsDataURL(file);
+          reader.onload = (event) => {
+            const img = new Image();
+            img.src = event.target?.result as string;
+            img.onload = () => {
+              const canvas = document.createElement('canvas');
+              const MAX_WIDTH = 1000; // Resolução otimizada para PDF
+              let width = img.width;
+              let height = img.height;
+
+              if (width > MAX_WIDTH) {
+                height *= MAX_WIDTH / width;
+                width = MAX_WIDTH;
+              }
+
+              canvas.width = width;
+              canvas.height = height;
+              const ctx = canvas.getContext('2d');
+              ctx?.drawImage(img, 0, 0, width, height);
+
+              // Converte direto para Data URL em memória (sem fetch e sem tráfego de rede)
+              const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+              resolve(dataUrl);
+            };
+            img.onerror = () => reject(new Error("Erro ao carregar imagem"));
+          };
+          reader.onerror = () => reject(new Error("Erro ao ler arquivo"));
+        });
+      });
+
+      const processedDataUrls = await Promise.all(processPromises);
 
       const newComodos = [...comodos];
       newComodos[cIdx] = {
@@ -557,206 +450,13 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
         fotos: [...(newComodos[cIdx].fotos || []), ...processedDataUrls]
       };
       setComodos(newComodos);
-
+      
       toast.success(`${processedDataUrls.length} foto(s) anexada(s)!`, { id: toastId });
     } catch (error: any) {
       console.error("Photo processing error:", error);
       toast.error(error.message || "Erro ao processar fotos.", { id: toastId });
-    }
-  };
-
-  const getDefaultTextoContrato = (tipo: 'entrada' | 'saida') => {
-    if (tipo === 'saida') {
-      return `O(A) LOCATÁRIO(A), acima qualificado(a), declara, para os devidos fins, que nesta data devolveu as chaves do imóvel locado à ADMINISTRADORA/LOCADOR(A), encerrando a posse direta sobre o referido bem.
-
-Declara, ainda, ter ciência do estado de conservação do imóvel registrado no laudo de vistoria de saída, elaborado nesta mesma data, o qual foi devidamente apresentado, acompanhado e conferido.
-
-A ADMINISTRADORA/LOCADOR(A) recebe as chaves nesta data, sem prejuízo da apuração de eventuais danos, deteriorações ou pendências identificadas no laudo de vistoria, as quais poderão ser cobradas do(a) LOCATÁRIO(A) na forma e no prazo legalmente cabíveis.`;
-    }
-    return `O(A) LOCATÁRIO(A), acima qualificado(a), declara, para os devidos fins, que nesta data recebeu as chaves do imóvel locado, passando a ter a posse do referido bem.
-
-Declara, ainda, que teve ciência das condições do imóvel, conforme laudo de vistoria elaborado pela imobiliária, o qual foi devidamente apresentado, acompanhado e conferido, concordando integralmente com seu estado de conservação no ato da entrega.
-
-O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guarda, conservação e demais obrigações previstas no contrato de locação.`;
-  };
-
-  const handlePhotoUpload = async (cIdx: number, e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-    await processAndAttachComodoPhotos(cIdx, Array.from(files));
-    if (e.target) e.target.value = '';
-  };
-
-  // Fotos "soltas" da vistoria — não é necessário indicar de qual cômodo é cada uma.
-  // Ficam todas juntas num único painel; a descrição geral abaixo é que dá o contexto pra IA.
-  const processAndAttachFotosGerais = async (fileList: File[]) => {
-    if (fileList.length === 0) return;
-    const toastId = "uploading-photo-geral";
-    toast.loading(`Processando e otimizando ${fileList.length} foto(s)...`, { id: toastId });
-
-    try {
-      const processedDataUrls = await processImageFiles(fileList);
-      setFotosGerais(prev => [...prev, ...processedDataUrls]);
-      toast.success(`${processedDataUrls.length} foto(s) anexada(s)!`, { id: toastId });
-    } catch (error: any) {
-      console.error("Photo processing error:", error);
-      toast.error(error.message || "Erro ao processar fotos.", { id: toastId });
-    }
-  };
-
-  const handlePhotoUploadGeral = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-    await processAndAttachFotosGerais(Array.from(files));
-    if (e.target) e.target.value = '';
-  };
-
-  const handleRemoveFotoGeral = (pIdx: number) => {
-    setFotosGerais(prev => prev.filter((_, i) => i !== pIdx));
-  };
-
-  const handleToggleGravacaoVoz = () => {
-    const SpeechRecognitionApi = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-
-    if (!SpeechRecognitionApi) {
-      toast.error('Seu navegador não suporta ditado por voz. Tente usar o Google Chrome.');
-      return;
-    }
-
-    if (isGravandoAudio) {
-      speechRecognitionRef.current?.stop();
-      return;
-    }
-
-    const recognition = new SpeechRecognitionApi();
-    recognition.lang = 'pt-BR';
-    recognition.continuous = true;
-    recognition.interimResults = false;
-
-    recognition.onstart = () => {
-      setIsGravandoAudio(true);
-      toast.info('Ouvindo... fale a descrição da vistoria.');
-    };
-
-    recognition.onresult = (event: any) => {
-      let textoFinal = '';
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        if (event.results[i].isFinal) {
-          textoFinal += event.results[i][0].transcript;
-        }
-      }
-      if (textoFinal.trim()) {
-        setDescricaoGeral(prev => (prev ? `${prev.trim()} ${textoFinal.trim()}` : textoFinal.trim()));
-      }
-    };
-
-    recognition.onerror = (event: any) => {
-      console.error('Erro no reconhecimento de voz:', event.error);
-      if (event.error !== 'no-speech' && event.error !== 'aborted') {
-        toast.error('Erro ao capturar áudio. Tente novamente.');
-      }
-    };
-
-    recognition.onend = () => {
-      setIsGravandoAudio(false);
-    };
-
-    speechRecognitionRef.current = recognition;
-    recognition.start();
-  };
-
-  const handleEnviarParaAssinatura = async (vistoria: Vistoria) => {
-    // 1) Gera e força o download do PDF (pra já ter o arquivo pronto pra subir no CredPago)
-    await generatePDF(vistoria, { forceDownload: true });
-
-    // 2) Abre o CredPago/CredSign numa nova aba
-    window.open('https://credpago.com.br/credsign/', '_blank');
-
-    // 3) Marca como "enviado" — o próprio usuário confirma quando terminar de subir o arquivo lá
-    setStatusAssinatura('enviado');
-
-    toast('PDF baixado! Agora é só subir esse arquivo no CredPago que abriu na outra aba.', {
-      duration: 6000,
-      icon: '📄'
-    });
-  };
-
-  const handleGerarLaudoComIA = async () => {
-    if (!descricaoGeral.trim() && comodos.every(c => c.itens.every(i => i.ok))) {
-      toast.error('Escreva uma descrição geral ou marque alguma ressalva nos cômodos antes de gerar o laudo.');
-      return;
-    }
-
-    setIsGerandoLaudo(true);
-    const toastId = 'gerando-laudo';
-    toast.loading('Gerando texto do laudo com IA...', { id: toastId });
-
-    try {
-      const ressalvas = comodos.flatMap(c =>
-        c.itens.filter(i => !i.ok).map(i => `${c.nome} - ${i.nome}: ${i.ressalva || 'sem detalhes'}`)
-      );
-
-      // Se for vistoria de saída vinculada a uma vistoria de entrada, busca os dados dela
-      // (ressalvas + descrição + laudo já gerado) para a IA comparar de verdade o que mudou.
-      let comparativoEntrada: { ressalvasEntrada: string[]; descricaoGeralEntrada: string; textoLaudoEntrada: string } | null = null;
-      if (tipoVistoria === 'saida' && vistoriaEntradaId) {
-        try {
-          const entradaSnap = await getDoc(doc(db, 'vistorias', vistoriaEntradaId));
-          if (entradaSnap.exists()) {
-            const entradaData = entradaSnap.data() as Vistoria;
-            const ressalvasEntrada = (entradaData.comodos || []).flatMap(c =>
-              c.itens.filter(i => !i.ok).map(i => `${c.nome} - ${i.nome}: ${i.ressalva || 'sem detalhes'}`)
-            );
-            comparativoEntrada = {
-              ressalvasEntrada,
-              descricaoGeralEntrada: entradaData.descricaoGeral || '',
-              textoLaudoEntrada: entradaData.textoLaudo || ''
-            };
-          }
-        } catch (err) {
-          console.error('Não foi possível carregar a vistoria de entrada vinculada:', err);
-        }
-      }
-
-      // As fotos aqui são só os destaques de danos (usadas pra IA dar ênfase no laudo).
-      // O total real de fotos da vistoria inclui também as fotos gerais de cada cômodo,
-      // adicionadas na etapa seguinte — por isso contamos as duas coisas separadamente.
-      const quantidadeFotosDestaque = fotosGerais.length;
-      const quantidadeFotosTotal = quantidadeFotosDestaque + comodos.reduce((acc, c) => acc + (c.fotos?.length || 0), 0);
-
-      const idToken = await auth.currentUser?.getIdToken();
-
-      const resp = await fetch('/api/vistoria/gerar-laudo', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(idToken ? { Authorization: `Bearer ${idToken}` } : {})
-        },
-        body: JSON.stringify({
-          tipo: tipoVistoria,
-          enderecoImovel: imovel.endereco,
-          descricaoGeral,
-          ressalvas,
-          comparativoEntrada,
-          quantidadeFotosDestaque,
-          quantidadeFotosTotal,
-          textoLaudoAtual: textoLaudo
-        })
-      });
-
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => ({}));
-        throw new Error(err.error || 'Não foi possível gerar o laudo agora.');
-      }
-
-      const { textoLaudo: novoTexto } = await resp.json();
-      setTextoLaudo(novoTexto);
-      toast.success('Laudo gerado! Revise o texto antes de salvar.', { id: toastId });
-    } catch (error: any) {
-      console.error('Erro ao gerar laudo com IA:', error);
-      toast.error(error.message || 'Erro ao gerar laudo com IA.', { id: toastId });
     } finally {
-      setIsGerandoLaudo(false);
+      if (e.target) e.target.value = '';
     }
   };
 
@@ -797,31 +497,6 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
     toast.success("Cômodo removido.");
   };
 
-  // Checklist editável por cômodo: cada ambiente nasce com a lista padrão do template,
-  // mas qualquer item pode ser removido (ex: "Ar Condicionado" num cômodo que não tem)
-  // ou um item novo com nome livre pode ser adicionado.
-  const handleRemoveItem = (cIdx: number, iIdx: number) => {
-    const newComodos = [...comodos];
-    if (newComodos[cIdx].itens.length <= 1) {
-      toast.error("O cômodo deve ter pelo menos um item.");
-      return;
-    }
-    newComodos[cIdx].itens.splice(iIdx, 1);
-    setComodos(newComodos);
-  };
-
-  const handleAddItem = (cIdx: number, nomeItem: string) => {
-    const nome = nomeItem.trim();
-    if (!nome) return;
-    const newComodos = [...comodos];
-    if (newComodos[cIdx].itens.some(i => i.nome.toLowerCase() === nome.toLowerCase())) {
-      toast.error("Esse item já existe nesse cômodo.");
-      return;
-    }
-    newComodos[cIdx].itens.push({ nome, ok: true, ressalva: '' });
-    setComodos(newComodos);
-  };
-
   const handleDelete = async (id: string) => {
     setIsDeleting(true);
     try {
@@ -848,822 +523,16 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
     return matchesSearch && matchedStatus;
   });
 
-  const generatePDF = async (vistoria: Vistoria, options?: { forceDownload?: boolean }) => {
-    // Helper data (definido cedo para poder ser usado já na capa)
-    const formatDateHelper = (dateStr?: string) => {
-      if (!dateStr) return format(new Date(), "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
-      try {
-        const d = dateStr.includes('T') ? new Date(dateStr) : new Date(dateStr + 'T12:00:00');
-        return format(d, "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
-      } catch {
-        return format(new Date(), "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
-      }
-    };
-
-    const toastId = toast.loading("Gerando PDF, aguarde...");
+  const generatePDF = async (vistoria: Vistoria) => {
+    const toastId = toast.loading("Gerando termo de vistoria em alta fidelidade...");
     try {
-      const pdf = new jsPDF('p', 'mm', 'a4');
-    const width = pdf.internal.pageSize.getWidth();
-    let y = 0;
-    
-    // Safety check for dynamic data fallback
-    const logoToUse = vistoria.companyLogo || companySettings?.logoUrl;
-    const nameToUse = vistoria.companyName || companySettings?.name;
-    const subtitleToUse = vistoria.companySubtitle || companySettings?.subtitle;
-    const locadorToUse = vistoria.locador || { 
-      nome: brandName || companySettings?.name || 'FIDELITÉ NEGÓCIOS IMOBILIÁRIOS LTDA',
-      cnpj: brandCnpj || companySettings?.cnpj || '37.194.924/0001-86',
-      endereco: brandAddress || companySettings?.address || 'AVENIDA SENADOR PEDRO LUDOVICO Nº 180, SALA 17, CENTRO, BELA VISTA DE GOIÁS, CEP: 75.240-000'
-    };
-    const tituloDocumento = vistoria.tipo === 'saida'
-      ? 'TERMO DE VISTORIA DE SAÍDA E DEVOLUÇÃO DE CHAVES'
-      : 'TERMO DE VISTORIA DE ENTRADA E ENTREGA DE CHAVES';
-    
-    // --- REUSABLE HEADER & FOOTER FUNCTION ---
-    const addHeaderAndFooter = (doc: jsPDF, isFirstPage: boolean) => {
-      if (isFirstPage) {
-        // Rodapé completo (apenas na pág 1) — mantido exatamente como estava
-        const footerY = 285;
-        doc.setDrawColor(0, 48, 102); // Azul Marinho
-        doc.setLineWidth(0.3);
-        doc.line(75, footerY - 5, 75, footerY + 12);
-        doc.line(130, footerY - 5, 130, footerY + 12);
-        doc.setFillColor(0, 48, 102); // Azul Marinho
-        doc.rect(width - 10, footerY - 10, 10, 25, 'F');
-
-        doc.setTextColor(0, 48, 102); // Azul Marinho
-        doc.setFontSize(8);
-        doc.setFont('helvetica', 'bold');
-        const addr = brandAddress || (brandCity && brandState ? `${brandCity} - ${brandState}` : (brandCity || brandState || ''));
-        const splitAddr = doc.splitTextToSize(addr.toUpperCase(), 60);
-        doc.text(splitAddr, 10, footerY);
-
-        const contactLines = [brandPhone, brandEmail, brandWebsite].filter(Boolean).join('\n');
-        const splitContact = doc.splitTextToSize(contactLines, 45);
-        doc.text(splitContact, 80, footerY);
-
-        const creciText = brandCreci ? (brandCreci.toUpperCase().includes('CRECI') ? brandCreci : `CRECI: ${brandCreci}`) : '';
-        const companyLines = [brandName?.toUpperCase(), creciText].filter(Boolean).join('\n');
-        const splitCompany = doc.splitTextToSize(companyLines, 55);
-        doc.text(splitCompany, 135, footerY);
-      }
-      // Número de página é escrito numa segunda passada ao final (addPageNumbers),
-      // quando o total de páginas já é conhecido — evita "Página N" sem contexto.
-    };
-
-    const checkPageBreak = (currentY: number, needed: number) => {
-      if (currentY + needed > 280) {
-        pdf.addPage();
-        addHeaderAndFooter(pdf, false);
-        return 25; // Começa mais alto em páginas sem cabeçalho grande
-      }
-      return currentY;
-    };
-
-    // --- REUSABLE SECTION HEADER (usado em IDENTIFICAÇÃO, CONSIDERAÇÕES, cômodos etc.) ---
-    const drawSectionHeader = (title: string, yPos: number) => {
-      const upperTitle = title.toUpperCase();
-      pdf.setFontSize(10);
-      pdf.setFont('helvetica', 'bold');
-      const textWidth = pdf.getTextWidth(upperTitle);
-      const boxWidth = textWidth + 10;
-
-      pdf.setFillColor(0, 48, 102); // Azul Marinho Fidelité
-      pdf.roundedRect(20, yPos - 6, boxWidth, 8, 2, 2, 'F');
-
-      pdf.setTextColor(255, 255, 255);
-      pdf.text(upperTitle, 25, yPos);
-      pdf.setTextColor(0, 0, 0);
-      return yPos + 10;
-    };
-
-    // --- TABELA DE INFORMAÇÕES (rótulo | valor) — usada em IDENTIFICAÇÃO e ENVOLVIDOS,
-    // no estilo compacto de referência (linhas com separador fino, sem repetir cabeçalhos) ---
-    const LABEL_X = 22;
-    const LABEL_W = 52;
-    const VALUE_X = 78;
-    const VALUE_W = 112;
-    const drawInfoTable = (rows: [string, string][], startY: number): number => {
-      let yy = startY;
-      rows.forEach(([label, value]) => {
-        pdf.setFont('helvetica', 'bold');
-        pdf.setFontSize(7.5);
-        const labelLines = pdf.splitTextToSize(label.toUpperCase(), LABEL_W);
-        pdf.setFont('helvetica', 'normal');
-        pdf.setFontSize(9);
-        const valueLines = pdf.splitTextToSize(value || 'Não informado', VALUE_W);
-        const rowH = Math.max(labelLines.length, valueLines.length) * 4.2 + 3.5;
-
-        yy = checkPageBreak(yy, rowH);
-
-        pdf.setFont('helvetica', 'bold');
-        pdf.setFontSize(7.5);
-        pdf.setTextColor(100, 116, 139); // slate-500
-        pdf.text(labelLines, LABEL_X, yy + 3);
-
-        pdf.setFont('helvetica', 'normal');
-        pdf.setFontSize(9);
-        pdf.setTextColor(37, 99, 235); // azul vivo (mesmo contraste do Vistor365, só que em azul em vez de laranja)
-        pdf.text(valueLines, VALUE_X, yy + 3);
-
-        yy += rowH;
-        pdf.setDrawColor(226, 232, 240); // slate-200
-        pdf.setLineWidth(0.15);
-        pdf.line(20, yy - 1.5, 190, yy - 1.5);
-      });
-      pdf.setTextColor(0, 0, 0);
-      return yy + 5;
-    };
-
-    // --- INÍCIO DA RENDERIZAÇÃO ---
-    addHeaderAndFooter(pdf, true); // desenha o rodapé da página 1 (cabeçalho é o novo bloco de capa abaixo)
-
-    // --- CABEÇALHO DA CAPA: barra sólida no topo, logo centralizada, título centralizado ---
-    pdf.setFillColor(0, 48, 102); // Azul Marinho Fidelité — largura total da página
-    pdf.rect(0, 0, width, 4, 'F');
-
-    y = 16;
-    if (logoToUse) {
-      try {
-        const imgProps = pdf.getImageProperties(logoToUse);
-        const maxW = 42;
-        const maxH = 20;
-        const ratio = imgProps.width / imgProps.height;
-        let targetW = maxW;
-        let targetH = targetW / ratio;
-        if (targetH > maxH) {
-          targetH = maxH;
-          targetW = targetH * ratio;
-        }
-        const logoX = (width - targetW) / 2;
-        const format = logoToUse.toLowerCase().includes('png') || logoToUse.includes('image/png') ? 'PNG' : 'JPEG';
-        pdf.addImage(logoToUse, format, logoX, y, targetW, targetH, undefined, 'SLOW');
-        y += targetH + 8;
-      } catch (e) {
-        pdf.setFont('helvetica', 'bold');
-        pdf.setFontSize(15);
-        pdf.setTextColor(0, 48, 102);
-        pdf.text((brandName || 'FIDELITÉ').toUpperCase(), width / 2, y + 8, { align: 'center' });
-        y += 18;
-      }
-    } else {
-      pdf.setFont('helvetica', 'bold');
-      pdf.setFontSize(15);
-      pdf.setTextColor(0, 48, 102);
-      pdf.text((brandName || 'FIDELITÉ').toUpperCase(), width / 2, y + 8, { align: 'center' });
-      y += 18;
+      printVistoriaHTML(vistoria, companySettings);
+      toast.success("Documento gerado e pronto para impressão/PDF!", { id: toastId });
+    } catch (error) {
+      console.error("Erro ao gerar termo de vistoria:", error);
+      toast.error("Ocorreu um erro ao gerar o documento.", { id: toastId });
     }
-
-    pdf.setFont('helvetica', 'bold');
-    pdf.setFontSize(16);
-    pdf.setTextColor(0, 48, 102);
-    const tituloLinesCapa = pdf.splitTextToSize(tituloDocumento, 170);
-    pdf.text(tituloLinesCapa, width / 2, y, { align: 'center' });
-    y += tituloLinesCapa.length * 7 + 6;
-
-    pdf.setDrawColor(0, 48, 102);
-    pdf.setLineWidth(0.4);
-    pdf.line(20, y, 190, y);
-    y += 12;
-
-    const locatariosList: LocatarioVistoria[] = (vistoria.locatarios && vistoria.locatarios.length > 0)
-      ? vistoria.locatarios
-      : (vistoria.locatario ? [vistoria.locatario] : [{ ...DEFAULT_LOCATARIO }]);
-    const locatarioNomes = locatariosList.map(l => l.nome).filter(Boolean).join(', ') || 'Não informado';
-
-    // --- IDENTIFICAÇÃO — resumo único em tabela (endereço, imóvel, partes, data) ---
-    // Antes esse bloco existia duplicado (capa + página 2); agora é um só, direto após o título.
-    y = drawSectionHeader('IDENTIFICAÇÃO', y);
-    y = drawInfoTable([
-      ['Endereço do Imóvel', (vistoria.imovel?.endereco || 'Não informado').toUpperCase()],
-      ['Tipo de Imóvel', (vistoria.tipoImovel || 'Não informado').toUpperCase()],
-      ['Locador (Proprietário)', (locadorToUse.nome || 'Não informado').toUpperCase()],
-      [locatariosList.length > 1 ? 'Locatários' : 'Locatário', locatarioNomes.toUpperCase()],
-      ['Finalidade', 'LOCAÇÃO'],
-      ['Data da Vistoria', formatDateHelper((vistoria as any).dataVistoria || vistoria.data)],
-      ['Vistoriador Responsável', (vistoria.vistoriadorNome || vistoria.corretorNome || 'Não informado').toUpperCase()]
-    ], y);
-
-    // --- ENVOLVIDOS — locador e locatário(s), sem repetir os dados da própria imobiliária
-    // (já aparecem no rodapé da página) ---
-    y = checkPageBreak(y, 20);
-    y = drawSectionHeader('ENVOLVIDOS', y);
-
-    y = drawInfoTable([
-      ['Locador', (locadorToUse.nome || 'Não informado').toUpperCase()],
-      ...(locadorToUse.cnpj ? [['CNPJ', locadorToUse.cnpj] as [string, string]] : []),
-      ...(locadorToUse.endereco ? [['Endereço', locadorToUse.endereco] as [string, string]] : [])
-    ], y);
-
-    locatariosList.forEach((loc, idx) => {
-      const label = locatariosList.length > 1 ? `Locatário ${idx + 1}` : 'Locatário';
-      y = drawInfoTable([
-        [label, (loc.nome || 'Não informado').toUpperCase()],
-        ['CPF / RG', `${loc.cpf || 'Não informado'}${loc.rg ? `  |  RG: ${loc.rg}` : ''}`],
-        ['Contato', [loc.email, loc.telefone].filter(Boolean).join('  |  ') || 'Não informado'],
-        ...(loc.endereco ? [['Endereço', `${loc.endereco}${loc.cep ? `  -  CEP: ${loc.cep}` : ''}`] as [string, string]] : [])
-      ], y);
-    });
-
-    y = checkPageBreak(y, 20);
-    y = drawSectionHeader('CONSIDERAÇÕES PRELIMINARES', y);
-    pdf.setFont('helvetica', 'normal');
-    pdf.setFontSize(8.5);
-
-    const printParagraph = (text: string, startY: number): number => {
-      let yy = startY;
-      const lines = pdf.splitTextToSize(text, 170);
-      lines.forEach((line: string) => {
-        yy = checkPageBreak(yy, 5);
-        pdf.text(line, 20, yy);
-        yy += 4.2;
-      });
-      return yy + 4;
-    };
-
-    y = printParagraph(
-      'Este relatório de vistoria tem por objetivo retratar o estado de conservação e funcionamento do imóvel na data de sua realização, em atendimento ao disposto no art. 22, inciso V, e art. 23, inciso III, ambos da Lei nº 8.245/91 (Lei do Inquilinato).',
-      y
-    );
-    y = printParagraph(
-      'A presente vistoria foi realizada por observação estética da construção e acabamentos, não se atendo a aspectos estruturais de solidez, fundações e vícios ocultos.',
-      y
-    );
-    y = printParagraph(
-      'O(a) locatário(a) declara estar ciente de que deverá devolver o imóvel nas mesmas condições em que o recebeu, conforme descrição constante deste laudo, ressalvado o desgaste natural decorrente do uso normal.',
-      y
-    );
-
-    y = checkPageBreak(y, 15);
-    y = drawSectionHeader('PRAZO PARA CONTESTAÇÃO', y);
-    y = printParagraph(
-      'Terá o(a) locatário(a) 10 (dez) dias corridos, a contar da data de assinatura deste termo, para se manifestar sobre o seu conteúdo, exceção feita a implicações originárias de chuva, cujo prazo se inicia a partir do primeiro evento.',
-      y
-    );
-    y = printParagraph(
-      'Toda e qualquer contestação deverá ser feita por escrito, seguindo a mesma numeração de itens deste laudo, e acompanhada de fotos que comprovem a divergência apontada, encaminhada ao departamento responsável pela administração do imóvel.',
-      y
-    );
-    y = printParagraph(
-      'A ausência de manifestação dentro do prazo estabelecido caracteriza a plena concordância do(a) locatário(a) com o conteúdo deste laudo, não sendo admitida contestação posterior, inclusive no momento da rescisão contratual.',
-      y
-    );
-
-    y = checkPageBreak(y, 15);
-    y = drawSectionHeader('CRITÉRIOS DE ESTADO DE CONSERVAÇÃO', y);
-    pdf.setFontSize(8.5);
-
-    const criterios: [string, string][] = [
-      ['NOVO', 'Primeiro uso. Pintura recente com cobrimento completo da superfície, sem retoques.'],
-      ['BOM', 'Sem sinais relevantes de desgaste, ou com pequenas irregularidades que não comprometem o uso ou a integridade do item.'],
-      ['REGULAR', 'Presença de manchas, riscos, lascas ou pequenas perfurações, desgaste leve pela ação do tempo, ou pequenas falhas na pintura.'],
-      ['RUIM', 'Danos relevantes: descascamentos, trincas, infiltrações, deterioração de revestimento ou demais avarias que comprometem a aparência ou o funcionamento do item.']
-    ];
-
-    criterios.forEach(([label, desc]) => {
-      y = checkPageBreak(y, 12);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text(`${label}:`, 20, y);
-      pdf.setFont('helvetica', 'normal');
-      const descLines = pdf.splitTextToSize(desc, 150);
-      pdf.text(descLines, 42, y);
-      y += Math.max(5, descLines.length * 4.2) + 2;
-    });
-
-    // AMBIENTES VISTORIADOS — flui direto após os critérios, sem forçar nova página
-    // (só quebra quando realmente não cabe mais, evitando página final quase em branco)
-    y = checkPageBreak(y, 20);
-    y = drawSectionHeader('AMBIENTES VISTORIADOS', y);
-    pdf.setTextColor(0, 0, 0);
-
-    // Colunas da tabela ITEM | ESTADO | OBSERVAÇÃO
-    const COL_ITEM_X = 25;
-    const COL_ITEM_W = 78;
-    const COL_ESTADO_X = 105;
-    const COL_ESTADO_W = 28;
-    const COL_OBS_X = 137;
-    const COL_OBS_W = 51;
-
-    const drawTableHeader = (yy: number): number => {
-      pdf.setFillColor(241, 245, 249); // slate-100
-      pdf.rect(20, yy - 4.5, 170, 6.5, 'F');
-      pdf.setFontSize(7.5);
-      pdf.setFont('helvetica', 'bold');
-      pdf.setTextColor(71, 85, 105); // slate-600
-      pdf.text('ITEM', COL_ITEM_X, yy);
-      pdf.text('ESTADO', COL_ESTADO_X, yy);
-      pdf.text('OBSERVAÇÃO', COL_OBS_X, yy);
-      pdf.setTextColor(0, 0, 0);
-      return yy + 6;
-    };
-
-    vistoria.comodos.forEach((comodo, comodoIdx) => {
-      // Estima a altura total do bloco do ambiente (título + tabela) para decidir
-      // se cabe inteiro na página atual, evitando título órfão no fim da página.
-      const estimatedTableHeight = comodo.itens.reduce((acc, item) => {
-        const obsText = item.ok ? '' : (item.ressalva || 'Nenhuma ressalva');
-        const obsLines = obsText ? pdf.splitTextToSize(obsText, COL_OBS_W) : [''];
-        return acc + Math.max(6, obsLines.length * 3.6 + 2);
-      }, 0);
-      const blockHeaderHeight = 21; // título + linha + cabeçalho da tabela
-      const neededForFirstRows = blockHeaderHeight + Math.min(estimatedTableHeight, 30);
-      y = checkPageBreak(y, neededForFirstRows);
-
-      pdf.setFontSize(12);
-      pdf.setFont('helvetica', 'bold');
-      pdf.setTextColor(0, 48, 102); // Azul Marinho Fidelité
-      const numeroStr = String(comodoIdx + 1).padStart(2, '0');
-      const comodoNomeStr = `${numeroStr} · ${comodo.nome.toUpperCase()}`;
-      pdf.text(comodoNomeStr, 20, y);
-
-      y += 3;
-      pdf.setDrawColor(226, 232, 240); // slate-200 — linha completa, não só sob o texto
-      pdf.setLineWidth(0.3);
-      pdf.line(20, y, 190, y);
-      y += 8;
-
-      y = drawTableHeader(y);
-      pdf.setTextColor(0, 0, 0);
-
-      comodo.itens.forEach((item) => {
-        const obsText = item.ok ? '—' : (item.ressalva || 'Nenhuma ressalva');
-        const obsLines = pdf.splitTextToSize(obsText, COL_OBS_W);
-        const rowHeight = Math.max(6.5, obsLines.length * 3.6 + 2.5);
-
-        // Se a linha não couber, quebra a página e repete o cabeçalho da tabela
-        if (y + rowHeight > 280) {
-          pdf.addPage();
-          addHeaderAndFooter(pdf, false);
-          y = 25;
-          pdf.setFontSize(10.5);
-          pdf.setFont('helvetica', 'bold');
-          pdf.setTextColor(0, 48, 102);
-          pdf.text(`${comodoNomeStr} (continuação)`, 20, y);
-          y += 8;
-          y = drawTableHeader(y);
-        }
-
-        const itemNameLines = pdf.splitTextToSize(item.nome, COL_ITEM_W);
-        const textRowHeight = Math.max(itemNameLines.length, obsLines.length) * 3.6 + 2.5;
-
-        pdf.setFontSize(8.2);
-        pdf.setFont('helvetica', 'bold');
-        pdf.setTextColor(51, 65, 85); // slate-700
-        pdf.text(itemNameLines, COL_ITEM_X, y);
-
-        // Selo colorido (pill) do estado de conservação
-        const estadoItem = item.estado || (item.ok ? 'bom' : 'ruim');
-        const pillLabel = estadoItem.toUpperCase();
-        pdf.setFontSize(6.8);
-        pdf.setFont('helvetica', 'bold');
-        if (estadoItem === 'novo' || estadoItem === 'bom') {
-          pdf.setFillColor(220, 252, 231); // green-100
-          pdf.setTextColor(21, 128, 61); // green-700
-        } else if (estadoItem === 'regular') {
-          pdf.setFillColor(254, 243, 199); // amber-100
-          pdf.setTextColor(180, 83, 9); // amber-700
-        } else {
-          pdf.setFillColor(254, 226, 226); // red-100
-          pdf.setTextColor(185, 28, 28); // red-700
-        }
-        const pillTextWidth = pdf.getTextWidth(pillLabel);
-        const pillWidth = pillTextWidth + 5;
-        pdf.roundedRect(COL_ESTADO_X, y - 3.2, pillWidth, 4.6, 2, 2, 'F');
-        pdf.text(pillLabel, COL_ESTADO_X + 2.5, y);
-
-        pdf.setFontSize(7.8);
-        pdf.setFont('helvetica', item.ok ? 'normal' : 'italic');
-        pdf.setTextColor(100, 116, 139); // slate-500
-        pdf.text(obsLines, COL_OBS_X, y);
-        pdf.setTextColor(0, 0, 0);
-
-        y += textRowHeight;
-        pdf.setDrawColor(241, 245, 249); // slate-100 — linha bem clara
-        pdf.setLineWidth(0.1);
-        pdf.line(20, y - 1, 190, y - 1);
-      });
-
-      // Observação do ambiente (se houver, agrupada logo após a tabela)
-      y += 3;
-
-      // Fotos do Cômodo — identificadas como pertencentes a este ambiente, com
-      // layout responsivo: 1 foto maior, 2 lado a lado, 3+ em grade de 3 colunas.
-      if (comodo.fotos && comodo.fotos.length > 0) {
-        y = checkPageBreak(y, 12);
-        pdf.setFontSize(7.5);
-        pdf.setFont('helvetica', 'bold');
-        pdf.setTextColor(100, 116, 139);
-        pdf.text(`FOTOS — ${comodo.nome.toUpperCase()}`, 20, y);
-        pdf.setTextColor(0, 0, 0);
-        y += 5;
-
-        if (comodo.fotos.length === 1) {
-          y = checkPageBreak(y, 75);
-          try {
-            pdf.addImage(comodo.fotos[0], 'JPEG', 20, y, 100, 70, undefined, 'FAST');
-          } catch (e) { console.error('Error adding image', e); }
-          y += 75;
-        } else if (comodo.fotos.length === 2) {
-          y = checkPageBreak(y, 65);
-          try {
-            pdf.addImage(comodo.fotos[0], 'JPEG', 20, y, 82, 60, undefined, 'FAST');
-            pdf.addImage(comodo.fotos[1], 'JPEG', 108, y, 82, 60, undefined, 'FAST');
-          } catch (e) { console.error('Error adding image', e); }
-          y += 65;
-        } else {
-          for (let i = 0; i < comodo.fotos.length; i++) {
-            if (i % 3 === 0) {
-              y = checkPageBreak(y, 60);
-            }
-            try {
-              const rowIdx = i % 3;
-              const x = 20 + (rowIdx * 60); // 3 fotos de 55mm com 5mm de gap
-              pdf.addImage(comodo.fotos[i], 'JPEG', x, y, 55, 45, undefined, 'FAST');
-              if (rowIdx === 2 || i === comodo.fotos.length - 1) {
-                y += 50;
-              }
-            } catch (e) {
-              console.error('Error adding image', e);
-            }
-          }
-        }
-      }
-      y += 8;
-    });
-
-    // MEDIDORES E LEITURAS
-    const temMedidores = vistoria.medidorEnergia?.numero || vistoria.medidorEnergia?.leitura
-      || vistoria.medidorAgua?.numero || vistoria.medidorAgua?.leitura
-      || vistoria.medidorGas?.numero || vistoria.medidorGas?.leitura;
-    if (temMedidores) {
-      y = checkPageBreak(y, 35);
-      y = drawSectionHeader('MEDIDORES E LEITURAS', y);
-      pdf.setFont('helvetica', 'normal');
-      pdf.setFontSize(9);
-      pdf.setTextColor(0, 0, 0);
-      const linhasMedidores = [
-        (vistoria.medidorEnergia?.numero || vistoria.medidorEnergia?.leitura)
-          ? `ENERGIA — Medidor Nº: ${vistoria.medidorEnergia?.numero || 'Não informado'}  |  Leitura: ${vistoria.medidorEnergia?.leitura || 'Não informado'}`
-          : '',
-        (vistoria.medidorAgua?.numero || vistoria.medidorAgua?.leitura)
-          ? `ÁGUA — Hidrômetro Nº: ${vistoria.medidorAgua?.numero || 'Não informado'}  |  Leitura: ${vistoria.medidorAgua?.leitura || 'Não informado'}`
-          : '',
-        (vistoria.medidorGas?.numero || vistoria.medidorGas?.leitura)
-          ? `GÁS — Medidor Nº: ${vistoria.medidorGas?.numero || 'Não informado'}  |  Leitura: ${vistoria.medidorGas?.leitura || 'Não informado'}`
-          : ''
-      ].filter(Boolean);
-      linhasMedidores.forEach(line => {
-        const split = pdf.splitTextToSize(line, 170);
-        y = checkPageBreak(y, split.length * 5);
-        pdf.text(split, 20, y);
-        y += split.length * 5;
-      });
-      y += 5;
-    }
-
-    // OBSERVAÇÕES FINAIS — chaves/tags/controles entregues, avarias e observações gerais
-    const temChaves = vistoria.chaves?.quantidade || vistoria.chaves?.identificacao || vistoria.chaves?.funcionamento;
-    if (temChaves || vistoria.descricaoGeral) {
-      y = checkPageBreak(y, 25);
-      y = drawSectionHeader('OBSERVAÇÕES FINAIS', y);
-      pdf.setFont('helvetica', 'normal');
-      pdf.setFontSize(9);
-      pdf.setTextColor(0, 0, 0);
-
-      if (temChaves) {
-        pdf.setFont('helvetica', 'bold');
-        y = checkPageBreak(y, 5);
-        pdf.text('CHAVES, TAGS E CONTROLES ENTREGUES', 20, y);
-        y += 5;
-        pdf.setFont('helvetica', 'normal');
-        [
-          vistoria.chaves?.quantidade ? `QUANTIDADE: ${vistoria.chaves.quantidade}` : '',
-          vistoria.chaves?.identificacao ? `IDENTIFICAÇÃO: ${vistoria.chaves.identificacao}` : '',
-          vistoria.chaves?.funcionamento ? `FUNCIONAMENTO: ${vistoria.chaves.funcionamento}` : ''
-        ].filter(Boolean).forEach(line => {
-          const split = pdf.splitTextToSize(line, 170);
-          y = checkPageBreak(y, split.length * 5);
-          pdf.text(split, 20, y);
-          y += split.length * 5;
-        });
-        y += 4;
-      }
-
-      if (vistoria.descricaoGeral) {
-        pdf.setFont('helvetica', 'bold');
-        y = checkPageBreak(y, 5);
-        pdf.text('AVARIAS E OBSERVAÇÕES GERAIS', 20, y);
-        y += 5;
-        pdf.setFont('helvetica', 'normal');
-        pdf.setFontSize(8.5);
-        const split = pdf.splitTextToSize(vistoria.descricaoGeral, 170);
-        split.forEach((line: string) => {
-          y = checkPageBreak(y, 4.5);
-          pdf.text(line, 20, y);
-          y += 4.2;
-        });
-      }
-      y += 4;
-    }
-
-    // FOTOS GERAIS DA VISTORIA — soltas, não vinculadas a um cômodo específico (parte de Observações Finais)
-    if (vistoria.fotosGerais && vistoria.fotosGerais.length > 0) {
-      y = checkPageBreak(y, 30);
-      pdf.setFont('helvetica', 'bold');
-      pdf.setFontSize(9);
-      pdf.setTextColor(0, 48, 102);
-      y = checkPageBreak(y, 8);
-      pdf.text('REGISTRO FOTOGRÁFICO GERAL', 20, y);
-      pdf.setTextColor(0, 0, 0);
-      y += 6;
-
-      for (let i = 0; i < vistoria.fotosGerais.length; i++) {
-        if (i % 3 === 0) {
-          y = checkPageBreak(y, 60);
-        }
-        try {
-          const rowIdx = i % 3;
-          const x = 20 + (rowIdx * 60);
-          pdf.addImage(vistoria.fotosGerais[i], 'JPEG', x, y, 55, 45, undefined, 'FAST');
-          if (rowIdx === 2 || i === vistoria.fotosGerais.length - 1) {
-            y += 50;
-          }
-        } catch (e) {
-          console.error('Error adding general photo', e);
-        }
-      }
-      y += 4;
-    }
-
-    // DECLARAÇÃO DE RECEBIMENTO/DEVOLUÇÃO DE CHAVES — só entra se houver texto de fato,
-    // evitando uma página com só o título e nada embaixo (era o caso quando o campo ficava vazio)
-    if (vistoria.textoContrato && vistoria.textoContrato.trim()) {
-      y = checkPageBreak(y, 30);
-      y = drawSectionHeader(
-        vistoria.tipo === 'saida' ? 'DECLARAÇÃO DE DEVOLUÇÃO DE CHAVES' : 'DECLARAÇÃO DE RECEBIMENTO DE CHAVES',
-        y
-      );
-
-      const sC = {
-        fontSize: vistoria.styleContrato?.fontSize || 9,
-        textAlign: vistoria.styleContrato?.textAlign || 'justify' as const,
-        isBold: !!vistoria.styleContrato?.isBold
-      };
-
-      pdf.setFontSize(sC.fontSize);
-      pdf.setFont('helvetica', sC.isBold ? 'bold' : 'normal');
-      y += 3;
-
-      const splitContract = pdf.splitTextToSize(vistoria.textoContrato, 170);
-      splitContract.forEach((line: string) => {
-        y = checkPageBreak(y, 5);
-        pdf.setFont('helvetica', sC.isBold ? 'bold' : 'normal');
-        pdf.setFontSize(sC.fontSize);
-
-        const xPos = sC.textAlign === 'center' ? 105 : sC.textAlign === 'right' ? 190 : 20;
-        pdf.text(line, xPos, y, { align: sC.textAlign });
-        y += sC.fontSize * 0.55;
-      });
-    }
-
-    // LAUDO DE VISTORIA — só quebra página se o bloco não couber onde estamos
-    // (cláusulas finais definidas no formulário)
-    if (vistoria.textoLaudo && vistoria.textoLaudo.trim()) {
-    y = checkPageBreak(y, 30);
-    y = drawSectionHeader('LAUDO DE VISTORIA', y);
-    y += 3;
-
-    const sL = {
-      fontSize: vistoria.styleLaudo?.fontSize || 9,
-      textAlign: vistoria.styleLaudo?.textAlign || 'justify' as const,
-      isBold: !!vistoria.styleLaudo?.isBold
-    };
-
-    pdf.setFontSize(sL.fontSize);
-    pdf.setFont('helvetica', sL.isBold ? 'bold' : 'normal');
-    pdf.setTextColor(0, 0, 0);
-
-    // Detecta linhas de título/item (ex: "4.8. QUARTOS..." ou "1. IDENTIFICAÇÃO...")
-    // para imprimi-las em negrito, destacando a estrutura do laudo.
-    const headerLineRegex = /^\d+(\.\d+)*\.\s*[A-ZÀ-ÜÇ]/;
-    const paragraphs = (vistoria.textoLaudo || '').split('\n');
-
-    paragraphs.forEach((paragraph) => {
-      if (paragraph.trim() === '') {
-        y += sL.fontSize * 0.55;
-        return;
-      }
-
-      const isHeaderLine = headerLineRegex.test(paragraph.trim());
-      const lines = pdf.splitTextToSize(paragraph, 170);
-
-      lines.forEach((line: string) => {
-        y = checkPageBreak(y, 5);
-        pdf.setFont('helvetica', isHeaderLine || sL.isBold ? 'bold' : 'normal');
-        pdf.setFontSize(sL.fontSize);
-
-        const xPos = sL.textAlign === 'center' ? 105 : sL.textAlign === 'right' ? 190 : 20;
-        pdf.text(line, xPos, y, { align: sL.textAlign });
-        y += sL.fontSize * 0.55;
-      });
-    });
-    } // fim do bloco condicional do LAUDO DE VISTORIA
-
-    // LGPD E PROTEÇÃO DE DADOS — só quebra página se não couber, sem forçar página nova
-    y = checkPageBreak(y, 25);
-    y = drawSectionHeader('LGPD E PROTEÇÃO DE DADOS', y);
-    y += 5;
-
-    pdf.setFontSize(8.5);
-    pdf.setFont('helvetica', 'normal');
-    pdf.setTextColor(0, 0, 0);
-
-    const lgpdParagraphs = [
-      "A IMOBILIÁRIA OU CORRETOR,",
-      "As partes declaram estar cientes e de acordo com o tratamento de seus dados pessoais, nos termos da Lei nº 13.709/2018 (Lei Geral de Proteção de Dados – LGPD).",
-      "§1º. Para os fins deste contrato de locação, a IMOBILIÁRIA atuará como CONTROLADORA dos dados pessoais, podendo tratá-los diretamente ou por meio de terceiros contratados, na qualidade de OPERADORES, exclusivamente para as seguintes finalidades: intermediação, administração e execução do contrato de locação; cobrança de valores; cumprimento de obrigações legais e regulatórias; comunicação entre as partes; elaboração de documentos, cadastros e registros necessários.",
-      "§2º. O tratamento dos dados pessoais terá como fundamentos legais: o cumprimento de obrigação legal ou regulatória (art. 7º, II, LGPD); a execução do contrato de locação (art. 7º, V, LGPD); e, quando aplicável, o consentimento expresso do titular (art. 7º, I, LGPD).",
-      "§3º. As partes comprometem-se a não divulgar, compartilhar ou utilizar os dados pessoais obtidos em razão deste contrato para finalidades diversas daquelas aqui previstas, salvo por determinação legal ou judicial.",
-      "§4º. A IMOBILIÁRIA adotará medidas técnicas e administrativas adequadas para proteger os dados pessoais contra acessos não autorizados, destruição, perda, alteração ou qualquer forma de tratamento inadequado ou ilícito.",
-      "§5º. Os dados pessoais serão armazenados pelo prazo necessário ao cumprimento das finalidades contratuais e legais, sendo posteriormente eliminados ou anonimizados, quando cabível."
-    ];
-
-    lgpdParagraphs.forEach((p) => {
-      const splitP = pdf.splitTextToSize(p, 170);
-      y = checkPageBreak(y, splitP.length * 4.5 + 4);
-      pdf.text(splitP, 20, y);
-      y += (splitP.length * 4.5) + 3;
-    });
-
-    // SEÇÃO ASSINATURAS — página própria, com o bloco centralizado verticalmente
-    // (antes ficava colado no topo, com muito espaço em branco sobrando embaixo)
-    pdf.addPage();
-    addHeaderAndFooter(pdf, false);
-
-    const estValidadeLines = pdf.splitTextToSize(
-      "Permanecem válidas e inalteradas todas as demais cláusulas do contrato principal de locação e dos termos firmados entre as partes, que não conflitarem com o presente instrumento.",
-      170
-    ).length;
-    let estBlocoAssinaturasHeight = 18 + (estValidadeLines * 4.5 + 10) + 25; // cabeçalho + cláusula + data
-    if (locatariosList.length <= 1) {
-      estBlocoAssinaturasHeight += 25; // linha locatário + locador
-    } else {
-      const paresLocatarios = Math.ceil(locatariosList.length / 2);
-      estBlocoAssinaturasHeight += paresLocatarios * 25 + 25; // pares + locador
-    }
-    estBlocoAssinaturasHeight += 25; // vistoriador
-    estBlocoAssinaturasHeight += 40; // caixa de testemunhas
-
-    const assinaturasTopo = 20;
-    const assinaturasFundo = 280;
-    const espacoDisponivel = assinaturasFundo - assinaturasTopo;
-    y = assinaturasTopo + Math.max(10, (espacoDisponivel - estBlocoAssinaturasHeight) / 2);
-
-    y = drawSectionHeader('CLÁUSULA – DA VALIDADE E INTEGRIDADE DO INSTRUMENTO', y);
-    y += 8;
-
-    pdf.setFontSize(9);
-    pdf.setFont('helvetica', 'normal');
-    const validadeText = pdf.splitTextToSize("Permanecem válidas e inalteradas todas as demais cláusulas do contrato principal de locação e dos termos firmados entre as partes, que não conflitarem com o presente instrumento.", 170);
-    pdf.text(validadeText, 20, y);
-    y += (validadeText.length * 4.5) + 10;
-
-    // Data alinhada à direita
-    pdf.setFontSize(9.5);
-    pdf.setFont('helvetica', 'normal');
-    // Usa a cidade escolhida NESTA vistoria (campo "Cidade da Vistoria" no formulário);
-    // antes esse valor era ignorado e a cidade fixa da imobiliária era usada sempre.
-    const cidadeDaAssinatura = vistoria.companyCity || brandCity || 'Bela Vista de Goiás';
-    const dataCityStr = `${cidadeDaAssinatura}, ${formatDateHelper((vistoria as any).dataVistoria || vistoria.data)}.`;
-    pdf.text(dataCityStr, 190, y, { align: 'right' });
-    y += 25;
-
-    // Linhas de assinatura (posições estruturadas com suporte a múltiplos locatários)
-    y = checkPageBreak(y, 80);
-    pdf.setLineWidth(0.3);
-    pdf.setDrawColor(0, 0, 0);
-    
-    if (locatariosList.length === 1) {
-      // Linha 1 - 1 LOCATÁRIO e LOCADOR lado a lado
-      pdf.line(20, y, 80, y);
-      pdf.line(110, y, 190, y);
-      y += 5;
-      pdf.setFont('helvetica', 'bold');
-      pdf.setFontSize(8.5);
-      const locName = locatariosList[0]?.nome ? `LOCATÁRIO: ${locatariosList[0].nome.toUpperCase()}` : 'LOCATÁRIO';
-      const splitLoc = pdf.splitTextToSize(locName, 65);
-      pdf.text(splitLoc, 50, y, { align: 'center' });
-      pdf.text('LOCADOR', 150, y, { align: 'center' });
-      y += Math.max(splitLoc.length * 4.5, 5) + 15;
-    } else {
-      // Múltiplos locatários: gera linha para cada um em pares
-      for (let i = 0; i < locatariosList.length; i += 2) {
-        y = checkPageBreak(y, 35);
-        const loc1 = locatariosList[i];
-        const loc2 = locatariosList[i + 1];
-
-        pdf.line(20, y, 80, y);
-        if (loc2) {
-          pdf.line(110, y, 190, y);
-        }
-        y += 5;
-        pdf.setFont('helvetica', 'bold');
-        pdf.setFontSize(8.5);
-        
-        const label1 = `LOCATÁRIO ${i + 1}: ${(loc1?.nome || '').toUpperCase()}`;
-        const split1 = pdf.splitTextToSize(label1, 65);
-        pdf.text(split1, 50, y, { align: 'center' });
-
-        if (loc2) {
-          const label2 = `LOCATÁRIO ${i + 2}: ${(loc2?.nome || '').toUpperCase()}`;
-          const split2 = pdf.splitTextToSize(label2, 65);
-          pdf.text(split2, 150, y, { align: 'center' });
-        }
-        y += Math.max(split1.length * 4.5, 5) + 15;
-      }
-
-      // Linha do LOCADOR
-      y = checkPageBreak(y, 30);
-      pdf.line(65, y, 145, y);
-      y += 5;
-      pdf.setFont('helvetica', 'bold');
-      pdf.setFontSize(9);
-      pdf.text('LOCADOR', 105, y, { align: 'center' });
-      y += 20;
-    }
-
-    // Linha VISTORIADOR / REPRESENTANTE DA IMOBILIÁRIA centralizada
-    y = checkPageBreak(y, 30);
-    pdf.line(65, y, 145, y);
-    y += 5;
-    pdf.setFont('helvetica', 'bold');
-    pdf.setFontSize(8.5);
-    const vistoriadorLabel = `VISTORIADOR / REPRESENTANTE DA IMOBILIÁRIA${vistoria.vistoriadorNome ? `: ${vistoria.vistoriadorNome.toUpperCase()}` : ''}`;
-    const splitVistoriador = pdf.splitTextToSize(vistoriadorLabel, 90);
-    pdf.text(splitVistoriador, 105, y, { align: 'center' });
-    y += Math.max(splitVistoriador.length * 4.5, 5) + 15;
-
-    // Caixa TESTEMUNHAS
-    y = checkPageBreak(y, 45);
-    pdf.setDrawColor(0, 48, 102);
-    pdf.roundedRect(20, y, 170, 35, 3, 3, 'S');
-    y += 8;
-    pdf.setFont('helvetica', 'bold');
-    pdf.setTextColor(0, 48, 102);
-    pdf.text('TESTEMUNHAS:', 25, y);
-    pdf.setTextColor(0, 0, 0);
-    y += 8;
-    pdf.setFont('helvetica', 'normal');
-    pdf.setDrawColor(180, 180, 180);
-    pdf.line(25, y, 100, y);
-    pdf.text('1-', 25, y + 4);
-    y += 12;
-    pdf.line(25, y, 100, y);
-    pdf.text('2-', 25, y + 4);
-
-    // Numeração final "Página X de Y" — feita numa segunda passada porque o total
-    // de páginas só é conhecido depois que todo o conteúdo já foi desenhado.
-    const totalPaginas = pdf.getNumberOfPages();
-    const enderecoRodape = (vistoria.imovel?.endereco || '').toUpperCase();
-    // A página 1 já tem seu próprio rodapé rico (endereço/contato/empresa); aqui só
-    // completamos as páginas seguintes, que antes não tinham nenhuma numeração confiável.
-    for (let p = 2; p <= totalPaginas; p++) {
-      pdf.setPage(p);
-      pdf.setFont('helvetica', 'normal');
-      pdf.setFontSize(7.5);
-      pdf.setTextColor(150, 150, 150);
-      if (enderecoRodape) {
-        pdf.text(enderecoRodape, 20, 292, { maxWidth: 130 });
-      }
-      pdf.text(`Página ${p} de ${totalPaginas}`, 190, 292, { align: 'right' });
-      pdf.setTextColor(0, 0, 0);
-    }
-
-    const primaryTenantName = locatariosList[0]?.nome || vistoria.locatario?.nome || 'Doc';
-    const fileName = `Vistoria_${primaryTenantName.replace(/\s/g, '_')}.pdf`;
-
-    // Output as Blob to open in new window
-    const blob = pdf.output('blob');
-    const url = URL.createObjectURL(blob);
-
-    if (options?.forceDownload) {
-      pdf.save(fileName);
-      toast.success("PDF gerado e baixado com sucesso!", { id: toastId });
-    } else {
-      const newWindow = window.open(url, '_blank');
-      if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
-        // If popup is blocked, fallback to direct download
-        pdf.save(fileName);
-        toast.success("PDF gerado e baixado com sucesso!", { id: toastId });
-      } else {
-        toast.success("PDF gerado com sucesso!", { id: toastId });
-      }
-    }
-  } catch (error) {
-    console.error("Erro ao gerar PDF:", error);
-    toast.error("Ocorreu um erro ao gerar o PDF.", { id: toastId });
-  }
-};
+  };
 
   if (isCreating) {
     return (
@@ -1709,84 +578,6 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
         >
           {formStep === 0 && (
             <div className="grid gap-6">
-              {/* Card de Tipo de Vistoria */}
-              <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-8 h-8 rounded-xl bg-indigo-50 flex items-center justify-center">
-                    <Home className="w-4 h-4 text-indigo-600" />
-                  </div>
-                  <h3 className="font-bold text-slate-900">TIPO DE VISTORIA</h3>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setTipoVistoria('entrada')}
-                    className={cn(
-                      "py-3 rounded-xl text-sm font-black uppercase tracking-wide transition-all border-2",
-                      tipoVistoria === 'entrada'
-                        ? "bg-green-500 text-white border-green-500 shadow-sm"
-                        : "bg-slate-50 text-slate-400 border-transparent hover:bg-slate-100"
-                    )}
-                  >
-                    Entrada
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setTipoVistoria('saida')}
-                    className={cn(
-                      "py-3 rounded-xl text-sm font-black uppercase tracking-wide transition-all border-2",
-                      tipoVistoria === 'saida'
-                        ? "bg-orange-500 text-white border-orange-500 shadow-sm"
-                        : "bg-slate-50 text-slate-400 border-transparent hover:bg-slate-100"
-                    )}
-                  >
-                    Saída
-                  </button>
-                </div>
-
-                {tipoVistoria === 'saida' && (
-                  <div className="space-y-1.5 pt-2 border-t border-slate-100">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">
-                      Vistoria de Entrada Correspondente (opcional)
-                    </label>
-                    <select
-                      value={vistoriaEntradaId || ''}
-                      onChange={async (e) => {
-                        const novoId = e.target.value || null;
-                        setVistoriaEntradaId(novoId);
-                        if (!novoId) return;
-                        try {
-                          const entradaSnap = await getDoc(doc(db, 'vistorias', novoId));
-                          if (entradaSnap.exists()) {
-                            const entradaData = entradaSnap.data() as Vistoria;
-                            const locatariosEntrada = (entradaData.locatarios && entradaData.locatarios.length > 0)
-                              ? entradaData.locatarios
-                              : (entradaData.locatario ? [entradaData.locatario] : null);
-                            if (locatariosEntrada && locatariosEntrada.length > 0) {
-                              setLocatarios(locatariosEntrada);
-                              toast.success(`${locatariosEntrada.length > 1 ? 'Locatários preenchidos' : 'Locatário preenchido'} a partir da vistoria de entrada.`);
-                            }
-                          }
-                        } catch (err) {
-                          console.error('Não foi possível carregar os dados da vistoria de entrada:', err);
-                        }
-                      }}
-                      className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 transition-all"
-                    >
-                      <option value="">Nenhuma / não localizada</option>
-                      {vistorias.filter(v => v.tipo !== 'saida' && v.imovel?.endereco).map(v => (
-                        <option key={v.id} value={v.id}>
-                          {v.imovel.endereco} — {v.locatario?.nome || 'Sem locatário'} ({v.data})
-                        </option>
-                      ))}
-                    </select>
-                    <p className="text-[10px] text-slate-400 ml-1">
-                      Vincule a vistoria de entrada do mesmo imóvel para facilitar a comparação de danos.
-                    </p>
-                  </div>
-                )}
-              </div>
-
               {/* Card de Locatários / Inquilinos */}
               <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-6">
                 <div className="flex items-center justify-between">
@@ -1877,6 +668,36 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
                           />
                         </div>
                         <div className="space-y-1.5">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Data Nascimento</label>
+                          <input 
+                            type="text" 
+                            value={loc.dataNascimento}
+                            onChange={e => handleUpdateLocatario(idx, 'dataNascimento', e.target.value)}
+                            className="w-full px-4 py-3 bg-white border border-slate-200/80 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
+                            placeholder="DD/MM/AAAA"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Naturalidade</label>
+                          <input 
+                            type="text" 
+                            value={loc.naturalidade}
+                            onChange={e => handleUpdateLocatario(idx, 'naturalidade', e.target.value)}
+                            className="w-full px-4 py-3 bg-white border border-slate-200/80 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
+                            placeholder="Cidade/Estado"
+                          />
+                        </div>
+                        <div className="space-y-1.5 md:col-span-2">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Filiação</label>
+                          <input 
+                            type="text" 
+                            value={loc.filiacao || ''}
+                            onChange={e => handleUpdateLocatario(idx, 'filiacao', e.target.value)}
+                            className="w-full px-4 py-3 bg-white border border-slate-200/80 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
+                            placeholder="Nome dos pais"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
                           <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">E-mail</label>
                           <input 
                             type="email" 
@@ -1894,6 +715,46 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
                             onChange={e => handleUpdateLocatario(idx, 'telefone', e.target.value)}
                             className="w-full px-4 py-3 bg-white border border-slate-200/80 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
                             placeholder="(00) 00000-0000"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">RG</label>
+                          <input 
+                            type="text" 
+                            value={loc.rg}
+                            onChange={e => handleUpdateLocatario(idx, 'rg', e.target.value)}
+                            className="w-full px-4 py-3 bg-white border border-slate-200/80 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
+                            placeholder="RG"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Nacionalidade</label>
+                          <input 
+                            type="text" 
+                            value={loc.nacionalidade}
+                            onChange={e => handleUpdateLocatario(idx, 'nacionalidade', e.target.value)}
+                            className="w-full px-4 py-3 bg-white border border-slate-200/80 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
+                            placeholder="BRASILEIRO(A)"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Endereço Residencial</label>
+                          <input 
+                            type="text" 
+                            value={loc.endereco}
+                            onChange={e => handleUpdateLocatario(idx, 'endereco', e.target.value)}
+                            className="w-full px-4 py-3 bg-white border border-slate-200/80 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
+                            placeholder="Rua, Número, Bairro..."
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">CEP</label>
+                          <input 
+                            type="text" 
+                            value={loc.cep}
+                            onChange={e => handleUpdateLocatario(idx, 'cep', e.target.value)}
+                            className="w-full px-4 py-3 bg-white border border-slate-200/80 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
+                            placeholder="00000-000"
                           />
                         </div>
                       </div>
@@ -1955,28 +816,6 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
 
               <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-6">
                 <div className="flex items-center gap-2 mb-2">
-                  <div className="w-8 h-8 rounded-xl bg-teal-50 flex items-center justify-center">
-                    <UserCheck className="w-4 h-4 text-teal-600" />
-                  </div>
-                  <h3 className="font-bold text-slate-900">Dados do Vistoriador</h3>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Nome do Vistoriador Responsável</label>
-                  <input
-                    type="text"
-                    value={vistoriadorNome}
-                    onChange={e => setVistoriadorNome(e.target.value)}
-                    className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 transition-all"
-                    placeholder="Nome de quem está fazendo a vistoria"
-                  />
-                  <p className="text-[10px] text-slate-400 ml-1">
-                    Já vem preenchido com o seu nome — mude aqui se outra pessoa da equipe estiver fazendo essa vistoria.
-                  </p>
-                </div>
-              </div>
-
-              <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-6">
-                <div className="flex items-center gap-2 mb-2">
                   <div className="w-8 h-8 rounded-xl bg-purple-50 flex items-center justify-center">
                     <CheckCircle2 className="w-4 h-4 text-purple-600" />
                   </div>
@@ -1988,7 +827,11 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
                       <div className="flex items-center gap-2">
                         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Introdução e Declarações (Pág 1)</label>
                         <button 
-                          onClick={() => setTextoContrato(brandDefaultTexto || companySettings?.defaultTextoContrato || getDefaultTextoContrato(tipoVistoria))}
+                          onClick={() => setTextoContrato(brandDefaultTexto || companySettings?.defaultTextoContrato || `O(A) LOCATÁRIO(A), acima qualificado(a), declara, para os devidos fins, que nesta data recebeu as chaves do imóvel locado, passando a ter a posse do referido bem.
+
+Declara, ainda, que teve ciência das condições do imóvel, conforme laudo de vistoria elaborado pela imobiliária, o qual foi devidamente apresentado, acompanhado e conferido, concordando integralmente com seu estado de conservação no ato da entrega.
+
+O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guarda, conservação e demais obrigações previstas no contrato de locação.`)}
                           className="text-[9px] text-blue-500 font-bold hover:underline"
                           title="Restaurar para o texto padrão definido nas configurações"
                         >
@@ -2030,89 +873,6 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
                       placeholder="Texto que aparecerá no Termo de Constatação (Página 1)..."
                     />
                   </div>
-                  <div className="space-y-3 p-4 rounded-2xl bg-purple-50/50 border border-purple-100">
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-lg bg-purple-100 flex items-center justify-center">
-                        <span className="text-purple-600 text-xs font-black">IA</span>
-                      </div>
-                      <label className="text-[10px] font-bold text-purple-700 uppercase tracking-wider">
-                        Gerar laudo automaticamente
-                      </label>
-                    </div>
-                    <p className="text-[11px] text-slate-500">
-                      Envie aqui <strong>só as fotos que mostram os danos/problemas</strong> que você quer que a IA
-                      destaque no laudo — não precisa ser o registro completo do imóvel. As fotos gerais de cada
-                      cômodo (entrada, sala, cozinha, tudo certinho) você adiciona na próxima etapa, e todas elas
-                      entram no PDF final normalmente.
-                    </p>
-                    <div className="flex items-center justify-between">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">
-                        Descrição livre (fale ou digite)
-                      </label>
-                      <button
-                        type="button"
-                        onClick={handleToggleGravacaoVoz}
-                        className={cn(
-                          "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all",
-                          isGravandoAudio
-                            ? "bg-red-500 text-white animate-pulse"
-                            : "bg-white border border-purple-200 text-purple-600 hover:bg-purple-50"
-                        )}
-                      >
-                        <Mic className="w-3.5 h-3.5" />
-                        {isGravandoAudio ? 'Ouvindo... toque para parar' : 'Falar em vez de digitar'}
-                      </button>
-                    </div>
-                    <textarea
-                      value={descricaoGeral}
-                      onChange={e => setDescricaoGeral(e.target.value)}
-                      rows={4}
-                      className="w-full px-4 py-3 bg-white border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-purple-500/20 transition-all"
-                      placeholder="Ex: parede da sala com um furo perto da janela, piso do quarto 2 riscado, torneira da cozinha pingando..."
-                    />
-
-                    <div
-                      className="space-y-2 p-3 rounded-2xl border-2 border-dashed border-transparent hover:border-purple-200 transition-colors"
-                      {...handleDropZoneEvents(processAndAttachFotosGerais)}
-                    >
-                      <div className="flex items-center justify-between">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">
-                          Fotos de Destaque dos Danos ({fotosGerais.length}) — arraste e solte aqui
-                        </label>
-                        <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-purple-200 text-purple-600 rounded-lg text-xs font-bold cursor-pointer hover:bg-purple-50 transition-all">
-                          <Upload className="w-3.5 h-3.5" />
-                          Adicionar Fotos
-                          <input type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoUploadGeral} />
-                        </label>
-                      </div>
-                      {fotosGerais.length > 0 && (
-                        <div className="grid grid-cols-4 md:grid-cols-6 gap-2">
-                          {fotosGerais.map((foto, pIdx) => (
-                            <div key={pIdx} className="relative group aspect-square rounded-lg overflow-hidden border border-slate-200">
-                              <img src={foto} alt={`Foto ${pIdx + 1}`} className="w-full h-full object-cover" />
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveFotoGeral(pIdx)}
-                                className="absolute top-1 right-1 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                              >
-                                <X className="w-3 h-3" />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={handleGerarLaudoComIA}
-                      disabled={isGerandoLaudo}
-                      className="w-full py-3 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2"
-                    >
-                      {isGerandoLaudo ? 'Gerando...' : 'Gerar Laudo com IA'}
-                    </button>
-                  </div>
-
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
@@ -2184,25 +944,6 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
                 
                 <div className="grid md:grid-cols-3 gap-4">
                   <div className="space-y-1.5 md:col-span-1">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Tipo de Imóvel</label>
-                    <select
-                      value={tipoImovel}
-                      onChange={e => setTipoImovel(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 transition-all"
-                    >
-                      <option value="">Selecione...</option>
-                      <option value="Casa">Casa</option>
-                      <option value="Apartamento">Apartamento</option>
-                      <option value="Sobrado">Sobrado</option>
-                      <option value="Kitnet">Kitnet</option>
-                      <option value="Sala Comercial">Sala Comercial</option>
-                      <option value="Loja">Loja</option>
-                      <option value="Galpão">Galpão</option>
-                      <option value="Terreno">Terreno</option>
-                      <option value="Outro">Outro</option>
-                    </select>
-                  </div>
-                  <div className="space-y-1.5 md:col-span-1">
                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Data da Vistoria</label>
                     <input 
                       type="date" 
@@ -2213,25 +954,13 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
                   </div>
                   <div className="space-y-1.5 md:col-span-1">
                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Cidade da Vistoria</label>
-                    <select
-                      value={CIDADES_PADRAO.includes(vistoriaCity) ? vistoriaCity : '__outra__'}
-                      onChange={e => setVistoriaCity(e.target.value === '__outra__' ? '' : e.target.value)}
+                    <input 
+                      type="text" 
+                      value={vistoriaCity}
+                      onChange={e => setVistoriaCity(e.target.value)}
                       className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 transition-all"
-                    >
-                      {CIDADES_PADRAO.map(c => (
-                        <option key={c} value={c}>{c}</option>
-                      ))}
-                      <option value="__outra__">Outra cidade...</option>
-                    </select>
-                    {!CIDADES_PADRAO.includes(vistoriaCity) && (
-                      <input
-                        type="text"
-                        value={vistoriaCity}
-                        onChange={e => setVistoriaCity(e.target.value)}
-                        className="w-full mt-1.5 px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 transition-all"
-                        placeholder="Digite a cidade..."
-                      />
-                    )}
+                      placeholder="Ex: Bela Vista de Goiás"
+                    />
                   </div>
                   <div className="space-y-1.5 md:col-span-1">
                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">UF (Estado)</label>
@@ -2242,68 +971,6 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
                       className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 transition-all"
                       placeholder="Ex: GO"
                     />
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-6">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-8 h-8 rounded-xl bg-cyan-50 flex items-center justify-center">
-                    <Settings className="w-4 h-4 text-cyan-600" />
-                  </div>
-                  <h3 className="font-bold text-slate-900">MEDIDORES E CHAVES</h3>
-                </div>
-
-                <div className="grid md:grid-cols-3 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Energia — Nº Medidor</label>
-                    <input type="text" value={medidorEnergiaNumero} onChange={e => setMedidorEnergiaNumero(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 transition-all" placeholder="Nº do medidor" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Energia — Leitura</label>
-                    <input type="text" value={medidorEnergiaLeitura} onChange={e => setMedidorEnergiaLeitura(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 transition-all" placeholder="Leitura atual" />
-                  </div>
-                  <div />
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Água — Nº Hidrômetro</label>
-                    <input type="text" value={medidorAguaNumero} onChange={e => setMedidorAguaNumero(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 transition-all" placeholder="Nº do hidrômetro" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Água — Leitura</label>
-                    <input type="text" value={medidorAguaLeitura} onChange={e => setMedidorAguaLeitura(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 transition-all" placeholder="Leitura atual" />
-                  </div>
-                  <div />
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Gás — Nº Medidor (se houver)</label>
-                    <input type="text" value={medidorGasNumero} onChange={e => setMedidorGasNumero(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 transition-all" placeholder="Nº do medidor" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Gás — Leitura</label>
-                    <input type="text" value={medidorGasLeitura} onChange={e => setMedidorGasLeitura(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 transition-all" placeholder="Leitura atual" />
-                  </div>
-                </div>
-
-                <div className="border-t border-slate-100 pt-5 grid md:grid-cols-3 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Chaves — Quantidade</label>
-                    <input type="text" value={chavesQuantidade} onChange={e => setChavesQuantidade(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 transition-all" placeholder="Ex: 3 chaves, 2 tags" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Identificação</label>
-                    <input type="text" value={chavesIdentificacao} onChange={e => setChavesIdentificacao(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 transition-all" placeholder="Ex: portão, porta social, tag garagem" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Funcionamento</label>
-                    <input type="text" value={chavesFuncionamento} onChange={e => setChavesFuncionamento(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 transition-all" placeholder="Ex: todas testadas e funcionando" />
                   </div>
                 </div>
               </div>
@@ -2376,7 +1043,7 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
               </AnimatePresence>
 
               {comodos.map((comodo, cIdx) => (
-                <div key={cIdx} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-6">
+                <div key={`${comodo.nome}-${cIdx}`} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-6">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                        <div className="w-8 h-8 rounded-xl bg-slate-900 flex items-center justify-center">
@@ -2407,68 +1074,41 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
                   </div>
 
                   <div className="space-y-4">
-                    {comodo.itens.map((item, iIdx) => {
-                      const estadoAtual = item.estado || (item.ok ? 'bom' : 'ruim');
-                      const setEstado = (novoEstado: 'novo' | 'bom' | 'regular' | 'ruim') => {
-                        const newComodos = [...comodos];
-                        newComodos[cIdx].itens[iIdx].estado = novoEstado;
-                        newComodos[cIdx].itens[iIdx].ok = (novoEstado === 'novo' || novoEstado === 'bom');
-                        setComodos(newComodos);
-                      };
-                      return (
-                      <div key={`${item.nome}-${iIdx}`} className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center p-3 rounded-2xl bg-slate-50/50">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-1.5 min-w-0">
+                    {comodo.itens.map((item, iIdx) => (
+                      <div key={item.nome} className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center p-3 rounded-2xl bg-slate-50/50">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-bold text-slate-700">{item.nome}</span>
+                          <div className="flex bg-white rounded-lg p-1 border border-slate-100">
                             <button
-                              onClick={() => handleRemoveItem(cIdx, iIdx)}
-                              title="Remover item"
-                              className="p-1 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all shrink-0"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                            <span className="text-sm font-bold text-slate-700 truncate">{item.nome}</span>
-                          </div>
-                          <div className="flex bg-white rounded-lg p-1 border border-slate-100 shrink-0">
-                            <button
-                              onClick={() => setEstado('novo')}
+                              onClick={() => {
+                                const newComodos = [...comodos];
+                                newComodos[cIdx].itens[iIdx].ok = true;
+                                setComodos(newComodos);
+                              }}
                               className={cn(
-                                "px-2.5 py-1 rounded text-[9px] font-black transition-all",
-                                estadoAtual === 'novo' ? "bg-emerald-500 text-white shadow-sm" : "text-slate-400 hover:bg-slate-50"
+                                "px-3 py-1 rounded text-[10px] font-black transition-all",
+                                item.ok ? "bg-green-500 text-white shadow-sm" : "text-slate-400 hover:bg-slate-50"
                               )}
                             >
-                              NOVO
+                              OK
                             </button>
                             <button
-                              onClick={() => setEstado('bom')}
+                              onClick={() => {
+                                const newComodos = [...comodos];
+                                newComodos[cIdx].itens[iIdx].ok = false;
+                                setComodos(newComodos);
+                              }}
                               className={cn(
-                                "px-2.5 py-1 rounded text-[9px] font-black transition-all",
-                                estadoAtual === 'bom' ? "bg-green-500 text-white shadow-sm" : "text-slate-400 hover:bg-slate-50"
+                                "px-3 py-1 rounded text-[10px] font-black transition-all",
+                                !item.ok ? "bg-red-500 text-white shadow-sm" : "text-slate-400 hover:bg-slate-50"
                               )}
                             >
-                              BOM
-                            </button>
-                            <button
-                              onClick={() => setEstado('regular')}
-                              className={cn(
-                                "px-2.5 py-1 rounded text-[9px] font-black transition-all",
-                                estadoAtual === 'regular' ? "bg-amber-500 text-white shadow-sm" : "text-slate-400 hover:bg-slate-50"
-                              )}
-                            >
-                              REGULAR
-                            </button>
-                            <button
-                              onClick={() => setEstado('ruim')}
-                              className={cn(
-                                "px-2.5 py-1 rounded text-[9px] font-black transition-all",
-                                estadoAtual === 'ruim' ? "bg-red-500 text-white shadow-sm" : "text-slate-400 hover:bg-slate-50"
-                              )}
-                            >
-                              RUIM
+                              RESSALVA
                             </button>
                           </div>
                         </div>
                         
-                        {(estadoAtual === 'regular' || estadoAtual === 'ruim') && (
+                        {!item.ok && (
                           <input 
                             type="text"
                             placeholder="Descreva a ressalva..."
@@ -2482,44 +1122,12 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
                           />
                         )}
                       </div>
-                      );
-                    })}
-
-                    {/* Adicionar item avulso ao cômodo — nome livre (ex: "Janela", "Ar Condicionado") */}
-                    <div className="flex items-center gap-2 p-1">
-                      <input
-                        type="text"
-                        value={novoItemPorComodo[cIdx] || ''}
-                        onChange={e => setNovoItemPorComodo(prev => ({ ...prev, [cIdx]: e.target.value }))}
-                        onKeyDown={e => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            handleAddItem(cIdx, novoItemPorComodo[cIdx] || '');
-                            setNovoItemPorComodo(prev => ({ ...prev, [cIdx]: '' }));
-                          }
-                        }}
-                        placeholder="Adicionar item (ex: Janela, Porta...)"
-                        className="flex-1 px-3 py-2.5 bg-slate-50 border-none rounded-xl text-xs font-medium focus:ring-2 focus:ring-blue-500/20 text-slate-900 placeholder:text-slate-300 transition-all"
-                      />
-                      <button
-                        onClick={() => {
-                          handleAddItem(cIdx, novoItemPorComodo[cIdx] || '');
-                          setNovoItemPorComodo(prev => ({ ...prev, [cIdx]: '' }));
-                        }}
-                        className="px-3 py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-xl transition-all shrink-0"
-                        title="Adicionar item"
-                      >
-                        <Plus className="w-4 h-4" />
-                      </button>
-                    </div>
+                    ))}
                   </div>
 
                   {/* Room Photos */}
-                  <div
-                    className="pt-4 border-t border-slate-100 rounded-2xl transition-colors"
-                    {...handleDropZoneEvents((files) => processAndAttachComodoPhotos(cIdx, files))}
-                  >
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Fotos do Cômodo — arraste e solte aqui</p>
+                  <div className="pt-4 border-t border-slate-100">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Fotos do Cômodo</p>
                     <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
                       {comodo.fotos.map((foto, pIdx) => (
                         <div key={pIdx} className="relative aspect-square rounded-2xl overflow-hidden group/photo ring-1 ring-slate-100">
@@ -2615,11 +1223,6 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
                       corretorId: user.uid,
                       corretorNome: user.displayName || profile?.displayName || 'Corretor',
                       companyId: profile?.companyId || 'default',
-                      tipo: tipoVistoria,
-                      vistoriaEntradaId,
-                      vistoriadorNome,
-                      descricaoGeral,
-                      fotosGerais,
                       textoContrato,
                       textoLaudo,
                       styleContrato,
@@ -2627,11 +1230,6 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
                       locatario: locatarios[0] || DEFAULT_LOCATARIO,
                       locatarios: locatarios,
                       imovel,
-                      tipoImovel,
-                      medidorEnergia: { numero: medidorEnergiaNumero, leitura: medidorEnergiaLeitura },
-                      medidorAgua: { numero: medidorAguaNumero, leitura: medidorAguaLeitura },
-                      medidorGas: { numero: medidorGasNumero, leitura: medidorGasLeitura },
-                      chaves: { quantidade: chavesQuantidade, identificacao: chavesIdentificacao, funcionamento: chavesFuncionamento },
                       locador,
                       comodos,
                       status: 'rascunho',
@@ -2648,86 +1246,6 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
                   <Printer className="w-5 h-5" />
                   Visualizar PDF
                 </button>
-              </div>
-
-              <div className="p-6 bg-indigo-50/50 rounded-3xl border border-indigo-100 text-left space-y-4">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-xl bg-indigo-100 flex items-center justify-center">
-                    <PenTool className="w-4 h-4 text-indigo-600" />
-                  </div>
-                  <h4 className="font-bold text-slate-900">Assinatura Digital (CredSign)</h4>
-                </div>
-                <p className="text-xs text-slate-500">
-                  Baixe o PDF e envie para assinatura pelo CredPago/CredSign. Depois de enviar, marque o status
-                  abaixo e cole o link (se tiver) pra manter o controle de quais vistorias já foram assinadas.
-                </p>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    const tempVistoria: Vistoria = {
-                      id: editingVistoria?.id || 'preview',
-                      corretorId: user.uid,
-                      corretorNome: user.displayName || profile?.displayName || 'Corretor',
-                      companyId: profile?.companyId || 'default',
-                      tipo: tipoVistoria,
-                      vistoriaEntradaId,
-                      vistoriadorNome,
-                      descricaoGeral,
-                      fotosGerais,
-                      textoContrato,
-                      textoLaudo,
-                      styleContrato,
-                      styleLaudo,
-                      locatario: locatarios[0] || DEFAULT_LOCATARIO,
-                      locatarios: locatarios,
-                      imovel,
-                      tipoImovel,
-                      medidorEnergia: { numero: medidorEnergiaNumero, leitura: medidorEnergiaLeitura },
-                      medidorAgua: { numero: medidorAguaNumero, leitura: medidorAguaLeitura },
-                      medidorGas: { numero: medidorGasNumero, leitura: medidorGasLeitura },
-                      chaves: { quantidade: chavesQuantidade, identificacao: chavesIdentificacao, funcionamento: chavesFuncionamento },
-                      locador,
-                      comodos,
-                      status: 'rascunho',
-                      data: dataVistoria,
-                      companyCity: vistoriaCity,
-                      companyState: vistoriaState,
-                      createdAt: { seconds: Date.now() / 1000, nanoseconds: 0 } as any,
-                      updatedAt: { seconds: Date.now() / 1000, nanoseconds: 0 } as any
-                    };
-                    handleEnviarParaAssinatura(tempVistoria);
-                  }}
-                  className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2"
-                >
-                  <PenTool className="w-4 h-4" />
-                  Baixar PDF e Abrir CredSign
-                </button>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Status</label>
-                    <select
-                      value={statusAssinatura}
-                      onChange={e => setStatusAssinatura(e.target.value as any)}
-                      className="w-full mt-1 px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold focus:outline-none focus:border-indigo-400 transition-colors"
-                    >
-                      <option value="nao_enviado">Não enviado</option>
-                      <option value="enviado">Enviado p/ assinatura</option>
-                      <option value="assinado">Assinado</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Link do CredSign (opcional)</label>
-                    <input
-                      type="text"
-                      value={linkAssinatura}
-                      onChange={e => setLinkAssinatura(e.target.value)}
-                      placeholder="Cole o link aqui"
-                      className="w-full mt-1 px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-medium focus:outline-none focus:border-indigo-400 transition-colors"
-                    />
-                  </div>
-                </div>
               </div>
             </div>
           )}
