@@ -288,6 +288,37 @@
         "observacoes": { "type": "string" }
       },
       "required": ["companyId", "status", "locadorNome", "imovelEndereco", "inquilinoNome", "contratoValorMensal", "credPagoDataNotificacao", "credPagoDataLimite"]
+    },
+    "ContratoLocacao": {
+      "title": "ContratoLocacao",
+      "description": "Contrato de locação com editor de blocos arrastáveis",
+      "type": "object",
+      "properties": {
+        "companyId": { "type": "string" },
+        "numeroContrato": { "type": "string" },
+        "titulo": { "type": "string" },
+        "tipoLocacao": { "type": "string" },
+        "status": { "type": "string" },
+        "blocks": { "type": "array", "items": { "type": "object" } },
+        "condicoes": { "type": "object" },
+        "locatarios": { "type": "array", "items": { "type": "object" } },
+        "imovel": { "type": "object" },
+        "styleSettings": { "type": "object" }
+      },
+      "required": ["companyId", "numeroContrato", "titulo", "status", "blocks"]
+    },
+    "ContratoModelo": {
+      "title": "ContratoModelo",
+      "description": "Modelo reutilizável de contrato de locação",
+      "type": "object",
+      "properties": {
+        "companyId": { "type": "string" },
+        "nome": { "type": "string" },
+        "descricao": { "type": "string" },
+        "tipoLocacao": { "type": "string" },
+        "blocks": { "type": "array", "items": { "type": "object" } }
+      },
+      "required": ["companyId", "nome", "blocks"]
     }
   },
   "firestore": {
@@ -346,6 +377,14 @@
     "/despejos/{despejoId}": {
       "schema": "Despejo",
       "description": "Eviction lawsuit tracking"
+    },
+    "/contratos_locacao/{contratoId}": {
+      "schema": "ContratoLocacao",
+      "description": "Lease agreement documents"
+    },
+    "/contratos_modelos/{modeloId}": {
+      "schema": "ContratoModelo",
+      "description": "Lease agreement reusable templates"
     }
   }
 }

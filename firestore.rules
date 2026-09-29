@@ -192,6 +192,30 @@ service cloud.firestore {
       allow delete: if isSuperAdmin() || (isActiveUser() && isCompanyAdmin(resource.data.companyId));
     }
 
+    // Collection: contratos_locacao
+    match /contratos_locacao/{id} {
+      allow read: if isSuperAdmin() || (isActiveUser() && belongsToCompany(resource.data.companyId));
+      allow create: if isSuperAdmin() || (isActiveUser() && belongsToCompany(request.resource.data.companyId));
+      allow update: if isSuperAdmin() || (
+        isActiveUser() && 
+        belongsToCompany(resource.data.companyId) && 
+        belongsToCompany(request.resource.data.companyId)
+      );
+      allow delete: if isSuperAdmin() || (isActiveUser() && isCompanyAdmin(resource.data.companyId));
+    }
+
+    // Collection: contratos_modelos
+    match /contratos_modelos/{id} {
+      allow read: if isSuperAdmin() || (isActiveUser() && belongsToCompany(resource.data.companyId));
+      allow create: if isSuperAdmin() || (isActiveUser() && belongsToCompany(request.resource.data.companyId));
+      allow update: if isSuperAdmin() || (
+        isActiveUser() && 
+        belongsToCompany(resource.data.companyId) && 
+        belongsToCompany(request.resource.data.companyId)
+      );
+      allow delete: if isSuperAdmin() || (isActiveUser() && isCompanyAdmin(resource.data.companyId));
+    }
+
     // Collection: despejos
     match /despejos/{id} {
       allow read: if isSuperAdmin() || (isActiveUser() && belongsToCompany(resource.data.companyId));
@@ -219,7 +243,11 @@ service cloud.firestore {
         isCompanyAdmin(getUserData().companyId)
       ));
       allow create: if isSuperAdmin() || (isActiveUser() && request.resource.data.userId == request.auth.uid);
-      allow update, delete: if isSuperAdmin() || (isActiveUser() && isCompanyAdmin(getUserData().companyId));
+      allow update: if isSuperAdmin() || (isActiveUser() && (
+        resource.data.userId == request.auth.uid ||
+        isCompanyAdmin(getUserData().companyId)
+      ));
+      allow delete: if isSuperAdmin() || (isActiveUser() && isCompanyAdmin(getUserData().companyId));
     }
 
     // Collection: ponto_ajustes
