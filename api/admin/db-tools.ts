@@ -147,6 +147,62 @@ export default async function handler(req: any, res: any) {
         return res.status(200).json({ ok: true, corrigidos });
       }
 
+      // Relatório SOMENTE LEITURA: pagamentos órfãos, locações duplicadas e IDs de convite no rateio
+      if (action === "audit-comissoes") {
+        const [comSnap, usersSnap] = await Promise.all([
+          adminDb.collection("comissoes").get(),
+          adminDb.collection("users").get()
+        ]);
+        const users = usersSnap.docs.map((d: any) => ({ id: d.id, ...(d.data() || {}) }));
+        const realByEmail = new Map<string, any>();
+        users.forEach((u: any) => {
+          if (u.email && !String(u.id).startsWith("pending_")) realByEmail.set(String(u.email).toLowerCase(), u);
+        });
+        const pendingMap: Record<string, { email?: string; nome?: string; idReal?: string }> = {};
+        users.filter((u: any) => String(u.id).startsWith("pending_")).forEach((u: any) => {
+          const real = u.email ? realByEmail.get(String(u.email).toLowerCase()) : null;
+          pendingMap[u.id] = { email: u.email, nome: u.displayName || u.name || u.nome, idReal: real?.id };
+        });
+
+        const norm = (v: any) => String(v || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+        const pagamentosOrfaos: any[] = [];
+        const rateioComConvite: any[] = [];
+        const grupos = new Map<string, any[]>();
+
+        comSnap.docs.forEach((d: any) => {
+          const c = d.data() || {};
+          const rateio = c.rateio || [];
+          const idsRateio = new Set(rateio.map((r: any) => r.corretorId));
+          const base = { docId: d.id, imovel: c.imovel, inquilino: c.inquilino, mes: c.mesReferencia, companyId: c.companyId };
+
+          (c.pagamentosCorretores || []).forEach((p: any) => {
+            if (!idsRateio.has(p.corretorId)) {
+              const mesmoNome = rateio.find((r: any) => norm(r.corretorNome) === norm(p.corretorNome));
+              pagamentosOrfaos.push({ ...base, corretorNome: p.corretorNome, corretorIdPagamento: p.corretorId, corretorIdNoRateio: mesmoNome?.corretorId || null, valor: p.valor, data: p.data, tipo: p.tipo });
+            }
+          });
+          rateio.forEach((r: any) => {
+            if (String(r.corretorId || "").startsWith("pending_")) {
+              rateioComConvite.push({ ...base, corretorNome: r.corretorNome, corretorId: r.corretorId, idReal: pendingMap[r.corretorId]?.idReal || null });
+            }
+          });
+          const chave = `${c.companyId}|${norm(c.imovel)}|${norm(c.inquilino)}|${c.mesReferencia || ""}`;
+          const lista = grupos.get(chave) || [];
+          lista.push({ ...base, aluguel: c.aluguelMensal ?? c.primeiroAluguel, status: c.status, createdAt: c.createdAt, qtdPagamentos: (c.pagamentosCorretores || []).length });
+          grupos.set(chave, lista);
+        });
+
+        const duplicadas = Array.from(grupos.values()).filter(g => g.length > 1);
+        return res.status(200).json({
+          totalComissoes: comSnap.size,
+          resumo: { pagamentosOrfaos: pagamentosOrfaos.length, rateioComConvite: rateioComConvite.length, gruposDuplicados: duplicadas.length },
+          cadastrosDeConvite: pendingMap,
+          pagamentosOrfaos,
+          rateioComConvite,
+          duplicadas
+        });
+      }
+
       if (action === "find-by-corretor") {
         const corretorId = req.query?.corretorId;
         if (!corretorId) return res.status(400).json({ error: "corretorId é obrigatório" });
