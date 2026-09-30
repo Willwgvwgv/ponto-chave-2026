@@ -1228,14 +1228,34 @@ const UserManagement = ({
     if (!editingUserProfile) return;
     try {
       let docId = editingUserProfile.uid;
-      
-      // Se o uid é um convite pré-autorizado ou temporário, buscar pelo e-mail
-      const isPendingId = !docId || docId.startsWith("pending_") || editingUserProfile.isPreAuthorized === true;
-      if (isPendingId) {
-        const q = query(collection(db, "users"), where("email", "==", editingUserProfile.email));
-         const snap = await getDocs(q);
+      const emailOriginal = (users.find(u => u.uid === editingUserProfile.uid)?.email || editingUserProfile.email || "").trim().toLowerCase();
+      const emailNovo = (editingUserProfile.email || "").trim().toLowerCase();
+
+      // Se não há uid, localiza o cadastro pelo e-mail ORIGINAL (não pelo digitado agora,
+      // que pode ser de outra pessoa).
+      if (!docId) {
+        const q = query(collection(db, "users"), where("email", "==", emailOriginal));
+        const snap = await getDocs(q);
         if (!snap.empty) {
           docId = snap.docs[0].id;
+        }
+      }
+      if (!docId) {
+        toast.error("Não foi possível localizar este cadastro.");
+        return;
+      }
+
+      // Não permite dois cadastros com o mesmo e-mail — isso gerava corretor "duplicado"
+      // no rateio e comissões que sumiam para o próprio corretor.
+      if (!emailNovo) {
+        toast.error("Informe o e-mail do usuário.");
+        return;
+      }
+      if (emailNovo !== emailOriginal) {
+        const dupSnap = await getDocs(query(collection(db, "users"), where("email", "==", emailNovo)));
+        if (dupSnap.docs.some(d => d.id !== docId)) {
+          toast.error("Já existe outro usuário com este e-mail.");
+          return;
         }
       }
       
