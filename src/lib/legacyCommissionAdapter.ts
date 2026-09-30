@@ -8,6 +8,8 @@ export interface DistribuicaoItem {
   porcentagem?: number;
   totalPago?: number;
   status?: "pendente" | "pago";
+  composicao?: RateioComissao["composicao"];
+  dataPrevista?: string;
 }
 
 export interface RepasseItem {
@@ -104,7 +106,9 @@ export function toViewModel(comissao: Comissao): RentalFinancialViewModel {
       valor: r.valor,
       porcentagem: r.porcentagem,
       totalPago: r.totalPago || 0,
-      status: r.status || "pendente"
+      status: r.status || "pendente",
+      composicao: r.composicao,
+      dataPrevista: r.dataPrevista
     })),
     repasses: (comissao.pagamentosCorretores || []).map(p => ({
       id: p.id,
@@ -144,7 +148,9 @@ export function fromViewModel(view: RentalFinancialViewModel): Comissao {
       valor: d.valor,
       porcentagem: d.porcentagem,
       totalPago: d.totalPago,
-      status: d.status
+      status: d.status,
+      ...(d.composicao ? { composicao: d.composicao } : {}),
+      ...(d.dataPrevista ? { dataPrevista: d.dataPrevista } : {})
     })),
     pagamentosCorretores: view.repasses.map(r => ({
       id: r.id,

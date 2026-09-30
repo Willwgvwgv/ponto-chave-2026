@@ -46,6 +46,14 @@ import { CompetenceCard } from "../rentals-finance/CompetenceCard";
 import { DistributionCard } from "../rentals-finance/DistributionCard";
 import { RepasseTimeline } from "../rentals-finance/RepasseTimeline";
 import { formatPersonName } from "../../lib/utils";
+import {
+  getStatusDetalhado,
+  getClientePagou,
+  getDataPrevista,
+  getDataPrevistaPadrao,
+  formatDiaMes,
+  hojeLocal
+} from "../../lib/rentalPaymentSchedule";
 
 export const formatCurrency = (val: number) => {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(val);
@@ -137,17 +145,10 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
   }, [convertedModels, selectedMonthFilter]);
 
   // Status detection for each rental contract — precisa vir antes do filteredRentals abaixo, que já depende dela
+  // Status considera se o cliente já pagou e a data prevista de cada repasse
+  // (auxiliar/secretária fecha no fim do mês) — ver lib/rentalPaymentSchedule.
   const getRowStatus = (r: RentalFinancialViewModel): "concluido" | "em_aberto" | "atrasado" => {
-    const isConcluido = r.statusFinanceiro === "concluida" || r.legacyDoc.status === "pago";
-    if (isConcluido) return "concluido";
-
-    const isAtrasado = (
-      r.legacyDoc.status === "atraso" || 
-      (!!r.legacyDoc.vencimento && new Date(r.legacyDoc.vencimento + 'T23:59:59') < new Date())
-    );
-    if (isAtrasado) return "atrasado";
-
-    return "em_aberto";
+    return getStatusDetalhado(r.legacyDoc).status;
   };
 
   // FILTERED RENTALS FOR THE RESTURED LIST — também usado pelos cards de resumo (KPIs) abaixo,
@@ -415,6 +416,9 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
   const [porcentagemFidelite, setPorcentagemFidelite] = useState(40);
   const [porcentagemLocador, setPorcentagemLocador] = useState(20);
   const [vencimento, setVencimento] = useState("");
+  const [clientePagouForm, setClientePagouForm] = useState(false);
+  const [dataRecebimentoForm, setDataRecebimentoForm] = useState("");
+  const [dataHonorarios, setDataHonorarios] = useState("");
   const [mesReferencia, setMesReferencia] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
@@ -465,6 +469,9 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
     setPorcentagemFidelite(40);
     setPorcentagemLocador(20);
     setVencimento("");
+    setClientePagouForm(false);
+    setDataRecebimentoForm("");
+    setDataHonorarios("");
     setObservacoes("");
     setRateios([]);
     setSelectedBrokerId("");
@@ -502,6 +509,9 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
       setPorcentagemLocador(locadorItem ? locadorItem.porcentagem : 20);
       
       setVencimento(editingRental.legacyDoc.vencimento || "");
+      setClientePagouForm(getClientePagou(editingRental.legacyDoc));
+      setDataRecebimentoForm(editingRental.legacyDoc.dataRecebimento || "");
+      setDataHonorarios(editingRental.legacyDoc.dataPagamentoHonorarios || "");
       setMesReferencia(editingRental.legacyDoc.mesReferencia || "");
       setObservacoes(editingRental.legacyDoc.observacoes || "");
       setRateios(editingRental.legacyDoc.rateio || []);
@@ -742,7 +752,8 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
       .filter(r => getRowStatus(r) === "atrasado")
       .reduce((acc, r) => {
         if (!filterText.trim()) {
-          return acc + (r.legacyDoc.primeiroAluguel || r.valorAluguel || 0);
+          // Só o que está de fato vencido: aluguel do cliente em atraso, ou os repasses vencidos
+          return acc + getStatusDetalhado(r.legacyDoc).valorAtrasado;
         }
         const parteDoCorretor = getRelevantDistribuicoes(r).reduce(
           (sum: number, d: any) => sum + Math.max(0, (d.valor || 0) - (d.totalPago || 0)),
@@ -860,6 +871,15 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
     }));
   };
 
+  const handleUpdateDataPrevista = (brokerId: string, papel: RateioComissao["papel"], data: string) => {
+    setRateios(prev => prev.map(rt => {
+      if (rt.corretorId !== brokerId || rt.papel !== papel) return rt;
+      // Firestore não aceita campo "undefined": sem data, remove a chave.
+      const { dataPrevista: _old, ...resto } = rt;
+      return data ? { ...resto, dataPrevista: data } : resto;
+    }));
+  };
+
   const handleRemoveBrokerFromRateio = (id: string, papelAlvo?: "captador" | "locacao" | "auxiliar") => {
     const afterRemoval = rateios.filter(rt => !(rt.corretorId === id && (papelAlvo ? rt.papel === papelAlvo : true)));
     const papel = papelAlvo || rateios.find(rt => rt.corretorId === id)?.papel || "";
@@ -973,6 +993,9 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
         mesReferencia,
         rateio: updatedRateiosWithRecalculatedValues,
         observacoes,
+        clientePagou: clientePagouForm,
+        dataRecebimento: clientePagouForm ? (dataRecebimentoForm || hojeLocal()) : "",
+        dataPagamentoHonorarios: dataHonorarios || "",
         updatedAt: new Date().toISOString()
       };
       onUpdateRental(updatedRec);
@@ -989,7 +1012,10 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
         vencimento: vencimento || new Date().toISOString().split("T")[0],
         mesReferencia,
         status: "pendente",
-        statusFinanceiro: "aguardando",
+        statusFinanceiro: clientePagouForm ? "recebido" : "aguardando",
+        clientePagou: clientePagouForm,
+        dataRecebimento: clientePagouForm ? (dataRecebimentoForm || hojeLocal()) : "",
+        dataPagamentoHonorarios: dataHonorarios || "",
         jaPagoCorretores: false,
         rateio: updatedRateiosWithRecalculatedValues,
         observacoes,
@@ -1133,6 +1159,16 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
     toast.success("Lançamento de repasse removido.");
   };
 
+  const handleSetClientePagou = (pago: boolean) => {
+    if (!selectedRental) return;
+    onUpdateRental({
+      ...selectedRental.legacyDoc,
+      clientePagou: pago,
+      dataRecebimento: pago ? hojeLocal() : "",
+      updatedAt: new Date().toISOString()
+    });
+  };
+
   const handleUpdateStatusFinanceiro = (nextStatus: FinancialStatus) => {
     if (!selectedRental) return;
 
@@ -1249,7 +1285,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
               className="flex items-center gap-2 px-5 py-2.5 bg-[#0f274a] hover:bg-[#1a3b68] text-white rounded-2xl text-xs font-bold tracking-wide shadow-md shadow-[#0f274a]/20 cursor-pointer transition-all shrink-0"
             >
               <Plus className="w-4 h-4 stroke-[2.5]" />
-              <span>Novo Repasse</span>
+              <span>Nova Locação</span>
             </button>
           </div>
         </div>
@@ -1292,7 +1328,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                     onChange={e => setInquilino(e.target.value)} 
                     placeholder="Ex: João Ferreira Gomes" 
                     required 
-                    className="w-full px-4 py-3 bg-white border border-slate-205 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-xs font-bold transition-all"
+                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-xs font-bold transition-all"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
@@ -1366,25 +1402,25 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                 </div>
 
                 <div className="bg-sky-50 border border-sky-100 p-4 rounded-2xl text-xs space-y-2.5 shadow-sm">
-                  <div className="flex justify-between items-center text-slate-650">
+                  <div className="flex justify-between items-center text-slate-600">
                     <span className="font-semibold">Faturamento Total do Contrato:</span>
                     <span className="font-bold text-slate-800 font-mono">{formatCurrency(aluguelMensal)}</span>
                   </div>
-                  <div className="flex justify-between items-center text-slate-650">
+                  <div className="flex justify-between items-center text-slate-600">
                     <span>Taxa Retida Imobiliária ({porcentagemFideliteLiquida}%):</span>
                     <span className="font-bold text-indigo-600 font-mono">{formatCurrency(valorFidelite)}</span>
                   </div>
                   {sumAuxiliarPct > 0 && (
-                    <div className="flex justify-between items-center text-slate-650">
+                    <div className="flex justify-between items-center text-slate-600">
                       <span>Auxiliar / Secretária ({sumAuxiliarPct}%, da parte da Imobiliária):</span>
                       <span className="font-bold text-violet-600 font-mono">{formatCurrency(valorAuxiliaresValue)}</span>
                     </div>
                   )}
-                  <div className="flex justify-between items-center text-slate-650">
+                  <div className="flex justify-between items-center text-slate-600">
                     <span>Rateio Locador ({porcentagemLocador}%):</span>
                     <span className="font-bold text-amber-600 font-mono">{formatCurrency(valorLocadorValue)}</span>
                   </div>
-                  <div className="flex justify-between items-center text-slate-650 font-bold text-emerald-600">
+                  <div className="flex justify-between items-center text-slate-600 font-bold text-emerald-600">
                     <span>Rateio Captadores ({porcentagemCaptadores}%):</span>
                     <span className="font-extrabold font-mono">{formatCurrency(valorCaptadoresValue)}</span>
                   </div>
@@ -1417,7 +1453,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                       <select
                         value={selectedCaptadorId}
                         onChange={e => setSelectedCaptadorId(e.target.value)}
-                        className="flex-1 px-3 py-2 bg-slate-50 border border-slate-205 rounded-xl text-xs font-bold focus:outline-none"
+                        className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none"
                       >
                         <option value="">Buscar captador...</option>
                         {team.filter(b => b.permRateioLocacao !== false || b.permissions?.includes("rateio_locacao") || b.id === selectedCaptadorId).map(b => (
@@ -1427,7 +1463,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                       <button
                         type="button"
                         onClick={() => handleAddCaptador(selectedCaptadorId)}
-                        className="px-4 py-2 bg-indigo-650 hover:bg-indigo-700 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all shadow-md"
+                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all shadow-md"
                       >
                         Incluir
                       </button>
@@ -1440,7 +1476,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                       <select
                         value={selectedAuxiliarId}
                         onChange={e => setSelectedAuxiliarId(e.target.value)}
-                        className="flex-1 px-3 py-2 bg-slate-50 border border-slate-205 rounded-xl text-xs font-bold focus:outline-none"
+                        className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none"
                       >
                         <option value="">Buscar auxiliar...</option>
                         {team.map(b => (
@@ -1465,9 +1501,9 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                       {Math.min(100, porcentagemFidelite + porcentagemLocador)}% / 100%
                     </span>
                   </div>
-                  <div className="w-full bg-slate-150 rounded-full h-2 overflow-hidden border border-slate-200/40">
+                  <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden border border-slate-200/40">
                     <div 
-                      className="h-full transition-all duration-300 bg-emerald-550" 
+                      className="h-full transition-all duration-300 bg-emerald-500" 
                       style={{ width: `${Math.min(100, porcentagemFidelite + porcentagemLocador)}%` }}
                     />
                   </div>
@@ -1522,7 +1558,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                                     onChange={(e) => rt.papel === "auxiliar"
                                       ? handleUpdateAuxiliarPct(rt.corretorId, Number(e.target.value))
                                       : handleUpdateCaptadorPct(rt.corretorId, Number(e.target.value))}
-                                    className="w-14 px-1 py-0.5 bg-slate-50 border border-slate-205 rounded text-center text-[10px] font-bold text-slate-700 focus:outline-none focus:border-indigo-500"
+                                    className="w-14 px-1 py-0.5 bg-slate-50 border border-slate-200 rounded text-center text-[10px] font-bold text-slate-700 focus:outline-none focus:border-indigo-500"
                                     placeholder="%"
                                   />
                                   <span className="text-[10px] font-bold text-slate-500">%</span>
@@ -1534,11 +1570,33 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                                 </>
                               )}
                             </div>
+                            {(() => {
+                              const padrao = getDataPrevistaPadrao(
+                                { dataPagamentoHonorarios: dataHonorarios, vencimento, mesReferencia },
+                                rt.papel
+                              );
+                              return (
+                                <label className="flex items-center gap-1.5 pt-1 text-[11px] text-slate-500 font-medium normal-case tracking-normal">
+                                  <span>Pagar em</span>
+                                  <input
+                                    type="date"
+                                    value={rt.dataPrevista || ""}
+                                    onChange={e => handleUpdateDataPrevista(rt.corretorId, rt.papel, e.target.value)}
+                                    className="px-1.5 py-0.5 bg-slate-50 border border-slate-200 rounded text-[11px] font-bold text-slate-700 focus:outline-none focus:border-indigo-500"
+                                  />
+                                  {!rt.dataPrevista && padrao && (
+                                    <span className="text-slate-400">padrão {formatDiaMes(padrao)}{rt.papel === "auxiliar" ? " (fim do mês)" : ""}</span>
+                                  )}
+                                </label>
+                              );
+                            })()}
                           </div>
                           <div className="flex items-center gap-2.5 font-bold">
-                            <span className="font-extrabold text-slate-855 font-mono">{formatCurrency(rt.valor)}</span>
+                            <span className="font-extrabold text-slate-800 font-mono">{formatCurrency(rt.valor)}</span>
                             <button
                               type="button"
+                              aria-label={`Remover ${formatPersonName(rt.corretorNome)} do rateio`}
+                              title={`Remover ${formatPersonName(rt.corretorNome)} do rateio`}
                               onClick={() => handleRemoveBrokerFromRateio(rt.corretorId, rt.papel)}
                               className="p-1.5 text-red-500 hover:bg-red-50 rounded-full transition-all"
                             >
@@ -1564,25 +1622,84 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Vencimento da Parcela</label>
-              <input 
-                type="date" 
-                value={vencimento} 
-                onChange={e => setVencimento(e.target.value)} 
-                required 
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-xs font-bold transition-all"
-              />
+          {/* 3. Pagamento — cliente e honorários */}
+          <div className="space-y-4 bg-slate-50/50 p-6 rounded-[28px] border border-slate-100">
+            <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest">3. Pagamento</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label htmlFor="rc-vencimento" className="block text-[11px] font-bold text-slate-500 mb-1.5">Vencimento do aluguel (cliente)</label>
+                <input
+                  id="rc-vencimento"
+                  type="date"
+                  value={vencimento}
+                  onChange={e => setVencimento(e.target.value)}
+                  required
+                  className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-xs font-bold transition-all"
+                />
+              </div>
+
+              <div>
+                <span className="block text-[11px] font-bold text-slate-500 mb-1.5">Cliente já pagou?</span>
+                <div className="flex gap-2">
+                  <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1 shrink-0" role="radiogroup" aria-label="Cliente já pagou?">
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={!clientePagouForm}
+                      onClick={() => setClientePagouForm(false)}
+                      className={`px-3 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${!clientePagouForm ? "bg-slate-900 text-white" : "text-slate-500 hover:text-slate-800"}`}
+                    >
+                      Não
+                    </button>
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={clientePagouForm}
+                      onClick={() => {
+                        setClientePagouForm(true);
+                        if (!dataRecebimentoForm) setDataRecebimentoForm(hojeLocal());
+                      }}
+                      className={`px-3 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${clientePagouForm ? "bg-emerald-600 text-white" : "text-slate-500 hover:text-slate-800"}`}
+                    >
+                      Sim
+                    </button>
+                  </div>
+                  {clientePagouForm && (
+                    <input
+                      type="date"
+                      aria-label="Data em que o cliente pagou"
+                      value={dataRecebimentoForm}
+                      onChange={e => setDataRecebimentoForm(e.target.value)}
+                      className="flex-1 min-w-0 px-3 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-xs font-bold"
+                    />
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="rc-honorarios" className="block text-[11px] font-bold text-slate-500 mb-1.5">Pagamento dos honorários</label>
+                <input
+                  id="rc-honorarios"
+                  type="date"
+                  value={dataHonorarios}
+                  onChange={e => setDataHonorarios(e.target.value)}
+                  className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-xs font-bold transition-all"
+                />
+                <p className="text-[11px] text-slate-400 mt-1">
+                  {dataHonorarios ? "Data prevista para pagar os corretores." : "Em branco: mesmo dia do vencimento."} Auxiliar/secretária recebe no último dia do mês.
+                </p>
+              </div>
             </div>
+
             <div>
-              <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Diretrizes ou Anotações</label>
-              <input 
-                type="text" 
-                value={observacoes} 
-                onChange={e => setObservacoes(e.target.value)} 
-                placeholder="Ex: Contrato de locatário captado via divulgação orgânica no Instagram" 
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-xs font-bold transition-all"
+              <label htmlFor="rc-obs" className="block text-[11px] font-bold text-slate-500 mb-1.5">Anotações</label>
+              <input
+                id="rc-obs"
+                type="text"
+                value={observacoes}
+                onChange={e => setObservacoes(e.target.value)}
+                placeholder="Ex.: captado via Instagram"
+                className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-xs font-bold transition-all"
               />
             </div>
           </div>
@@ -1603,7 +1720,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
               type="submit" 
               className="px-8 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest cursor-pointer transition-all shadow-lg shadow-emerald-500/15 font-bold"
             >
-              {editingRentalId ? "Salvar Alterações" : "Criar Definições"}
+              {editingRentalId ? "Salvar Alterações" : "Lançar Comissão"}
             </button>
           </div>
         </form>
@@ -1754,6 +1871,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                 value={filterText} 
                 onChange={e => setFilterText(e.target.value)} 
                 placeholder="Buscar por imóvel, corretor ou locatário..." 
+                aria-label="Buscar por imóvel, corretor ou locatário"
                 className="w-full pl-10 pr-4 py-2 bg-slate-50/80 border border-slate-200/80 rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
               />
               {filterText.trim() && (
@@ -1844,25 +1962,25 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
           {/* Tabela de Locações — Controle de Status Financeiro */}
           <div className="bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[980px] text-left border-collapse">
+              <table className="w-full md:min-w-[980px] text-left border-collapse">
                 <thead>
                   <tr className="border-b border-slate-100 bg-slate-50/50">
-                    <th className="py-3.5 pl-6 pr-4 text-[11px] font-black text-slate-400 uppercase tracking-widest w-full">
+                    <th className="py-3.5 pl-4 md:pl-6 pr-2 md:pr-4 text-[11px] font-black text-slate-400 uppercase tracking-widest w-full">
                       IMÓVEL / REFERÊNCIA
                     </th>
-                    <th className="py-3.5 px-4 text-center text-[11px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">
+                    <th className="hidden md:table-cell py-3.5 px-4 text-center text-[11px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">
                       COMPETÊNCIA
                     </th>
-                    <th className="py-3.5 px-4 text-center text-[11px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">
+                    <th className="hidden md:table-cell py-3.5 px-4 text-center text-[11px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">
                       VALOR ALUGUEL
                     </th>
-                    <th className="py-3.5 px-4 text-center text-[11px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">
+                    <th className="hidden md:table-cell py-3.5 px-4 text-center text-[11px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">
                       COMISSÃO TOTAL
                     </th>
-                    <th className="py-3.5 px-4 text-center text-[11px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">
+                    <th className="hidden md:table-cell py-3.5 px-4 text-center text-[11px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">
                       STATUS
                     </th>
-                    <th className="py-3.5 pr-6 pl-4 text-right text-[11px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap w-[132px] sticky right-0 z-10 bg-slate-50 border-l border-slate-100">
+                    <th className="py-3.5 pr-3 md:pr-6 pl-2 md:pl-4 text-right text-[11px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap md:w-[132px] sticky right-0 z-10 bg-slate-50 border-l border-slate-100">
                       AÇÕES
                     </th>
                   </tr>
@@ -1876,7 +1994,15 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                     </tr>
                   ) : (
                     filteredRentals.map((r) => {
-                      const rowStatus = getRowStatus(r);
+                      const statusInfo = getStatusDetalhado(r.legacyDoc);
+                      const rowStatus = statusInfo.status;
+                      const lancadoPor = r.legacyDoc.criadoPorNome ? formatPersonName(r.legacyDoc.criadoPorNome).split(" ")[0] : "";
+                      const lancadoEm = (() => {
+                        const raw: any = r.legacyDoc.createdAt;
+                        if (!raw) return "";
+                        const d = typeof raw === "string" ? new Date(raw) : (raw?.toDate ? raw.toDate() : new Date(raw));
+                        return isNaN(d.getTime()) ? "" : d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+                      })();
                       const brokers = getBrokersList(r);
                       const distribuidoPct = getDistribuidoPct(r);
 
@@ -1889,18 +2015,29 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                           {/* IMÓVEL / REFERÊNCIA — max-w-0 faz a coluna ocupar só o espaço que
                               sobra e cortar endereços longos com "…", em vez de alargar a tabela
                               e empurrar STATUS para baixo da coluna AÇÕES fixa */}
-                          <td className="py-4 pl-6 pr-4 max-w-0" title={r.imovel}>
+                          <td className="py-4 pl-4 md:pl-6 pr-2 md:pr-4 max-w-0" title={r.imovel}>
                             <div className="flex items-center gap-3 min-w-0">
-                              <div className="w-10 h-10 rounded-xl bg-[#0f274a] text-white flex items-center justify-center shrink-0 shadow-xs">
+                              <div className="hidden sm:flex w-10 h-10 rounded-xl bg-[#0f274a] text-white items-center justify-center shrink-0 shadow-xs">
                                 <Building2 className="w-5 h-5" />
                               </div>
                               <div className="space-y-0.5 min-w-0">
-                                <p className="text-sm font-bold text-slate-900 truncate">
+                                <p className="text-sm font-bold text-slate-900 line-clamp-2 md:line-clamp-none md:truncate">
                                   {r.imovel}
                                 </p>
                                 <p className="text-xs text-slate-500 font-medium truncate">
                                   Inquilino: {r.inquilino ? formatPersonName(r.inquilino) : "Não informado"} · Cód: LOC-{r.id.slice(0, 4).toUpperCase()}
                                 </p>
+                                {/* Resumo no celular: as colunas de valor/status ficam ocultas abaixo de md */}
+                                <div className="md:hidden pt-1 space-y-1">
+                                  <p className="text-xs text-slate-600">
+                                    <span className="font-bold text-[#0f274a]">{formatCurrency(r.legacyDoc.valorFidelite || 0)}</span>
+                                    {" · "}{r.competencia.label}{lancadoPor ? ` · por ${lancadoPor}` : ""}
+                                  </p>
+                                  <p className={`text-xs font-bold ${rowStatus === "atrasado" ? "text-rose-600" : rowStatus === "concluido" ? "text-emerald-700" : "text-amber-700"}`}>
+                                    {rowStatus === "atrasado" ? "Atrasado" : rowStatus === "concluido" ? "Concluída" : "Em aberto"}
+                                    {rowStatus !== "concluido" && <span className="font-medium"> · {statusInfo.motivo}</span>}
+                                  </p>
+                                </div>
                                 {/* Broker avatar letter bubbles */}
                                 <div className="flex items-center -space-x-1 pt-1">
                                   {brokers.map((b) => (
@@ -1918,22 +2055,27 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                           </td>
 
                           {/* COMPETÊNCIA */}
-                          <td className="py-4 px-4 text-center">
+                          <td className="hidden md:table-cell py-4 px-4 text-center">
                             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200/80 rounded-xl text-xs font-bold text-slate-700">
                               <Calendar className="w-3.5 h-3.5 text-slate-400" />
                               {r.competencia.label}
                             </span>
+                            {(lancadoPor || lancadoEm) && (
+                              <span className="block mt-1.5 text-[11px] text-slate-400 whitespace-nowrap" title="Quem lançou e quando">
+                                {lancadoPor ? `por ${lancadoPor}` : "lançado"}{lancadoEm ? ` · ${lancadoEm}` : ""}
+                              </span>
+                            )}
                           </td>
 
                           {/* VALOR ALUGUEL */}
-                          <td className="py-4 px-4 text-center">
+                          <td className="hidden md:table-cell py-4 px-4 text-center">
                             <span className="text-sm font-bold text-slate-800 font-mono">
                               {formatCurrency(r.legacyDoc.primeiroAluguel || r.valorAluguel || 0)}
                             </span>
                           </td>
 
                           {/* COMISSÃO TOTAL */}
-                          <td className="py-4 px-4 text-center">
+                          <td className="hidden md:table-cell py-4 px-4 text-center">
                             <div className="flex flex-col items-center">
                               <span className="text-sm font-extrabold text-[#0f274a] font-mono">
                                 {formatCurrency(r.legacyDoc.valorFidelite || 0)}
@@ -1945,35 +2087,44 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                           </td>
 
                           {/* STATUS */}
-                          <td className="py-4 px-4 text-center whitespace-nowrap">
+                          <td className="hidden md:table-cell py-4 px-4 text-center">
                             {rowStatus === "concluido" && (
-                              <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap bg-emerald-50 text-emerald-700 border border-emerald-200">
                                 <Check className="w-3 h-3 stroke-[3]" />
                                 CONCLUÍDA
                               </span>
                             )}
                             {rowStatus === "em_aberto" && (
-                              <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                              <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap bg-amber-50 text-amber-700 border border-amber-200">
                                 <Clock className="w-3 h-3" />
                                 EM ABERTO
                               </span>
                             )}
                             {rowStatus === "atrasado" && (
-                              <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                              <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap bg-rose-50 text-rose-700 border border-rose-200">
                                 <AlertTriangle className="w-3 h-3" />
                                 ATRASADO
+                              </span>
+                            )}
+                            {rowStatus !== "concluido" && (
+                              <span
+                                className={`block mt-1.5 mx-auto max-w-[170px] text-[11px] font-medium leading-snug ${rowStatus === "atrasado" ? "text-rose-600" : "text-slate-500"}`}
+                                title={statusInfo.pendencias.map(p => `${formatPersonName(p.nome)}: ${formatCurrency(p.saldo)}${p.dataPrevista ? ` até ${formatDiaMes(p.dataPrevista)}` : ""}`).join("\n")}
+                              >
+                                {statusInfo.motivo}
                               </span>
                             )}
                           </td>
 
                           {/* AÇÕES — fixa à direita (sticky) para nunca ficar cortada quando a
                               tabela precisar rolar horizontalmente em telas mais estreitas */}
-                          <td className={`py-4 pr-6 pl-4 text-right whitespace-nowrap sticky right-0 z-10 border-l border-slate-100 ${selectedRentalId === r.id ? 'bg-blue-50/40' : 'bg-white group-hover:bg-slate-50'}`}>
+                          <td className={`py-4 pr-3 md:pr-6 pl-2 md:pl-4 text-right whitespace-nowrap sticky right-0 z-10 border-l border-slate-100 ${selectedRentalId === r.id ? 'bg-blue-50/40' : 'bg-white group-hover:bg-slate-50'}`}>
                             <div className="flex items-center justify-end gap-0.5" onClick={e => e.stopPropagation()}>
                               <button
                                 type="button"
                                 onClick={() => handleExportSingleRentalPDF(r)}
                                 title="Exportar relatório de pagamento desta locação"
+                                aria-label={`Exportar relatório de ${r.imovel}`}
                                 className="p-2 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-xl cursor-pointer transition-all"
                               >
                                 <Download className="w-4 h-4" />
@@ -1986,6 +2137,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                                   }
                                 }}
                                 title="Excluir esta locação"
+                                aria-label={`Excluir locação de ${r.imovel}`}
                                 className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl cursor-pointer transition-all"
                               >
                                 <Trash2 className="w-4 h-4" />
@@ -1994,6 +2146,8 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                                 type="button"
                                 onClick={() => toggleExpandRental(r.id)}
                                 title={selectedRentalId === r.id ? "Recolher" : "Ver detalhes da comissão"}
+                                aria-label={selectedRentalId === r.id ? "Recolher detalhes" : "Ver detalhes da comissão"}
+                                aria-expanded={selectedRentalId === r.id}
                                 className="p-2 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-xl cursor-pointer transition-all"
                               >
                                 {selectedRentalId === r.id ? (
@@ -2050,10 +2204,42 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                                         {selectedRental.distribuicao.length} {selectedRental.distribuicao.length === 1 ? 'participante' : 'participantes'} no rateio
                                       </span>
                                       {(criadoPorNome || criadoEmLabel) && (
-                                        <span className="text-[11px] text-slate-400">
-                                          · Lançado{criadoPorNome ? ` por ${criadoPorNome}` : ""}{criadoEmLabel ? ` em ${criadoEmLabel}` : ""}
+                                        <span className="text-xs text-slate-500">
+                                          · Lançado{criadoPorNome ? ` por ${formatPersonName(criadoPorNome)}` : ""}{criadoEmLabel ? ` em ${criadoEmLabel}` : ""}
                                         </span>
                                       )}
+                                      {(() => {
+                                        const doc = selectedRental.legacyDoc;
+                                        const pagou = getClientePagou(doc);
+                                        const venc = doc.vencimento || "";
+                                        const vencido = !pagou && !!venc && venc < hojeLocal();
+                                        return pagou ? (
+                                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold">
+                                            <Check className="w-3.5 h-3.5" />
+                                            Cliente pagou{doc.dataRecebimento ? ` em ${formatDiaMes(doc.dataRecebimento)}` : ""}
+                                            <button
+                                              type="button"
+                                              onClick={() => handleSetClientePagou(false)}
+                                              className="ml-1 text-emerald-600/70 hover:text-emerald-800 underline underline-offset-2 font-medium cursor-pointer"
+                                            >
+                                              desfazer
+                                            </button>
+                                          </span>
+                                        ) : (
+                                          <span className="inline-flex items-center gap-2">
+                                            <span className={`text-xs font-bold ${vencido ? "text-rose-600" : "text-slate-500"}`}>
+                                              {vencido ? `Cliente não pagou · venceu ${formatDiaMes(venc)}` : `Aguardando cliente${venc ? ` · vence ${formatDiaMes(venc)}` : ""}`}
+                                            </span>
+                                            <button
+                                              type="button"
+                                              onClick={() => handleSetClientePagou(true)}
+                                              className="px-2.5 py-1 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 text-xs font-bold cursor-pointer"
+                                            >
+                                              Marcar cliente como pago
+                                            </button>
+                                          </span>
+                                        );
+                                      })()}
                                     </div>
 
                                     <div className="flex items-center gap-2.5 flex-wrap">
@@ -2106,7 +2292,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                                   </div>
 
                                   {/* 4 KPIs Cards Resumo Executivo */}
-                                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                                     {/* 1º Aluguel */}
                                     <div className="bg-white border border-slate-200/80 p-5 rounded-3xl shadow-xs">
                                       <div className="flex items-center justify-between">
@@ -2254,7 +2440,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                                                     isBrokerFullyPaid
                                                       ? 'bg-slate-50/70 border-slate-200/80'
                                                       : 'bg-white border-slate-200 hover:border-slate-300 shadow-xs'
-                                                  } flex flex-col sm:flex-row sm:items-center justify-between gap-4`}
+                                                  } flex flex-col 2xl:flex-row 2xl:items-center justify-between gap-4`}
                                                 >
                                                   {/* Left: Avatar + Name + Role — avatar neutro, papel como texto simples (não pill colorido) */}
                                                   <div className="flex items-center gap-3 min-w-[180px]">
@@ -2263,6 +2449,16 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                                                     </div>
                                                     <div>
                                                       <span className="text-sm font-medium text-slate-900">{formatPersonName(rt.corretorNome)}</span>
+                                                      {(() => {
+                                                        const prevista = getDataPrevista(selectedRental.legacyDoc, rt as unknown as RateioComissao);
+                                                        if (!prevista || isBrokerFullyPaid) return null;
+                                                        const atrasado = getClientePagou(selectedRental.legacyDoc) && prevista < hojeLocal();
+                                                        return (
+                                                          <span className={`text-[11px] font-bold block mt-0.5 ${atrasado ? "text-rose-600" : "text-slate-500"}`}>
+                                                            {atrasado ? `Atrasado desde ${formatDiaMes(prevista)}` : `Pagar até ${formatDiaMes(prevista)}`}
+                                                          </span>
+                                                        );
+                                                      })()}
                                                       <span className="text-xs text-slate-500 block mt-0.5">
                                                         {roleLabel} · {isCombinado
                                                           ? rt.composicao!.map(c => `${c.porcentagem}% ${c.papel === 'locacao' ? 'Locador' : c.papel === 'auxiliar' ? 'Auxiliar' : 'Captador'}`).join(' + ')
@@ -2272,7 +2468,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                                                   </div>
 
                                                   {/* Middle: Numbers */}
-                                                  <div className="grid grid-cols-3 gap-2 text-left sm:text-right border-y sm:border-y-0 border-slate-100 py-2 sm:py-0">
+                                                  <div className="grid grid-cols-3 gap-x-4 gap-y-1 text-left 2xl:text-right border-y 2xl:border-y-0 border-slate-100 py-2 2xl:py-0 whitespace-nowrap tabular-nums">
                                                     <div>
                                                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Devido</span>
                                                       <span className="text-xs font-extrabold text-slate-800">{formatCurrency(rt.valor)}</span>

@@ -239,6 +239,9 @@ export interface RateioComissao {
   // (ex: Locador + Captador) — o valor/porcentagem acima já vêm somados; isto aqui
   // é só para exibir o detalhamento de cada parte na interface.
   composicao?: { papel: "captador" | "locacao" | "auxiliar"; porcentagem: number; valor: number }[];
+  // Data prevista para o repasse deste participante (YYYY-MM-DD). Se vazio, segue o padrão
+  // da locação (dataPagamentoHonorarios; auxiliar → último dia do mês).
+  dataPrevista?: string;
 }
 
 export interface PagamentoCorretor {
@@ -278,6 +281,10 @@ export interface Comissao {
   statusFinanceiro?: string;
   dataRecebimento?: string;
   contaBancariaRecebimento?: string;
+  // Cliente já pagou o 1º aluguel/honorários? (ausente em lançamentos antigos — ver getClientePagou)
+  clientePagou?: boolean;
+  // Dia combinado para pagar os honorários dos corretores (YYYY-MM-DD)
+  dataPagamentoHonorarios?: string;
 }
 
 export interface LocatarioVistoria {
