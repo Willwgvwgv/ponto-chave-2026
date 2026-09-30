@@ -1159,6 +1159,19 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
     toast.success("Lançamento de repasse removido.");
   };
 
+  // Altera a data prevista de repasse de UM participante direto no detalhe da locação
+  const [editandoDataDe, setEditandoDataDe] = useState<string | null>(null);
+  const handleSaveDataPrevista = (corretorId: string, data: string) => {
+    if (!selectedRental) return;
+    const rateio = (selectedRental.legacyDoc.rateio || []).map(rt => {
+      if (rt.corretorId !== corretorId) return rt;
+      const { dataPrevista: _old, ...resto } = rt; // Firestore não aceita undefined
+      return data ? { ...resto, dataPrevista: data } : resto;
+    });
+    onUpdateRental({ ...selectedRental.legacyDoc, rateio, updatedAt: new Date().toISOString() });
+    setEditandoDataDe(null);
+  };
+
   const handleSetClientePagou = (pago: boolean) => {
     if (!selectedRental) return;
     onUpdateRental({
@@ -2451,12 +2464,52 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                                                       <span className="text-sm font-medium text-slate-900">{formatPersonName(rt.corretorNome)}</span>
                                                       {(() => {
                                                         const prevista = getDataPrevista(selectedRental.legacyDoc, rt as unknown as RateioComissao);
-                                                        if (!prevista || isBrokerFullyPaid) return null;
-                                                        const atrasado = getClientePagou(selectedRental.legacyDoc) && prevista < hojeLocal();
+                                                        if (isBrokerFullyPaid) return null;
+                                                        const atrasado = !!prevista && getClientePagou(selectedRental.legacyDoc) && prevista < hojeLocal();
+                                                        if (editandoDataDe === rt.corretorId) {
+                                                          return (
+                                                            <span className="flex items-center gap-1.5 mt-0.5 h-[18px]">
+                                                              <input
+                                                                type="date"
+                                                                autoFocus
+                                                                aria-label={`Data de pagamento de ${formatPersonName(rt.corretorNome)}`}
+                                                                defaultValue={prevista}
+                                                                // Salva ao sair do campo ou com Enter (não a cada tecla — digitar o ano
+                                                                // geraria datas intermediárias como 0002-10-31). Esc cancela.
+                                                                onBlur={e => {
+                                                                  const v = e.currentTarget.value;
+                                                                  if (v && v !== prevista && Number(v.slice(0, 4)) >= 2000) handleSaveDataPrevista(rt.corretorId, v);
+                                                                  else setEditandoDataDe(null);
+                                                                }}
+                                                                onKeyDown={e => {
+                                                                  if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); }
+                                                                  if (e.key === "Escape") { e.currentTarget.value = prevista; setEditandoDataDe(null); }
+                                                                }}
+                                                                className="h-[18px] px-1 bg-white border border-slate-300 rounded text-[11px] font-bold text-slate-700 focus:outline-none focus:border-indigo-500"
+                                                              />
+                                                              {(rt as any).dataPrevista && (
+                                                                <button
+                                                                  type="button"
+                                                                  onMouseDown={e => e.preventDefault()}
+                                                                  onClick={() => handleSaveDataPrevista(rt.corretorId, "")}
+                                                                  className="text-[11px] text-slate-500 hover:text-slate-800 underline underline-offset-2 cursor-pointer"
+                                                                >
+                                                                  usar padrão
+                                                                </button>
+                                                              )}
+                                                            </span>
+                                                          );
+                                                        }
                                                         return (
-                                                          <span className={`text-[11px] font-bold block mt-0.5 ${atrasado ? "text-rose-600" : "text-slate-500"}`}>
-                                                            {atrasado ? `Atrasado desde ${formatDiaMes(prevista)}` : `Pagar até ${formatDiaMes(prevista)}`}
-                                                          </span>
+                                                          <button
+                                                            type="button"
+                                                            onClick={() => setEditandoDataDe(rt.corretorId)}
+                                                            title="Alterar data de pagamento"
+                                                            className={`group/data flex w-fit items-center gap-1 text-[11px] font-bold mt-0.5 h-[18px] rounded cursor-pointer hover:underline underline-offset-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${atrasado ? "text-rose-600" : "text-slate-500"}`}
+                                                          >
+                                                            {!prevista ? "Definir data de pagamento" : atrasado ? `Atrasado desde ${formatDiaMes(prevista)}` : `Pagar até ${formatDiaMes(prevista)}`}
+                                                            <Pencil className="w-3 h-3 opacity-60 group-hover/data:opacity-100" />
+                                                          </button>
                                                         );
                                                       })()}
                                                       <span className="text-xs text-slate-500 block mt-0.5">
