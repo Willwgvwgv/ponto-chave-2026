@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
-import { db, collection, getDocs, query, where, orderBy, doc, addDoc, updateDoc, deleteDoc, getDoc, setDoc, limit } from "../firebase";
+import { db, collection, getDocs, query, where, orderBy, doc, addDoc, updateDoc, deleteDoc, getDoc, setDoc, limit, handleFirestoreError, OperationType } from "../firebase";
 import { Sale, BrokerSplit, ComissoneUser, Comissao, RateioComissao, PagamentoCorretor, Despejo, PontoRegistro, SolicitacaoAjustePonto, UserProfile } from "../types";
 import { getExpectedDailyMinutes } from "../utils/jornadaUtils";
 import { toast } from "sonner";
@@ -956,13 +956,11 @@ export function useUpdateForecastMutation() {
 export function useRentals(companyId: string) {
   const safeId = companyId || "default_agency";
 
-  useEffect(() => {
-    try {
-      localStorage.removeItem("comissone_store_rentals");
-    } catch (e) {
-      console.warn("Erro ao limpar cache local de locações:", e);
-    }
-  }, []);
+  // Removido: efeito que apagava "comissone_store_rentals" do localStorage a
+  // cada vez que esta tela era aberta. Isso destruía silenciosamente qualquer
+  // lançamento que tivesse caído no fallback local (ex.: por falha de gravação
+  // no Firestore), sem o usuário nunca saber — foi essa combinação que fez um
+  // lançamento de comissão "sumir" mesmo com toast de sucesso na tela.
 
   return useQuery({
     queryKey: ["rentals", safeId],
@@ -1013,16 +1011,18 @@ export function useCreateRentalMutation() {
       try {
         await setDoc(doc(db, "comissoes", generatedId), docData);
         if (procId) {
-          await updateDoc(doc(db, "processes", procId), { 
-            isCommissionLaunched: true, 
-            commissionRefId: generatedId 
+          await updateDoc(doc(db, "processes", procId), {
+            isCommissionLaunched: true,
+            commissionRefId: generatedId
           });
         }
       } catch (err) {
-        console.warn("Offline/local fallback para criação de comissão de locação:", err);
-        const local = getStoredData();
-        const updatedRentals = [{ id: generatedId, ...docData } as Comissao, ...local.rentals];
-        saveStoredData({ rentals: updatedRentals });
+        // Antes: qualquer falha aqui (não só offline real) caía num fallback
+        // silencioso só em localStorage, e a tela ainda mostrava "sucesso" —
+        // fazendo um lançamento sumir sem nenhum aviso de erro. Agora a falha
+        // é reportada de verdade, para o usuário saber na hora que não salvou.
+        handleFirestoreError(err, OperationType.CREATE, `comissoes/${generatedId}`);
+        throw err;
       }
       return generatedId;
     },
@@ -1053,10 +1053,11 @@ export function useUpdateRentalMutation() {
           await updateDoc(doc(db, "comissoes", rental.id), { ...rental });
         }
       } catch (err) {
-        console.warn("Offline/local fallback para atualização de comissão de locação:", err);
-        const local = getStoredData();
-        const updatedRentals = local.rentals.map(r => r.id === rental.id ? rental : r);
-        saveStoredData({ rentals: updatedRentals });
+        // Mesma correção do create: isso alimenta handleSavePayment (registro de
+        // pagamento de repasse) — um pagamento "salvo com sucesso" que na
+        // verdade não gravou no Firestore é pior que um erro visível.
+        handleFirestoreError(err, OperationType.UPDATE, `comissoes/${rental.id}`);
+        throw err;
       }
     },
     onSuccess: (data, variables) => {
@@ -1085,9 +1086,11 @@ export function useDeleteRentalMutation() {
           await deleteDoc(doc(db, "comissoes", id));
         }
       } catch (err) {
-        console.warn("Offline/local fallback para exclusão de comissão de locação:", err);
+        handleFirestoreError(err, OperationType.DELETE, `comissoes/${id}`);
+        throw err;
       }
-      // Sempre remove do armazenamento local para garantir sincronização total
+      // Mantém o armazenamento local em sincronia após uma exclusão que
+      // realmente aconteceu no Firestore (não mais usado como fallback silencioso).
       const local = getStoredData();
       const updatedRentals = local.rentals.filter(r => r.id !== id);
       saveStoredData({ rentals: updatedRentals });
@@ -1534,7 +1537,11 @@ export function usePontoEquipe(agencyId: string | undefined, ano: number, mes: n
   });
 }
 
-export function useAjustesPendentes(agencyId: string | undefined) {
+// A regra de "ponto_ajustes" só concede list sem filtro de userId para quem é
+// admin/gerente da empresa (isCompanyAdmin) — por isso "enabled" também exige
+// isAdmin, evitando disparar a consulta (e o erro de permissão) para um
+// usuário comum, que não usa esse contador mesmo.
+export function useAjustesPendentes(agencyId: string | undefined, isAdmin: boolean = false) {
   return useQuery({
     queryKey: ["ponto_ajustes", agencyId],
     queryFn: async (): Promise<SolicitacaoAjustePonto[]> => {
@@ -1548,7 +1555,7 @@ export function useAjustesPendentes(agencyId: string | undefined) {
       list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
       return list;
     },
-    enabled: !!agencyId,
+    enabled: !!agencyId && isAdmin,
   });
 }
 
@@ -1568,37 +1575,42 @@ export function useRegistrarPonto() {
       const docId = `${params.userId}_${todayStr}`;
       const docRef = doc(db, "ponto_registros", docId);
 
-      const snap = await getDoc(docRef);
-      let reg: Partial<PontoRegistro> = {};
-      if (snap.exists()) {
-        reg = snap.data() as Partial<PontoRegistro>;
-      } else {
-        reg = {
-          id: docId,
-          userId: params.userId,
-          userName: params.userName,
-          agencyId: params.agencyId,
-          date: todayStr,
-          status: "incompleto",
-          createdAt: new Date().toISOString()
-        };
+      try {
+        const snap = await getDoc(docRef);
+        let reg: Partial<PontoRegistro> = {};
+        if (snap.exists()) {
+          reg = snap.data() as Partial<PontoRegistro>;
+        } else {
+          reg = {
+            id: docId,
+            userId: params.userId,
+            userName: params.userName,
+            agencyId: params.agencyId,
+            date: todayStr,
+            status: "incompleto",
+            createdAt: new Date().toISOString()
+          };
+        }
+
+        reg[params.campo] = params.horario;
+
+        const calc = calcularHoras(reg, params.jornadaDiariaMinutos || 480, todayStr);
+        if (calc.trabalhadas > 0) {
+          reg.horasTrabalhadas = calc.trabalhadas;
+          reg.horasExtras = calc.extras;
+          const isSaturday = new Date(todayStr + "T00:00:00").getDay() === 6;
+          const isCompleted = (reg.entrada && reg.saidaAlmoco && reg.retornoAlmoco && reg.saida) || (isSaturday && reg.entrada && (reg.saida || reg.saidaAlmoco));
+          reg.status = isCompleted ? "completo" : "incompleto";
+        } else {
+          reg.status = "incompleto";
+        }
+
+        await setDoc(docRef, reg);
+        return reg;
+      } catch (error) {
+        handleFirestoreError(error, OperationType.WRITE, `ponto_registros/${docId}`);
+        throw error;
       }
-
-      reg[params.campo] = params.horario;
-
-      const calc = calcularHoras(reg, params.jornadaDiariaMinutos || 480, todayStr);
-      if (calc.trabalhadas > 0) {
-        reg.horasTrabalhadas = calc.trabalhadas;
-        reg.horasExtras = calc.extras;
-        const isSaturday = new Date(todayStr + "T00:00:00").getDay() === 6;
-        const isCompleted = (reg.entrada && reg.saidaAlmoco && reg.retornoAlmoco && reg.saida) || (isSaturday && reg.entrada && (reg.saida || reg.saidaAlmoco));
-        reg.status = isCompleted ? "completo" : "incompleto";
-      } else {
-        reg.status = "incompleto";
-      }
-
-      await setDoc(docRef, reg);
-      return reg;
     },
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["ponto_hoje", variables.userId] });
@@ -1607,7 +1619,6 @@ export function useRegistrarPonto() {
       toast.success(`Ponto registrado com sucesso!`);
     },
     onError: (err) => {
-      console.error(err);
       toast.error("Erro ao registrar ponto.");
     }
   });
@@ -1758,6 +1769,3 @@ export function useResponderAjuste() {
     }
   });
 }
-
-
-

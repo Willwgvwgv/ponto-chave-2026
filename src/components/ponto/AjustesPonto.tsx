@@ -22,7 +22,8 @@ export const AjustesPonto: React.FC<AjustesPontoProps> = ({ profile }) => {
   const agencyId = profile?.companyId || "default_agency";
   const currentAdminName = profile?.displayName || profile?.email || "Administrador";
 
-  const { data: ajustes = [], isLoading } = useAjustesPendentes(agencyId);
+  const isAdminOrManager = profile?.role === "admin" || profile?.role === "manager" || profile?.role === "superadmin";
+  const { data: ajustes = [], isLoading } = useAjustesPendentes(agencyId, isAdminOrManager);
   const { data: team = [] } = useTeam(agencyId);
   const responderAjusteMutation = useResponderAjuste();
 

@@ -39,7 +39,7 @@ export const PontoView: React.FC<PontoViewProps> = ({ isAdmin, user, profile, co
   }, [isUserAdmin, profile]);
 
   // Fetch pending adjustments count for the badge
-  const { data: adjustments = [] } = useAjustesPendentes(agencyId);
+  const { data: adjustments = [] } = useAjustesPendentes(agencyId, isUserAdmin);
   const pendingCount = useMemo(() => {
     return adjustments.filter(a => a.status === "pendente").length;
   }, [adjustments]);
