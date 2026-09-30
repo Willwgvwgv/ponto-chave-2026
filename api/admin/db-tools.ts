@@ -129,10 +129,16 @@ export default async function handler(req: any, res: any) {
         snap.docs.forEach((d: any) => {
           const data = d.data();
           const rateio = data.rateio || [];
-          const temMatch = rateio.some((r: any) => r.corretorId === oldId);
-          if (temMatch) {
-            const novoRateio = rateio.map((r: any) => r.corretorId === oldId ? { ...r, corretorId: newId } : r);
-            batch.update(d.ref, { rateio: novoRateio });
+          const pagamentos = data.pagamentosCorretores || [];
+          // Corrige o ID no rateio E nos pagamentos já registrados. Antes só o rateio era
+          // trocado, e os repasses antigos ficavam "órfãos" (não contavam como pagos).
+          const temMatchRateio = rateio.some((r: any) => r.corretorId === oldId);
+          const temMatchPag = pagamentos.some((p: any) => p.corretorId === oldId);
+          if (temMatchRateio || temMatchPag) {
+            batch.update(d.ref, {
+              rateio: rateio.map((r: any) => r.corretorId === oldId ? { ...r, corretorId: newId } : r),
+              pagamentosCorretores: pagamentos.map((p: any) => p.corretorId === oldId ? { ...p, corretorId: newId } : p)
+            });
             corrigidos++;
           }
         });
