@@ -418,6 +418,8 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
   // Add broker to rateio form
   const [selectedBrokerId, setSelectedBrokerId] = useState("");
   const [selectedCaptadorId, setSelectedCaptadorId] = useState("");
+  // Auxiliar / Secretária — participação que sai da parte da Fidelité (ex.: 40% → 30% Fidelité + 10% auxiliar)
+  const [selectedAuxiliarId, setSelectedAuxiliarId] = useState("");
 
   const porcentagemRepasse = useMemo(() => 100 - porcentagemFidelite, [porcentagemFidelite]);
 
@@ -460,6 +462,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
     setRateios([]);
     setSelectedBrokerId("");
     setSelectedCaptadorId("");
+    setSelectedAuxiliarId("");
     setEditingRentalId(null);
     if (onClearInitialData) onClearInitialData();
   };
@@ -481,7 +484,12 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
       setInquilino(editingRental.inquilino || "");
       setAluguelMensal(editingRental.valorAluguel || 0);
       setPrimeiroAluguel(editingRental.legacyDoc.primeiroAluguel || editingRental.valorAluguel || 0);
-      setPorcentagemFidelite(editingRental.legacyDoc.porcentagemFidelite ?? 40);
+      // porcentagemFidelite é gravada LÍQUIDA (já sem a parte de auxiliares); no formulário
+      // o campo mostra o bruto, então somamos de volta o % dos auxiliares.
+      const pctAuxiliaresSalvos = (editingRental.legacyDoc.rateio || [])
+        .filter(r => r.papel === "auxiliar")
+        .reduce((acc, r) => acc + (r.porcentagem || 0), 0);
+      setPorcentagemFidelite(Number(((editingRental.legacyDoc.porcentagemFidelite ?? 40) + pctAuxiliaresSalvos).toFixed(2)));
 
       const locadorItem = editingRental.legacyDoc.rateio?.find(r => r.papel === "locador" || r.papel === "locacao");
       setPorcentagemLocador(locadorItem ? locadorItem.porcentagem : 20);
@@ -498,9 +506,22 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
     return Math.max(0, 100 - porcentagemFidelite - porcentagemLocador);
   }, [porcentagemFidelite, porcentagemLocador]);
 
+  const sumAuxiliarPct = useMemo(() => {
+    return Number(rateios.filter(r => r.papel === "auxiliar").reduce((sum, r) => sum + (r.porcentagem || 0), 0).toFixed(2));
+  }, [rateios]);
+
+  // Parte que fica de fato com a Fidelité, depois de descontar auxiliares/secretária
+  const porcentagemFideliteLiquida = useMemo(() => {
+    return Number(Math.max(0, porcentagemFidelite - sumAuxiliarPct).toFixed(2));
+  }, [porcentagemFidelite, sumAuxiliarPct]);
+
   const valorFidelite = useMemo(() => {
-    return Number(((aluguelMensal * porcentagemFidelite) / 100).toFixed(2));
-  }, [aluguelMensal, porcentagemFidelite]);
+    return Number(((aluguelMensal * porcentagemFideliteLiquida) / 100).toFixed(2));
+  }, [aluguelMensal, porcentagemFideliteLiquida]);
+
+  const valorAuxiliaresValue = useMemo(() => {
+    return Number(((aluguelMensal * sumAuxiliarPct) / 100).toFixed(2));
+  }, [aluguelMensal, sumAuxiliarPct]);
 
   const valorLocadorValue = useMemo(() => {
     return Number(((aluguelMensal * porcentagemLocador) / 100).toFixed(2));
@@ -527,7 +548,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
           porcentagem: porcentagemLocador,
           valor: valorLocadorValue
         };
-      } else if (r.papel === "captador") {
+      } else if (r.papel === "captador" || r.papel === "auxiliar") {
         const pct = r.porcentagem !== undefined ? r.porcentagem : 0;
         const val = Number(((aluguelMensal * pct) / 100).toFixed(2));
         return {
@@ -565,7 +586,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
         valor: Number(somaValor.toFixed(2)),
         porcentagem: Number(somaPct.toFixed(2)),
         composicao: entradas.map(e => ({
-          papel: e.papel as "captador" | "locacao",
+          papel: e.papel as "captador" | "locacao" | "auxiliar",
           porcentagem: e.porcentagem || 0,
           valor: e.valor || 0
         }))
@@ -575,8 +596,9 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
   }, [computedRateios]);
 
   const getRoleLabel = (rt: RateioComissao): string => {
-    if (rt.composicao && rt.composicao.length > 1) return "Locador + Captador";
-    return rt.papel === "locacao" ? "Locador" : rt.papel === "captador" ? "Captador" : "Auxiliar";
+    const nome = (p: string) => p === "locacao" ? "Locador" : p === "captador" ? "Captador" : "Auxiliar";
+    if (rt.composicao && rt.composicao.length > 1) return rt.composicao.map(c => nome(c.papel)).join(" + ");
+    return nome(rt.papel);
   };
 
   // Status detection for each rental contract
@@ -801,6 +823,36 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
     setSelectedCaptadorId("");
   };
 
+  const handleAddAuxiliar = (brokerId: string) => {
+    if (!brokerId) {
+      toast.error("Selecione quem vai participar como auxiliar.");
+      return;
+    }
+    const brokerObj = team.find(t => t.id === brokerId);
+    if (!brokerObj) return;
+    if (rateios.some(rt => rt.corretorId === brokerId && rt.papel === "auxiliar")) {
+      toast.error("Essa pessoa já está como auxiliar nesta locação.");
+      return;
+    }
+    setRateios([...rateios, {
+      corretorId: brokerId,
+      corretorNome: brokerObj.name,
+      papel: "auxiliar",
+      porcentagem: 0,
+      valor: 0
+    }]);
+    setSelectedAuxiliarId("");
+  };
+
+  const handleUpdateAuxiliarPct = (brokerId: string, pctValue: number) => {
+    setRateios(prev => prev.map(rt => {
+      if (rt.corretorId === brokerId && rt.papel === "auxiliar") {
+        return { ...rt, porcentagem: pctValue, valor: Number(((aluguelMensal * pctValue) / 100).toFixed(2)) };
+      }
+      return rt;
+    }));
+  };
+
   const handleRemoveBrokerFromRateio = (id: string, papelAlvo?: "captador" | "locacao" | "auxiliar") => {
     const afterRemoval = rateios.filter(rt => !(rt.corretorId === id && (papelAlvo ? rt.papel === papelAlvo : true)));
     const papel = papelAlvo || rateios.find(rt => rt.corretorId === id)?.papel || "";
@@ -888,6 +940,16 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
       return;
     }
 
+    const auxiliares = rateios.filter(r => r.papel === "auxiliar");
+    if (auxiliares.some(r => !r.porcentagem || r.porcentagem <= 0)) {
+      toast.error("Informe o percentual de cada auxiliar (ou remova quem não vai participar).");
+      return;
+    }
+    if (sumAuxiliarPct > porcentagemFidelite) {
+      toast.error(`A parte dos auxiliares (${sumAuxiliarPct}%) não pode ser maior que a da Imobiliária (${porcentagemFidelite}%).`);
+      return;
+    }
+
     const updatedRateiosWithRecalculatedValues = computedRateiosMerged;
 
     if (editingRental) {
@@ -897,7 +959,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
         inquilino,
         aluguelMensal,
         primeiroAluguel,
-        porcentagemFidelite,
+        porcentagemFidelite: porcentagemFideliteLiquida,
         valorFidelite,
         valorRepasseCorretores,
         vencimento: vencimento || new Date().toISOString().split("T")[0],
@@ -914,7 +976,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
         inquilino,
         aluguelMensal,
         primeiroAluguel,
-        porcentagemFidelite,
+        porcentagemFidelite: porcentagemFideliteLiquida,
         valorFidelite,
         valorRepasseCorretores,
         vencimento: vencimento || new Date().toISOString().split("T")[0],
@@ -1302,9 +1364,15 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                     <span className="font-bold text-slate-800 font-mono">{formatCurrency(aluguelMensal)}</span>
                   </div>
                   <div className="flex justify-between items-center text-slate-650">
-                    <span>Taxa Retida Imobiliária ({porcentagemFidelite}%):</span>
+                    <span>Taxa Retida Imobiliária ({porcentagemFideliteLiquida}%):</span>
                     <span className="font-bold text-indigo-600 font-mono">{formatCurrency(valorFidelite)}</span>
                   </div>
+                  {sumAuxiliarPct > 0 && (
+                    <div className="flex justify-between items-center text-slate-650">
+                      <span>Auxiliar / Secretária ({sumAuxiliarPct}%, da parte da Imobiliária):</span>
+                      <span className="font-bold text-violet-600 font-mono">{formatCurrency(valorAuxiliaresValue)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between items-center text-slate-650">
                     <span>Rateio Locador ({porcentagemLocador}%):</span>
                     <span className="font-bold text-amber-600 font-mono">{formatCurrency(valorLocadorValue)}</span>
@@ -1353,6 +1421,29 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                         type="button"
                         onClick={() => handleAddCaptador(selectedCaptadorId)}
                         className="px-4 py-2 bg-indigo-650 hover:bg-indigo-700 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all shadow-md"
+                      >
+                        Incluir
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-slate-100 pt-3">
+                    <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Adicionar Auxiliar / Secretária (sai da parte da Imobiliária)</label>
+                    <div className="flex gap-2">
+                      <select
+                        value={selectedAuxiliarId}
+                        onChange={e => setSelectedAuxiliarId(e.target.value)}
+                        className="flex-1 px-3 py-2 bg-slate-50 border border-slate-205 rounded-xl text-xs font-bold focus:outline-none"
+                      >
+                        <option value="">Buscar auxiliar...</option>
+                        {team.map(b => (
+                          <option key={b.id} value={b.id}>{formatPersonName(b.name)}</option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => handleAddAuxiliar(selectedAuxiliarId)}
+                        className="px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all shadow-md"
                       >
                         Incluir
                       </button>
@@ -1407,12 +1498,12 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                             <p className="font-bold text-slate-800">{formatPersonName(rt.corretorNome)}</p>
                             <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-semibold uppercase tracking-wider">
                               <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold border ${
-                                rt.papel === "locador" || rt.papel === "locacao" ? "bg-amber-100 border-amber-300 text-amber-600" : "bg-emerald-100 border-emerald-300 text-emerald-600"
+                                rt.papel === "locador" || rt.papel === "locacao" ? "bg-amber-100 border-amber-300 text-amber-600" : rt.papel === "auxiliar" ? "bg-violet-100 border-violet-300 text-violet-600" : "bg-emerald-100 border-emerald-300 text-emerald-600"
                               }`}>
-                                {rt.papel === "locador" || rt.papel === "locacao" ? "Locador" : "Captador"}
+                                {rt.papel === "locador" || rt.papel === "locacao" ? "Locador" : rt.papel === "auxiliar" ? "Auxiliar" : "Captador"}
                               </span>
                               
-                              {rt.papel === "captador" ? (
+                              {rt.papel === "captador" || rt.papel === "auxiliar" ? (
                                 <div className="flex items-center gap-1 ml-1">
                                   <span>•</span>
                                   <input
@@ -1421,7 +1512,9 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                                     max="100"
                                     step="0.1"
                                     value={rt.porcentagem || 0}
-                                    onChange={(e) => handleUpdateCaptadorPct(rt.corretorId, Number(e.target.value))}
+                                    onChange={(e) => rt.papel === "auxiliar"
+                                      ? handleUpdateAuxiliarPct(rt.corretorId, Number(e.target.value))
+                                      : handleUpdateCaptadorPct(rt.corretorId, Number(e.target.value))}
                                     className="w-14 px-1 py-0.5 bg-slate-50 border border-slate-205 rounded text-center text-[10px] font-bold text-slate-700 focus:outline-none focus:border-indigo-500"
                                     placeholder="%"
                                   />
@@ -2165,7 +2258,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                                                       <span className="text-sm font-medium text-slate-900">{formatPersonName(rt.corretorNome)}</span>
                                                       <span className="text-xs text-slate-500 block mt-0.5">
                                                         {roleLabel} · {isCombinado
-                                                          ? rt.composicao!.map(c => `${c.porcentagem}% ${c.papel === 'locacao' ? 'Locador' : 'Captador'}`).join(' + ')
+                                                          ? rt.composicao!.map(c => `${c.porcentagem}% ${c.papel === 'locacao' ? 'Locador' : c.papel === 'auxiliar' ? 'Auxiliar' : 'Captador'}`).join(' + ')
                                                           : `${rt.porcentagem || 0}% do rateio`}
                                                       </span>
                                                     </div>
