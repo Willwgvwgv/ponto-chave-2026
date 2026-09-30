@@ -1011,7 +1011,11 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
       rateio: updatedRateio,
       jaPagoCorretores: checksAllPaid,
       status: checksAllPaid ? "pago" : selectedRental.legacyDoc.status,
-      statusFinanceiro: checksAllPaid ? "concluido" : selectedRental.statusFinanceiro,
+      // Bug corrigido: estava gravando "concluido" (sem o "a"), que não existe em FinancialStatus
+      // (RentalStatusBadge.tsx só reconhece "concluida") — por isso o badge do cabeçalho caía no
+      // fallback "Comissão Calculada" enquanto a linha da tabela já mostrava CONCLUÍDA/PAGO, os
+      // dois lados contradizendo um ao outro para a mesma locação.
+      statusFinanceiro: checksAllPaid ? "concluida" : selectedRental.statusFinanceiro,
       updatedAt: new Date().toISOString()
     };
 
@@ -1740,25 +1744,25 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
           {/* Tabela de Locações — Controle de Status Financeiro */}
           <div className="bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
+              <table className="w-full min-w-[980px] text-left border-collapse">
                 <thead>
                   <tr className="border-b border-slate-100 bg-slate-50/50">
                     <th className="py-3.5 pl-6 pr-4 text-[11px] font-black text-slate-400 uppercase tracking-widest">
                       IMÓVEL / REFERÊNCIA
                     </th>
-                    <th className="py-3.5 px-4 text-center text-[11px] font-black text-slate-400 uppercase tracking-widest">
+                    <th className="py-3.5 px-4 text-center text-[11px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">
                       COMPETÊNCIA
                     </th>
-                    <th className="py-3.5 px-4 text-center text-[11px] font-black text-slate-400 uppercase tracking-widest">
+                    <th className="py-3.5 px-4 text-center text-[11px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">
                       VALOR ALUGUEL
                     </th>
-                    <th className="py-3.5 px-4 text-center text-[11px] font-black text-slate-400 uppercase tracking-widest">
+                    <th className="py-3.5 px-4 text-center text-[11px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">
                       COMISSÃO TOTAL
                     </th>
-                    <th className="py-3.5 px-4 text-center text-[11px] font-black text-slate-400 uppercase tracking-widest">
+                    <th className="py-3.5 px-4 text-center text-[11px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">
                       STATUS
                     </th>
-                    <th className="py-3.5 pr-6 pl-4 text-right text-[11px] font-black text-slate-400 uppercase tracking-widest">
+                    <th className="py-3.5 pr-6 pl-4 text-right text-[11px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap w-[132px]">
                       AÇÕES
                     </th>
                   </tr>
@@ -1839,7 +1843,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                           </td>
 
                           {/* STATUS */}
-                          <td className="py-4 px-4 text-center">
+                          <td className="py-4 px-4 text-center whitespace-nowrap">
                             {rowStatus === "concluido" && (
                               <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                                 <Check className="w-3 h-3 stroke-[3]" />
@@ -1861,8 +1865,8 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                           </td>
 
                           {/* AÇÕES */}
-                          <td className="py-4 pr-6 pl-4 text-right">
-                            <div className="flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
+                          <td className="py-4 pr-6 pl-4 text-right whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-0.5" onClick={e => e.stopPropagation()}>
                               <button
                                 type="button"
                                 onClick={() => handleExportSingleRentalPDF(r)}
@@ -1917,6 +1921,20 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                             ? Math.min(100, Math.round((totalPagoEquipe / totalDevidoEquipe) * 100))
                             : 100;
 
+                          // Quem lançou esta comissão e quando — já gravado em criadoPor/criadoPorNome/createdAt
+                          // na criação (ver handleCreateRental), só não era exibido em lugar nenhum da tela.
+                          const criadoPorNome = selectedRental.legacyDoc.criadoPorNome;
+                          let criadoEmLabel = "";
+                          const rawCreatedAt = selectedRental.legacyDoc.createdAt;
+                          if (rawCreatedAt) {
+                            const d = typeof rawCreatedAt === "string"
+                              ? new Date(rawCreatedAt)
+                              : (rawCreatedAt?.toDate ? rawCreatedAt.toDate() : new Date(rawCreatedAt));
+                            if (!isNaN(d.getTime())) {
+                              criadoEmLabel = d.toLocaleDateString('pt-BR');
+                            }
+                          }
+
                           return (
                             <tr>
                               <td colSpan={6} className="p-0 bg-slate-50/40 border-b border-slate-100">
@@ -1928,6 +1946,11 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                                       <span className="text-xs text-slate-500">
                                         {selectedRental.distribuicao.length} {selectedRental.distribuicao.length === 1 ? 'participante' : 'participantes'} no rateio
                                       </span>
+                                      {(criadoPorNome || criadoEmLabel) && (
+                                        <span className="text-[11px] text-slate-400">
+                                          · Lançado{criadoPorNome ? ` por ${criadoPorNome}` : ""}{criadoEmLabel ? ` em ${criadoEmLabel}` : ""}
+                                        </span>
+                                      )}
                                     </div>
 
                                     <div className="flex items-center gap-2.5 flex-wrap">
@@ -2083,32 +2106,22 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
 
                                         <div className="space-y-3 pt-1">
                                           {/* Item Imobiliária Fidelité */}
-                                          <div className="p-4 rounded-2xl bg-emerald-50/40 border border-emerald-100/80 flex items-center justify-between gap-4">
+                                          <div className="p-4 rounded-2xl bg-slate-50/70 border border-slate-200/80 flex items-center justify-between gap-4">
                                             <div className="flex items-center gap-3">
-                                              <div className="w-10 h-10 rounded-2xl bg-emerald-600 text-white flex items-center justify-center font-black text-sm shadow-xs">
+                                              <div className="w-10 h-10 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center font-semibold text-sm shrink-0">
                                                 F
                                               </div>
                                               <div>
-                                                <div className="flex items-center gap-2">
-                                                  <span className="text-sm font-bold text-slate-900">Fidelité Imobiliária</span>
-                                                  <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-extrabold rounded-md uppercase">
-                                                    Imobiliária
-                                                  </span>
-                                                </div>
+                                                <span className="text-sm font-medium text-slate-900">Fidelité Imobiliária</span>
                                                 <span className="text-xs text-slate-500 block mt-0.5">
-                                                  Taxa de intermediação ({porcentagemFidelite}%)
+                                                  Intermediação ({porcentagemFidelite}%) · retido no caixa
                                                 </span>
                                               </div>
                                             </div>
 
-                                            <div className="text-right">
-                                              <span className="text-sm font-black text-emerald-700 block">
-                                                {formatCurrency(valorFidelite)}
-                                              </span>
-                                              <span className="text-[10px] font-bold text-emerald-600 bg-emerald-100/70 px-2 py-0.5 rounded-md inline-block mt-0.5">
-                                                Retido no Caixa
-                                              </span>
-                                            </div>
+                                            <span className="text-sm font-medium text-slate-900 tabular-nums">
+                                              {formatCurrency(valorFidelite)}
+                                            </span>
                                           </div>
 
                                           {/* Itens de Corretores */}
@@ -2130,11 +2143,6 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
 
                                               const roleLabel = getRoleLabel(rt);
                                               const isCombinado = !!(rt.composicao && rt.composicao.length > 1);
-                                              const avatarBg = isCombinado
-                                                ? "bg-indigo-600 text-white"
-                                                : rt.papel === "locacao"
-                                                ? "bg-purple-600 text-white"
-                                                : "bg-blue-600 text-white";
 
                                               return (
                                                 <div
@@ -2142,25 +2150,18 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                                                   className={`p-4 rounded-2xl border transition-all ${
                                                     isBrokerFullyPaid
                                                       ? 'bg-slate-50/70 border-slate-200/80'
-                                                      : 'bg-white border-slate-200 hover:border-blue-300 shadow-xs'
+                                                      : 'bg-white border-slate-200 hover:border-slate-300 shadow-xs'
                                                   } flex flex-col sm:flex-row sm:items-center justify-between gap-4`}
                                                 >
-                                                  {/* Left: Avatar + Name + Role */}
+                                                  {/* Left: Avatar + Name + Role — avatar neutro, papel como texto simples (não pill colorido) */}
                                                   <div className="flex items-center gap-3 min-w-[180px]">
-                                                    <div className={`w-10 h-10 rounded-2xl ${avatarBg} flex items-center justify-center font-bold text-sm shadow-xs shrink-0`}>
+                                                    <div className="w-10 h-10 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center font-semibold text-sm shrink-0">
                                                       {rt.corretorNome.charAt(0).toUpperCase()}
                                                     </div>
                                                     <div>
-                                                      <div className="flex items-center gap-2">
-                                                        <span className="text-sm font-bold text-slate-900">{formatPersonName(rt.corretorNome)}</span>
-                                                        <span className={`px-2 py-0.5 text-[10px] font-extrabold rounded-md uppercase ${
-                                                          isCombinado ? "bg-indigo-100 text-indigo-800" : rt.papel === "locacao" ? "bg-purple-100 text-purple-800" : "bg-blue-100 text-blue-800"
-                                                        }`}>
-                                                          {roleLabel}
-                                                        </span>
-                                                      </div>
+                                                      <span className="text-sm font-medium text-slate-900">{formatPersonName(rt.corretorNome)}</span>
                                                       <span className="text-xs text-slate-500 block mt-0.5">
-                                                        {isCombinado
+                                                        {roleLabel} · {isCombinado
                                                           ? rt.composicao!.map(c => `${c.porcentagem}% ${c.papel === 'locacao' ? 'Locador' : 'Captador'}`).join(' + ')
                                                           : `${rt.porcentagem || 0}% do rateio`}
                                                       </span>
@@ -2315,8 +2316,8 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                                                   )}
 
                                                   {pay.registradoPorNome && (
-                                                    <span className="text-[9px] text-slate-400 block text-right">
-                                                      Registrado por {pay.registradoPorNome}
+                                                    <span className="text-[11px] text-slate-400 block text-right">
+                                                      Baixa registrada por {pay.registradoPorNome}
                                                     </span>
                                                   )}
                                                 </div>
@@ -2380,18 +2381,13 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
               {/* Beneficiary summary card */}
               <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-blue-600 text-white flex items-center justify-center font-bold text-sm shadow-xs">
+                  <div className="w-10 h-10 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center font-semibold text-sm shrink-0">
                     {payBrokerName.charAt(0).toUpperCase()}
                   </div>
                   <div>
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-bold text-slate-900">{formatPersonName(payBrokerName)}</p>
-                      <span className="px-2 py-0.5 bg-blue-100 text-blue-800 text-[10px] font-extrabold rounded-md uppercase">
-                        {payBrokerRole === "locacao" ? "Locador" : payBrokerRole === "captador" ? "Captador" : "Auxiliar"}
-                      </span>
-                    </div>
+                    <p className="text-sm font-medium text-slate-900">{formatPersonName(payBrokerName)}</p>
                     <span className="text-xs text-slate-500 block mt-0.5">
-                      Total rateio: <strong>{formatCurrency(payBrokerTotalDue)}</strong>
+                      {payBrokerRole === "locacao" ? "Locador" : payBrokerRole === "captador" ? "Captador" : "Auxiliar"} · Total rateio: <strong>{formatCurrency(payBrokerTotalDue)}</strong>
                     </span>
                   </div>
                 </div>
