@@ -203,6 +203,42 @@ export default async function handler(req: any, res: any) {
         });
       }
 
+      // Troca o papel de um participante no rateio (ex.: captador → auxiliar), sem mexer em valores.
+      // dryRun=1 só lista o que seria alterado.
+      if (action === "change-papel") {
+        const corretorId = String(req.query?.corretorId || "");
+        const de = String(req.query?.de || "");
+        const para = String(req.query?.para || "");
+        const dryRun = String(req.query?.dryRun || "") === "1";
+        const PAPEIS = ["captador", "locacao", "auxiliar"];
+        if (!corretorId || !PAPEIS.includes(de) || !PAPEIS.includes(para) || de === para) {
+          return res.status(400).json({ error: "corretorId, de e para (captador|locacao|auxiliar) são obrigatórios" });
+        }
+        const snap = await adminDb.collection("comissoes").get();
+        const alteradas: any[] = [];
+        const batch = adminDb.batch();
+        snap.docs.forEach((d: any) => {
+          const c = d.data() || {};
+          let mudou = false;
+          const rateio = (c.rateio || []).map((r: any) => {
+            if (r.corretorId !== corretorId) return r;
+            let novo = r;
+            if (r.papel === de) { novo = { ...novo, papel: para }; mudou = true; }
+            if (Array.isArray(r.composicao) && r.composicao.some((x: any) => x.papel === de)) {
+              novo = { ...novo, composicao: r.composicao.map((x: any) => x.papel === de ? { ...x, papel: para } : x) };
+              mudou = true;
+            }
+            return novo;
+          });
+          if (mudou) {
+            alteradas.push({ docId: d.id, imovel: c.imovel, mes: c.mesReferencia });
+            if (!dryRun) batch.update(d.ref, { rateio });
+          }
+        });
+        if (!dryRun && alteradas.length > 0) await batch.commit();
+        return res.status(200).json({ ok: true, dryRun, total: alteradas.length, alteradas });
+      }
+
       if (action === "find-by-corretor") {
         const corretorId = req.query?.corretorId;
         if (!corretorId) return res.status(400).json({ error: "corretorId é obrigatório" });
