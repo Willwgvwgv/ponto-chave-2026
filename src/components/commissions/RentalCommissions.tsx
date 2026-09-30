@@ -101,7 +101,12 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
 
   const [filterText, setFilterText] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("TUDO");
-  const [selectedMonthFilter, setSelectedMonthFilter] = useState<string>("TODOS");
+  // Abre na competência do mês atual (horário local); "Todas" continua disponível no filtro.
+  const mesAtual = (() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  })();
+  const [selectedMonthFilter, setSelectedMonthFilter] = useState<string>(mesAtual);
   const [activeCardFilter, setActiveCardFilter] = useState<"CARD1" | "CARD2" | "CARD3" | "CARD4" | null>(null);
 
   // Recebimento Manual Form state
@@ -118,8 +123,10 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
     const list = convertedModels
       .map(r => `${r.competencia.ano}-${String(r.competencia.mes).padStart(2, "0")}`)
       .filter((v, i, self) => v && self.indexOf(v) === i);
+    // Garante que o mês atual sempre apareça no filtro, mesmo sem lançamentos ainda
+    if (!list.includes(mesAtual)) list.push(mesAtual);
     return list.sort((a, b) => b.localeCompare(a));
-  }, [convertedModels]);
+  }, [convertedModels, mesAtual]);
 
   const monthlyModels = useMemo(() => {
     if (selectedMonthFilter === "TODOS") return convertedModels;
