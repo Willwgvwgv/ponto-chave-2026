@@ -35,7 +35,7 @@ async function getGoogleCerts() {
   return data.keys;
 }
 
-async function verifyFirebaseIdToken(idToken: string): Promise<{ uid: string } | null> {
+async function verifyFirebaseIdToken(idToken: string): Promise<{ uid: string; email?: string } | null> {
   try {
     const parts = idToken.split(".");
     if (parts.length !== 3) return null;
@@ -44,8 +44,10 @@ async function verifyFirebaseIdToken(idToken: string): Promise<{ uid: string } |
     const payload = JSON.parse(base64UrlDecode(payloadB64).toString("utf-8"));
     const projectId = getFirebaseProjectId();
     const now = Math.floor(Date.now() / 1000);
-    if (projectId && payload.aud !== projectId) return null;
-    if (projectId && payload.iss !== `https://securetoken.google.com/${projectId}`) return null;
+    // Sem projectId não há como garantir que o token é DESTE projeto — recusa.
+    if (!projectId) return null;
+    if (payload.aud !== projectId) return null;
+    if (payload.iss !== `https://securetoken.google.com/${projectId}`) return null;
     if (typeof payload.exp !== "number" || payload.exp < now) return null;
     if (!payload.sub) return null;
     const keys = await getGoogleCerts();
@@ -58,7 +60,7 @@ async function verifyFirebaseIdToken(idToken: string): Promise<{ uid: string } |
       { key: publicKey, padding: crypto.constants.RSA_PKCS1_PADDING },
       base64UrlDecode(signatureB64)
     );
-    return isValid ? { uid: payload.sub } : null;
+    return isValid ? { uid: payload.sub, email: payload.email_verified ? payload.email : undefined } : null;
   } catch {
     return null;
   }
@@ -76,27 +78,37 @@ export default async function handler(req: any, res: any) {
 
   let authorized = false;
 
-  // Opção 1 (mais simples): senha fixa configurada na Vercel
-  if (expectedSecret && providedSecret && providedSecret === expectedSecret) {
-    authorized = true;
+  const { adminDb } = getFirebaseAdmin();
+
+  // Opção 1: senha fixa configurada na Vercel (comparação em tempo constante)
+  if (expectedSecret && providedSecret) {
+    const a = crypto.createHash("sha256").update(providedSecret).digest();
+    const b = crypto.createHash("sha256").update(expectedSecret).digest();
+    if (crypto.timingSafeEqual(a, b)) authorized = true;
   }
 
-  // Opção 2: token de login normal do Firebase
+  // Opção 2: login do Firebase — SOMENTE superadmin. Antes, qualquer usuário logado
+  // (inclusive colaborador) passava aqui e podia ler/alterar dados de todas as empresas
+  // sem passar pelas regras do Firestore.
   if (!authorized && authHeader && typeof authHeader === "string" && authHeader.startsWith("Bearer ")) {
     const decoded = await verifyFirebaseIdToken(authHeader.split("Bearer ")[1]);
-    if (decoded) authorized = true;
+    if (decoded && adminDb) {
+      const isOwnerEmail = (decoded.email || "").toLowerCase() === "williangyn10@gmail.com";
+      let isSuper = isOwnerEmail;
+      if (!isSuper) {
+        try {
+          const userDoc = await adminDb.collection("users").doc(decoded.uid).get();
+          isSuper = userDoc.exists && userDoc.data()?.role === "superadmin";
+        } catch {}
+      }
+      if (isSuper) authorized = true;
+    }
   }
 
   if (!authorized) {
-    return res.status(401).json({
-      error: "Acesso não autorizado",
-      debug_secretConfigured: !!expectedSecret,
-      debug_secretLength: expectedSecret.length,
-      debug_providedLength: providedSecret.length
-    });
+    return res.status(401).json({ error: "Acesso não autorizado" });
   }
 
-  const { adminDb } = getFirebaseAdmin();
   if (!adminDb) {
     return res.status(503).json({ error: "Serviço de banco de dados do servidor indisponível" });
   }
@@ -171,20 +183,6 @@ export default async function handler(req: any, res: any) {
         const snap = await adminDb.collection("vistorias").limit(20).get();
         const companyIds = Array.from(new Set(snap.docs.map((d: any) => d.data().companyId)));
         return res.status(200).json({ companyIds });
-      }
-
-      if (action === "debug-env") {
-        const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON || "";
-        return res.status(200).json({
-          length: raw.length,
-          first15: raw.slice(0, 15),
-          last15: raw.slice(-15),
-          startsWithBrace: raw.trim().startsWith("{"),
-          endsWithBrace: raw.trim().endsWith("}"),
-          hasPrivateKeyField: raw.includes('"private_key"'),
-          hasProjectIdField: raw.includes('"project_id"'),
-          newlineCount: (raw.match(/\n/g) || []).length
-        });
       }
 
       if (action === "list-users") {
