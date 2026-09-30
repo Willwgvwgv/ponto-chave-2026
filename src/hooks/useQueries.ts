@@ -466,10 +466,19 @@ export function useTeam(agencyId: string) {
           }
         });
 
-        // 2. Inserir mapeados da coleção principal (sobrepõe fallback se duplicado por e-mail)
+        // 2. Inserir mapeados da coleção principal (sobrepõe fallback se duplicado por e-mail).
+        // Quando a mesma pessoa tem dois cadastros (o do convite "pending_..." e o real,
+        // criado no primeiro login), o real SEMPRE vence. Antes vencia o último da lista —
+        // e como "pending_..." vem depois em ordem alfabética, o rateio era gravado com o
+        // ID do convite, e a comissão "sumia" para o próprio corretor depois de lançada.
+        const isPendingId = (id?: string) => String(id || "").startsWith("pending_");
         mappedUsers.forEach(u => {
           if (u.email) {
-            mergedMap.set(u.email.toLowerCase(), u);
+            const key = u.email.toLowerCase();
+            const existing = mergedMap.get(key);
+            const existingIsReal = existing && !isPendingId(existing.id) && mappedUsers.includes(existing);
+            if (existingIsReal && isPendingId(u.id)) return;
+            mergedMap.set(key, u);
           }
         });
 
