@@ -1747,7 +1747,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
               <table className="w-full min-w-[980px] text-left border-collapse">
                 <thead>
                   <tr className="border-b border-slate-100 bg-slate-50/50">
-                    <th className="py-3.5 pl-6 pr-4 text-[11px] font-black text-slate-400 uppercase tracking-widest">
+                    <th className="py-3.5 pl-6 pr-4 text-[11px] font-black text-slate-400 uppercase tracking-widest w-full">
                       IMÓVEL / REFERÊNCIA
                     </th>
                     <th className="py-3.5 px-4 text-center text-[11px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">
@@ -1786,9 +1786,11 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                           onClick={() => toggleExpandRental(r.id)}
                           className={`hover:bg-slate-50/70 transition-colors cursor-pointer group ${selectedRentalId === r.id ? 'bg-blue-50/40' : ''}`}
                         >
-                          {/* IMÓVEL / REFERÊNCIA */}
-                          <td className="py-4 pl-6 pr-4">
-                            <div className="flex items-center gap-3">
+                          {/* IMÓVEL / REFERÊNCIA — max-w-0 faz a coluna ocupar só o espaço que
+                              sobra e cortar endereços longos com "…", em vez de alargar a tabela
+                              e empurrar STATUS para baixo da coluna AÇÕES fixa */}
+                          <td className="py-4 pl-6 pr-4 max-w-0" title={r.imovel}>
+                            <div className="flex items-center gap-3 min-w-0">
                               <div className="w-10 h-10 rounded-xl bg-[#0f274a] text-white flex items-center justify-center shrink-0 shadow-xs">
                                 <Building2 className="w-5 h-5" />
                               </div>
