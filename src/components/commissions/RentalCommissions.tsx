@@ -1762,7 +1762,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                     <th className="py-3.5 px-4 text-center text-[11px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">
                       STATUS
                     </th>
-                    <th className="py-3.5 pr-6 pl-4 text-right text-[11px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap w-[132px]">
+                    <th className="py-3.5 pr-6 pl-4 text-right text-[11px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap w-[132px] sticky right-0 z-10 bg-slate-50 border-l border-slate-100">
                       AÇÕES
                     </th>
                   </tr>
@@ -1864,8 +1864,9 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                             )}
                           </td>
 
-                          {/* AÇÕES */}
-                          <td className="py-4 pr-6 pl-4 text-right whitespace-nowrap">
+                          {/* AÇÕES — fixa à direita (sticky) para nunca ficar cortada quando a
+                              tabela precisar rolar horizontalmente em telas mais estreitas */}
+                          <td className={`py-4 pr-6 pl-4 text-right whitespace-nowrap sticky right-0 z-10 border-l border-slate-100 ${selectedRentalId === r.id ? 'bg-blue-50/40' : 'bg-white group-hover:bg-slate-50'}`}>
                             <div className="flex items-center justify-end gap-0.5" onClick={e => e.stopPropagation()}>
                               <button
                                 type="button"
