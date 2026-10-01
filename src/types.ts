@@ -39,6 +39,7 @@ export interface UserProfile {
   whatsapp?: string;
   isSocio?: boolean;        // true = pode ter múltiplos papéis na divisão de comissões
   cargoComissao?: 'CORRETOR' | 'CAPTADOR' | 'GESTOR' | 'SOCIO' | null; // cargo específico para comissões
+  funcao?: string;          // função/cargo real (ex.: Secretária) — exibida na folha de ponto
   cpf?: string;             // CPF para PDF fiscal e RPA
   permRateioLocacao?: boolean; // permite inclusão no rateio de comissões de locação
   permRateioVendas?: boolean;  // permite inclusão no rateio de comissões de vendas
@@ -425,6 +426,7 @@ export interface ComissoneUser {
   perm_comissoes?: boolean;
   permissions?: string[];
   isSocio?: boolean;
+  funcao?: string;
   cargoComissao?: 'CORRETOR' | 'CAPTADOR' | 'GESTOR' | 'SOCIO' | null;
   permRateioLocacao?: boolean;
   permRateioVendas?: boolean;

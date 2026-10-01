@@ -1293,6 +1293,7 @@ const UserManagement = ({
         email: editingUserProfile.email ? editingUserProfile.email.trim().toLowerCase() : "",
         role: editingUserProfile.role,
         cargoComissao: editingUserProfile.cargoComissao || null,
+        funcao: (editingUserProfile.funcao || "").trim(),
         permissions,
         permRateioLocacao: editingUserProfile.permRateioLocacao ?? true,
         permRateioVendas: editingUserProfile.permRateioVendas ?? true,
@@ -2155,6 +2156,27 @@ const UserManagement = ({
                         onChange={(e) => setEditingUserProfile({ ...editingUserProfile, email: e.target.value })}
                         className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-xs font-semibold text-slate-700"
                       />
+                    </div>
+                    <div className="space-y-1">
+                      <label htmlFor="edit-user-funcao" className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Função (folha de ponto)</label>
+                      <input
+                        id="edit-user-funcao"
+                        type="text"
+                        list="funcoes-sugeridas"
+                        value={editingUserProfile.funcao || ""}
+                        onChange={(e) => setEditingUserProfile({ ...editingUserProfile, funcao: e.target.value })}
+                        placeholder="Ex.: Secretária"
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-xs font-semibold text-slate-700"
+                      />
+                      <datalist id="funcoes-sugeridas">
+                        <option value="Secretária" />
+                        <option value="Corretor de Imóveis" />
+                        <option value="Captador / Angariador" />
+                        <option value="Assistente Administrativo" />
+                        <option value="Gerente" />
+                        <option value="Sócio / Diretor" />
+                      </datalist>
+                      <p className="text-[10px] text-slate-400">Aparece na folha de ponto. Não altera o cargo nas comissões.</p>
                     </div>
                   </div>
                 </div>

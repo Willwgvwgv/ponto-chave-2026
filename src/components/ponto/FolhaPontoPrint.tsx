@@ -106,13 +106,16 @@ export const FolhaPontoPrint: React.FC<FolhaPontoPrintProps> = ({
   const getRoleLabel = (user?: UserProfile | null) => {
     if (!user) return "Colaborador";
 
+    // Função cadastrada (ex.: "Secretária") tem prioridade — o cargo nas comissões
+    // (GESTOR, CAPTADOR...) não é necessariamente a função da pessoa na empresa.
+    const funcaoCadastrada = String((user as any).funcao || (user as any).cargo || "").trim();
+    if (funcaoCadastrada) return funcaoCadastrada;
+
     if (user.cargoComissao === "CORRETOR") return "Corretor de Imóveis";
     if (user.cargoComissao === "CAPTADOR") return "Captador / Angariador";
     if (user.cargoComissao === "GESTOR") return "Gestor / Gerente";
     if (user.cargoComissao === "SOCIO") return "Sócio / Diretor";
 
-    const customCargo = (user as any).cargo || (user as any).funcao;
-    if (customCargo) return customCargo;
 
     const rawRole = String(user.role || (user as any).originalRole || "").toLowerCase();
     switch (rawRole) {
@@ -179,7 +182,8 @@ export const FolhaPontoPrint: React.FC<FolhaPontoPrintProps> = ({
           <style>
             @page {
               size: A4 portrait;
-              margin: 4mm 6mm;
+              /* Margens confortáveis para impressão e arquivamento (antes 4mm x 6mm, colado na borda) */
+              margin: 12mm 14mm;
             }
             * {
               box-sizing: border-box;
@@ -193,7 +197,7 @@ export const FolhaPontoPrint: React.FC<FolhaPontoPrintProps> = ({
               padding: 0;
               background: #ffffff !important;
               color: #0f172a;
-              font-size: 8.2px;
+              font-size: 9.4px;
               line-height: 1.15;
               width: 100%;
               height: 100%;
@@ -225,7 +229,7 @@ export const FolhaPontoPrint: React.FC<FolhaPontoPrintProps> = ({
               margin-bottom: 4px;
             }
             .company-name {
-              font-size: 10.5px;
+              font-size: 12.1px;
               font-weight: 900;
               text-transform: uppercase;
               color: #0f172a;
@@ -233,13 +237,13 @@ export const FolhaPontoPrint: React.FC<FolhaPontoPrintProps> = ({
               letter-spacing: -0.2px;
             }
             .company-sub {
-              font-size: 7.2px;
+              font-size: 8.3px;
               color: #475569;
               margin: 0;
               max-width: 480px;
             }
             .company-cnpj {
-              font-size: 7.8px;
+              font-size: 9.0px;
               font-weight: 800;
               color: #0f172a;
               margin-top: 1px;
@@ -252,14 +256,14 @@ export const FolhaPontoPrint: React.FC<FolhaPontoPrintProps> = ({
               border: 1.5px solid #0f172a;
               background: #f8fafc;
               padding: 1.5px 7px;
-              font-size: 8px;
+              font-size: 9.2px;
               font-weight: 900;
               text-transform: uppercase;
               letter-spacing: 0.3px;
               border-radius: 4px;
             }
             .badge-ref {
-              font-size: 7.5px;
+              font-size: 8.6px;
               color: #334155;
               margin-top: 1.5px;
               font-family: monospace;
@@ -279,7 +283,7 @@ export const FolhaPontoPrint: React.FC<FolhaPontoPrintProps> = ({
             }
             .info-item-label {
               display: block;
-              font-size: 6.2px;
+              font-size: 7.1px;
               font-weight: 800;
               text-transform: uppercase;
               color: #64748b;
@@ -287,7 +291,7 @@ export const FolhaPontoPrint: React.FC<FolhaPontoPrintProps> = ({
             }
             .info-item-val {
               display: block;
-              font-size: 8.5px;
+              font-size: 9.8px;
               font-weight: 800;
               color: #0f172a;
               white-space: nowrap;
@@ -307,17 +311,17 @@ export const FolhaPontoPrint: React.FC<FolhaPontoPrintProps> = ({
             }
             th, td {
               border: 1px solid #0f172a;
-              padding: 1px 2px;
+              padding: 1px 3px;
               text-align: center;
-              font-size: 7.4px;
-              height: 13.2px;
-              line-height: 13.2px;
+              font-size: 8.5px;
+              height: 16.5px;
+              line-height: 16.5px;
             }
             th {
               background-color: #f1f5f9 !important;
               color: #0f172a;
               font-weight: 900;
-              font-size: 7.2px;
+              font-size: 8.3px;
               text-transform: uppercase;
               letter-spacing: 0.2px;
               border-bottom: 1.5px solid #0f172a;
@@ -328,16 +332,16 @@ export const FolhaPontoPrint: React.FC<FolhaPontoPrintProps> = ({
             .th-saldo { width: 12%; }
             .th-visto { width: 14%; text-align: left; }
             
-            .td-day { text-align: left; font-weight: 700; font-family: monospace; font-size: 7.2px; padding-left: 3px; }
-            .td-day-weekend { color: #64748b; font-weight: normal; font-size: 6.8px; }
-            .td-weekend { background-color: #f8fafc !important; color: #64748b; font-style: italic; font-size: 7px; }
-            .td-semreg { color: #94a3b8; font-style: italic; font-size: 7px; }
-            .td-mono { font-family: monospace; font-weight: 700; font-size: 7.4px; }
-            .td-work { font-family: monospace; font-weight: 900; color: #0f172a; font-size: 7.4px; }
-            .td-saldo-pos { font-family: monospace; font-weight: 900; color: #047857; font-size: 7.4px; }
-            .td-saldo-neg { font-family: monospace; font-weight: 900; color: #c2410c; font-size: 7.4px; }
-            .td-empty { color: #94a3b8; font-family: monospace; font-size: 7.2px; }
-            .td-rubrica { color: #94a3b8; font-size: 6.8px; text-align: center; }
+            .td-day { text-align: left; font-weight: 700; font-family: monospace; font-size: 8.3px; padding-left: 3px; }
+            .td-day-weekend { color: #64748b; font-weight: normal; font-size: 7.8px; }
+            .td-weekend { background-color: #f8fafc !important; color: #64748b; font-style: italic; font-size: 8.0px; }
+            .td-semreg { color: #94a3b8; font-style: italic; font-size: 8.0px; }
+            .td-mono { font-family: monospace; font-weight: 700; font-size: 8.5px; }
+            .td-work { font-family: monospace; font-weight: 900; color: #0f172a; font-size: 8.5px; }
+            .td-saldo-pos { font-family: monospace; font-weight: 900; color: #047857; font-size: 8.5px; }
+            .td-saldo-neg { font-family: monospace; font-weight: 900; color: #c2410c; font-size: 8.5px; }
+            .td-empty { color: #94a3b8; font-family: monospace; font-size: 8.3px; }
+            .td-rubrica { color: #94a3b8; font-size: 7.8px; text-align: center; }
 
             /* Summary Card */
             .summary-card {
@@ -360,7 +364,7 @@ export const FolhaPontoPrint: React.FC<FolhaPontoPrintProps> = ({
               justify-content: space-between;
             }
             .summary-title {
-              font-size: 7.8px;
+              font-size: 9.0px;
               font-weight: 900;
               text-transform: uppercase;
               color: #0f172a;
@@ -372,7 +376,7 @@ export const FolhaPontoPrint: React.FC<FolhaPontoPrintProps> = ({
               display: flex;
               justify-content: space-between;
               font-family: monospace;
-              font-size: 7.2px;
+              font-size: 8.3px;
               color: #1e293b;
               margin-bottom: 1px;
             }
@@ -383,7 +387,7 @@ export const FolhaPontoPrint: React.FC<FolhaPontoPrintProps> = ({
               border-top: 1px solid #94a3b8;
               padding-top: 1.5px;
               margin-top: 1.5px;
-              font-size: 8px;
+              font-size: 9.2px;
               font-weight: 900;
             }
             .text-indigo { color: #4338ca; }
@@ -392,14 +396,14 @@ export const FolhaPontoPrint: React.FC<FolhaPontoPrintProps> = ({
             .text-rose { color: #be123c; }
 
             .legal-text {
-              font-size: 6.5px;
+              font-size: 7.5px;
               text-align: justify;
               color: #475569;
               line-height: 1.2;
               margin: 0;
             }
             .legal-footer {
-              font-size: 6.5px;
+              font-size: 7.5px;
               color: #64748b;
               font-style: italic;
               text-align: right;
@@ -429,17 +433,17 @@ export const FolhaPontoPrint: React.FC<FolhaPontoPrintProps> = ({
               margin-bottom: 3px;
             }
             .sig-name {
-              font-size: 8.5px;
+              font-size: 9.8px;
               font-weight: 900;
               text-transform: uppercase;
               color: #0f172a;
             }
             .sig-role {
-              font-size: 7px;
+              font-size: 8.0px;
               color: #64748b;
             }
             .sig-doc {
-              font-size: 6.5px;
+              font-size: 7.5px;
               color: #64748b;
               font-family: monospace;
             }

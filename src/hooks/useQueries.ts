@@ -444,6 +444,7 @@ export function useTeam(agencyId: string) {
             permissions: u.permissions,
             isSocio: u.isSocio,
             cargoComissao: u.cargoComissao,
+            funcao: u.funcao,
             permRateioLocacao: u.permRateioLocacao,
             permRateioVendas: u.permRateioVendas ?? true
           };
