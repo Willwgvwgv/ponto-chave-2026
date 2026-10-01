@@ -304,13 +304,13 @@ export function buildVariableMap(
     // Comercial & Valores
     valor_aluguel: formatCurrencyBRL(cond.valorAluguel),
     valor_aluguel_extenso: numberToExtenso(cond.valorAluguel),
-    dia_vencimento: `${cond.diaVencimento || 10} (${numberToExtenso(cond.diaVencimento || 10).replace(" reais", "")})`,
+    dia_vencimento: `${cond.diaVencimento || 10} (${numberToExtenso(cond.diaVencimento || 10).replace(/ rea(l|is)$/, "")})`,
     indice_reajuste: cond.indiceReajuste ? `${cond.indiceReajuste}` : "IPCA/IBGE",
     modalidade_garantia: modalidadeGarantiaTexto,
     valor_garantia: formatCurrencyBRL(cond.valorGarantia || 0),
-    multa_atraso: `${cond.multaAtrasoPercent || 10}% (${numberToExtenso(cond.multaAtrasoPercent || 10).replace(" reais", "")} por cento)`,
-    juros_mora: `${cond.jurosMoraPercent || 1}% (${numberToExtenso(cond.jurosMoraPercent || 1).replace(" reais", "")} por cento) ao mês`,
-    multa_rescisoria: `${cond.multaRescisoriaMeses || 3} (${numberToExtenso(cond.multaRescisoriaMeses || 3).replace(" reais", "")}) meses de aluguel`,
+    multa_atraso: `${cond.multaAtrasoPercent || 10}% (${numberToExtenso(cond.multaAtrasoPercent || 10).replace(/ rea(l|is)$/, "")} por cento)`,
+    juros_mora: `${cond.jurosMoraPercent || 1}% (${numberToExtenso(cond.jurosMoraPercent || 1).replace(/ rea(l|is)$/, "")} por cento) ao mês`,
+    multa_rescisoria: `${cond.multaRescisoriaMeses || 3} (${numberToExtenso(cond.multaRescisoriaMeses || 3).replace(/ rea(l|is)$/, "")}) meses de aluguel`,
     cidade_foro: `Comarca de ${cond.cidadeForo || "Goiânia"}, Estado de ${cond.estadoForo || "Goiás"}`,
 
     // Prazos e Datas

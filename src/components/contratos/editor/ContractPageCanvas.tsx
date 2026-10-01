@@ -76,6 +76,24 @@ export const ContractPageCanvas: React.FC<ContractPageCanvasProps> = ({
   const [dragOverBlockIndex, setDragOverBlockIndex] = useState<number | null>(null);
   const [dropPosition, setDropPosition] = useState<"before" | "after" | null>(null);
   const [moveMenuBlockId, setMoveMenuBlockId] = useState<string | null>(null);
+  // Edição do texto PREENCHIDO (padrão) ou do modelo com {{variáveis}}.
+  // No modo preenchido, o que for digitado fica gravado com os valores fixos nesta cláusula.
+  const [editarComVariaveis, setEditarComVariaveis] = useState(false);
+  const htmlParaEditar = (content: string) =>
+    editarComVariaveis ? content : resolveContractText(content, variableMap, { highlightVariables: false });
+  const alternarModoEdicao = (
+    <div className="flex justify-end mb-1">
+      <button
+        type="button"
+        onMouseDown={e => e.preventDefault()}
+        onClick={() => setEditarComVariaveis(v => !v)}
+        className="text-[11px] font-medium text-slate-500 hover:text-slate-800 underline underline-offset-2 cursor-pointer"
+        title={editarComVariaveis ? "Editar o texto como aparece no contrato" : "Editar o modelo com as variáveis automáticas"}
+      >
+        {editarComVariaveis ? "Editar texto preenchido" : "Mostrar variáveis {{…}}"}
+      </button>
+    </div>
+  );
   const isDraggingViaHandleRef = useRef<boolean>(false);
   const touchDragStartIndexRef = useRef<number | null>(null);
 
@@ -671,9 +689,10 @@ export const ContractPageCanvas: React.FC<ContractPageCanvasProps> = ({
                               {/* Clause Body Text */}
                               {isActive ? (
                                 <div className="mt-1">
+                                  {alternarModoEdicao}
                                   <RichHtmlBlockEditor
                                     blockId={block.id}
-                                    initialHtml={block.content}
+                                    initialHtml={htmlParaEditar(block.content)}
                                     onChange={(newHtml) => onUpdateBlockContent(block.id, newHtml)}
                                     primaryColor={primaryColor}
                                     placeholder="Conteúdo da cláusula. Digite {{tag}} para inserir variáveis automáticas..."
@@ -703,9 +722,11 @@ export const ContractPageCanvas: React.FC<ContractPageCanvasProps> = ({
                                 {!isReadOnly && <span className="text-[10px] text-slate-400 font-normal">Preenchido com dados cadastrais</span>}
                               </div>
                               {isActive ? (
+                                <>
+                                {alternarModoEdicao}
                                 <RichHtmlBlockEditor
                                   blockId={block.id}
-                                  initialHtml={block.content}
+                                  initialHtml={htmlParaEditar(block.content)}
                                   onChange={(newHtml) => onUpdateBlockContent(block.id, newHtml)}
                                   primaryColor={primaryColor}
                                   placeholder="Identificação das partes contratantes..."
@@ -713,6 +734,7 @@ export const ContractPageCanvas: React.FC<ContractPageCanvasProps> = ({
                                   minHeight="90px"
                                   className="text-xs"
                                 />
+                                </>
                               ) : (
                                 <div 
                                   className="text-xs text-justify leading-relaxed"
@@ -783,15 +805,18 @@ export const ContractPageCanvas: React.FC<ContractPageCanvasProps> = ({
                           {block.type === "paragraph" && (
                             <div>
                               {isActive ? (
+                                <>
+                                {alternarModoEdicao}
                                 <RichHtmlBlockEditor
                                   blockId={block.id}
-                                  initialHtml={block.content}
+                                  initialHtml={htmlParaEditar(block.content)}
                                   onChange={(newHtml) => onUpdateBlockContent(block.id, newHtml)}
                                   primaryColor={primaryColor}
                                   placeholder="Parágrafo jurídico..."
                                   readOnly={isReadOnly}
                                   minHeight="45px"
                                 />
+                                </>
                               ) : (
                                 <div 
                                   className="text-justify leading-relaxed"
