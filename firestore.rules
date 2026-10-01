@@ -238,13 +238,24 @@ service cloud.firestore {
 
     // Collection: ponto_registros
     match /ponto_registros/{id} {
-      allow read: if isSuperAdmin() || (isActiveUser() && (
+      // GET (um dia): dono pelo ID "{uid}_{data}" — funciona mesmo quando o registro
+      // do dia ainda não existe (primeira batida), quando resource é null.
+      allow get: if isSuperAdmin() || (isActiveUser() && (
+        id.split('_')[0] == request.auth.uid ||
+        isCompanyAdmin(getUserData().companyId)
+      ));
+      // LIST (espelho do mês): o Firestore só autoriza consultas com regra que ele
+      // consiga provar pelos filtros da consulta (where userId == uid). Regra baseada
+      // no ID do documento faz a consulta do mês ser recusada e o espelho fica vazio.
+      allow list: if isSuperAdmin() || (isActiveUser() && (
         resource.data.userId == request.auth.uid ||
         isCompanyAdmin(getUserData().companyId)
       ));
-      allow create: if isSuperAdmin() || (isActiveUser() && request.resource.data.userId == request.auth.uid);
+      allow create: if isSuperAdmin() || (isActiveUser() &&
+        request.resource.data.userId == request.auth.uid &&
+        id.split('_')[0] == request.auth.uid);
       allow update: if isSuperAdmin() || (isActiveUser() && (
-        resource.data.userId == request.auth.uid ||
+        (id.split('_')[0] == request.auth.uid && request.resource.data.userId == request.auth.uid) ||
         isCompanyAdmin(getUserData().companyId)
       ));
       allow delete: if isSuperAdmin() || (isActiveUser() && isCompanyAdmin(getUserData().companyId));
