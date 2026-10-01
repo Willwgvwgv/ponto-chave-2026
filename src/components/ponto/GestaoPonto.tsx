@@ -12,7 +12,7 @@ import {
   ChevronRight,
   CheckCircle2
 } from "lucide-react";
-import { useTeam, usePontoMes, calcularHoras } from "../../hooks/useQueries";
+import { useTeam, usePontoMes, calcularHoras, saidaAlmocoExibida } from "../../hooks/useQueries";
 import { UserProfile, PontoRegistro, CompanySettings } from "../../types";
 import { formatMinutesToHHMM, formatMinutesToHoursFriendly } from "./MeuEspelho";
 import { FolhaPontoPrint } from "./FolhaPontoPrint";
@@ -138,7 +138,7 @@ export const GestaoPonto: React.FC<GestaoPontoProps> = ({ profile, companySettin
         const row = [
           `${diaStr}/${String(selectedMonth).padStart(2, '0')}/${selectedYear} (${wName})`,
           reg.entrada || "",
-          reg.saidaAlmoco || "",
+          saidaAlmocoExibida(reg),
           reg.retornoAlmoco || "",
           reg.saida || "",
           formatMinutesToHHMM(worked),
@@ -376,7 +376,7 @@ export const GestaoPonto: React.FC<GestaoPontoProps> = ({ profile, companySettin
                           {diaStr}/{String(selectedMonth).padStart(2, '0')} <span className="text-slate-400 text-xxs font-normal">({wName})</span>
                         </td>
                         <td className="py-3 px-3 font-semibold text-slate-705">{reg.entrada || "--:--"}</td>
-                        <td className="py-3 px-3 font-semibold text-slate-705">{reg.saidaAlmoco || "--:--"}</td>
+                        <td className="py-3 px-3 font-semibold text-slate-705">{saidaAlmocoExibida(reg) || "--:--"}</td>
                         <td className="py-3 px-3 font-semibold text-slate-705">{reg.retornoAlmoco || "--:--"}</td>
                         <td className="py-3 px-3 font-semibold text-slate-705">{reg.saida || "--:--"}</td>
                         <td className="py-3 px-3 font-bold text-slate-700">{trabalhadoStr}</td>

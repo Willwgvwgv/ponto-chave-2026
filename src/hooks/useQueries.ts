@@ -1436,6 +1436,16 @@ export function useCreateBrokerAdvanceMutation() {
 
 // === PONTO ELETRÔNICO CLT OPERATIONS ===
 
+/**
+ * Saída do almoço para EXIBIR: some quando é só uma duplicata da saída
+ * (ex.: sábado em que a pessoa foi obrigada a marcar "saída almoço" e depois "saída" no mesmo horário).
+ */
+export function saidaAlmocoExibida(reg: Partial<PontoRegistro> | null | undefined): string {
+  if (!reg?.saidaAlmoco) return "";
+  if (!reg.retornoAlmoco && reg.saida && reg.saida === reg.saidaAlmoco) return "";
+  return reg.saidaAlmoco;
+}
+
 export function calcularHoras(
   reg: Partial<PontoRegistro>,
   jornadaDiariaMinutos: number | UserProfile = 480,
@@ -1462,6 +1472,11 @@ export function calcularHoras(
     trabalhadas = Math.max(0, toMin(reg.saida!) - toMin(reg.entrada!));
   } else if (hasEntrada && hasSaidaAlmoco && !hasRetornoAlmoco && !hasSaida) {
     // Turno de 2 batidas registrado no primeiro bloco (ex: Sábado 08:00 às 12:00)
+    trabalhadas = Math.max(0, toMin(reg.saidaAlmoco!) - toMin(reg.entrada!));
+  } else if (hasEntrada && hasSaidaAlmoco && !hasRetornoAlmoco && hasSaida) {
+    // 3 batidas sem retorno do almoço (ex: sábado 08:04 / 12:51 / saída 12:51).
+    // Sem o retorno não há como saber se houve 2º período: conta só o 1º bloco.
+    // Antes este caso caía no "else" e zerava o saldo do dia.
     trabalhadas = Math.max(0, toMin(reg.saidaAlmoco!) - toMin(reg.entrada!));
   } else {
     return { trabalhadas: 0, extras: 0 };
@@ -1609,7 +1624,11 @@ export function useRegistrarPonto() {
           reg.horasTrabalhadas = calc.trabalhadas;
           reg.horasExtras = calc.extras;
           const isSaturday = new Date(todayStr + "T00:00:00").getDay() === 6;
-          const isCompleted = (reg.entrada && reg.saidaAlmoco && reg.retornoAlmoco && reg.saida) || (isSaturday && reg.entrada && (reg.saida || reg.saidaAlmoco));
+          const isCompleted =
+            (reg.entrada && reg.saidaAlmoco && reg.retornoAlmoco && reg.saida) ||
+            // turno direto (sem almoço): entrada + saída — ex.: sábado ou meio período
+            (reg.entrada && reg.saida && !reg.saidaAlmoco && !reg.retornoAlmoco) ||
+            (isSaturday && reg.entrada && (reg.saida || reg.saidaAlmoco));
           reg.status = isCompleted ? "completo" : "incompleto";
         } else {
           reg.status = "incompleto";

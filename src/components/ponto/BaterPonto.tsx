@@ -6,6 +6,7 @@ import {
   HelpCircle 
 } from "lucide-react";
 import { usePontoHoje, useRegistrarPonto, useSolicitarAjuste } from "../../hooks/useQueries";
+import { getExpectedDailyMinutes } from "../../utils/jornadaUtils";
 import { UserProfile, PontoRegistro } from "../../types";
 import { toast } from "sonner";
 
@@ -50,14 +51,25 @@ export const BaterPonto: React.FC<BaterPontoProps> = ({ profile }) => {
     return date.toLocaleDateString('pt-BR', options);
   };
 
-  // Determine current active button (sequence: Entrada -> Saída Almoço -> Retorno Almoço -> Saída)
+  // Sequência: Entrada -> (Saída Almoço -> Retorno Almoço ->) Saída.
+  // Depois da entrada, "Saída" também fica liberada: em dia de meio período (ex.: sábado 4h)
+  // a pessoa sai direto, sem almoço. Antes só "Saída Almoço" ficava ativa e a saída do
+  // sábado acabava gravada como saída do almoço.
+  const hojeISO = new Date().toLocaleDateString("en-CA");
+  const jornadaHoje = profile ? getExpectedDailyMinutes(hojeISO, profile as any) : jornada;
+  const meioPeriodo = jornadaHoje > 0 && jornadaHoje <= 360;
+
   let nextPunch: "entrada" | "saidaAlmoco" | "retornoAlmoco" | "saida" | "none" = "entrada";
+  let alsoAllowed: "saida" | null = null;
 
   if (pontoHoje) {
     if (!pontoHoje.entrada) {
       nextPunch = "entrada";
+    } else if (pontoHoje.saida && !pontoHoje.retornoAlmoco) {
+      nextPunch = "none"; // saiu direto (turno único)
     } else if (!pontoHoje.saidaAlmoco) {
-      nextPunch = "saidaAlmoco";
+      nextPunch = meioPeriodo ? "saida" : "saidaAlmoco";
+      alsoAllowed = meioPeriodo ? null : "saida";
     } else if (!pontoHoje.retornoAlmoco) {
       nextPunch = "retornoAlmoco";
     } else if (!pontoHoje.saida) {
@@ -66,6 +78,8 @@ export const BaterPonto: React.FC<BaterPontoProps> = ({ profile }) => {
       nextPunch = "none";
     }
   }
+  // Em meio período, "Saída Almoço" continua disponível como opção secundária
+  const secondaryAllowed: string | null = alsoAllowed || (meioPeriodo && pontoHoje?.entrada && !pontoHoje?.saidaAlmoco && !pontoHoje?.saida ? "saidaAlmoco" : null);
 
   const handlePunch = (campo: "entrada" | "saidaAlmoco" | "retornoAlmoco" | "saida") => {
     const hhmm = time.toTimeString().split(" ")[0].slice(0, 5); // "HH:mm"
@@ -193,7 +207,8 @@ export const BaterPonto: React.FC<BaterPontoProps> = ({ profile }) => {
 
         <div className="grid grid-cols-2 gap-4">
           {buttonsConf.map((btn) => {
-            const isPunchActive = nextPunch === btn.key;
+            const isPrimary = nextPunch === btn.key;
+            const isPunchActive = isPrimary || secondaryAllowed === btn.key;
             const valorReg = pontoHoje?.[btn.key as keyof PontoRegistro] as string | undefined;
             const isRegistered = !!valorReg;
 
@@ -217,9 +232,11 @@ export const BaterPonto: React.FC<BaterPontoProps> = ({ profile }) => {
                 disabled={!isPunchActive || registrarPontoMutation.isPending}
                 onClick={() => handlePunch(btn.key)}
                 className={`py-4 px-4 text-center rounded-xl font-bold flex flex-col items-center justify-center transition-all duration-200 ${
-                  isPunchActive
+                  isPrimary
                     ? btn.color + " shadow-md hover:scale-[1.02]"
-                    : "bg-slate-50 border border-slate-100 text-slate-400 cursor-not-allowed"
+                    : isPunchActive
+                      ? "bg-white border-2 border-slate-300 text-slate-700 hover:border-slate-400 hover:bg-slate-50"
+                      : "bg-slate-50 border border-slate-100 text-slate-400 cursor-not-allowed"
                 }`}
               >
                 <Clock className="w-5 h-5 mb-1.5" />

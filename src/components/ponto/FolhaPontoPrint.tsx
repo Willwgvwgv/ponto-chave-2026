@@ -3,7 +3,7 @@ import { X, Printer, ShieldCheck } from "lucide-react";
 import { UserProfile, PontoRegistro, CompanySettings } from "../../types";
 import { formatMinutesToHHMM, formatMinutesToHoursFriendly } from "./MeuEspelho";
 import { getJornadaDescription, getExpectedDailyMinutes } from "../../utils/jornadaUtils";
-import { calcularHoras } from "../../hooks/useQueries";
+import { calcularHoras, saidaAlmocoExibida } from "../../hooks/useQueries";
 
 interface FolhaPontoPrintProps {
   collaborator: UserProfile | null;
@@ -608,7 +608,7 @@ export const FolhaPontoPrint: React.FC<FolhaPontoPrintProps> = ({
                           {diaStr}/{String(month).padStart(2, '0')} <span className="td-day-weekend text-[8px] font-bold text-slate-600">({wName})</span>
                         </td>
                         <td className="td-mono py-0.5 px-1 border-r border-slate-900 text-center font-bold font-mono text-[9px] text-slate-800">{reg.entrada || "---"}</td>
-                        <td className="td-mono py-0.5 px-1 border-r border-slate-900 text-center font-bold font-mono text-[9px] text-slate-800">{reg.saidaAlmoco || "---"}</td>
+                        <td className="td-mono py-0.5 px-1 border-r border-slate-900 text-center font-bold font-mono text-[9px] text-slate-800">{saidaAlmocoExibida(reg) || "---"}</td>
                         <td className="td-mono py-0.5 px-1 border-r border-slate-900 text-center font-bold font-mono text-[9px] text-slate-800">{reg.retornoAlmoco || "---"}</td>
                         <td className="td-mono py-0.5 px-1 border-r border-slate-900 text-center font-bold font-mono text-[9px] text-slate-800">{reg.saida || "---"}</td>
                         <td className="td-work py-0.5 px-1 border-r border-slate-900 text-center font-black font-mono text-[9px] text-slate-950">{trabalhadoStr}</td>

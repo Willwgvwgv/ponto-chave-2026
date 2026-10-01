@@ -10,7 +10,7 @@ import {
   TrendingDown,
   Printer
 } from "lucide-react";
-import { usePontoMes, useSolicitarAjuste, calcularHoras } from "../../hooks/useQueries";
+import { usePontoMes, useSolicitarAjuste, calcularHoras, saidaAlmocoExibida } from "../../hooks/useQueries";
 import { UserProfile, PontoRegistro, CompanySettings } from "../../types";
 import { toast } from "sonner";
 import { FolhaPontoPrint } from "./FolhaPontoPrint";
@@ -336,7 +336,7 @@ export const MeuEspelho: React.FC<MeuEspelhoProps> = ({ profile, companySettings
                     {/* SAIDA ALMOCO */}
                     <td className="py-3 px-3">
                       <div className="flex items-center gap-1 group">
-                        <span className="font-semibold text-slate-700 font-mono">{reg.saidaAlmoco || "--:--"}</span>
+                        <span className="font-semibold text-slate-700 font-mono">{saidaAlmocoExibida(reg) || "--:--"}</span>
                         <button 
                           onClick={() => handleOpenAjuste(pDate, reg.id, "saidaAlmoco", reg.saidaAlmoco)}
                           className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-sky-600 text-[10px] leading-none ml-1 underline cursor-pointer"

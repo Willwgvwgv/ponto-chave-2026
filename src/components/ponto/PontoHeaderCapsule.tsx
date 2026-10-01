@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Clock, Check, Sparkles, Zap } from "lucide-react";
 import { usePontoHoje, useRegistrarPonto } from "../../hooks/useQueries";
 import { UserProfile } from "../../types";
+import { getExpectedDailyMinutes } from "../../utils/jornadaUtils";
 import { toast } from "sonner";
 
 interface PontoHeaderCapsuleProps {
@@ -35,13 +36,19 @@ export const PontoHeaderCapsule: React.FC<PontoHeaderCapsuleProps> = ({ profile,
   }
 
   // Determine next register step
+  // Em dia de meio período (ex.: sábado 4h) o próximo passo após a entrada é "Encerrar Dia",
+  // não "Ir p/ Almoço" — antes a saída do sábado era gravada como saída do almoço.
+  const jornadaHoje = getExpectedDailyMinutes(new Date().toLocaleDateString("en-CA"), profile as any);
+  const meioPeriodo = jornadaHoje > 0 && jornadaHoje <= 360;
   let nextPunch: "entrada" | "saidaAlmoco" | "retornoAlmoco" | "saida" | "none" = "entrada";
 
   if (pontoHoje) {
     if (!pontoHoje.entrada) {
       nextPunch = "entrada";
+    } else if (pontoHoje.saida && !pontoHoje.retornoAlmoco) {
+      nextPunch = "none";
     } else if (!pontoHoje.saidaAlmoco) {
-      nextPunch = "saidaAlmoco";
+      nextPunch = meioPeriodo ? "saida" : "saidaAlmoco";
     } else if (!pontoHoje.retornoAlmoco) {
       nextPunch = "retornoAlmoco";
     } else if (!pontoHoje.saida) {
@@ -118,11 +125,11 @@ export const PontoHeaderCapsule: React.FC<PontoHeaderCapsuleProps> = ({ profile,
       let calculatedExitMinutes = 17 * 60; // default 17:00
       if (pontoHoje?.entrada) {
         const [entH, entM] = pontoHoje.entrada.split(":").map(Number);
-        // Jornada + lunch break (average 60m)
-        calculatedExitMinutes = entH * 60 + entM + jornada + 60; 
+        // Jornada do dia + almoço (60m) — sem almoço em meio período
+        calculatedExitMinutes = entH * 60 + entM + jornadaHoje + (meioPeriodo ? 0 : 60);
       }
 
-      const isAvailable = (totalMinutesNow >= (calculatedExitMinutes - 45) || totalMinutesNow >= 16 * 60);
+      const isAvailable = (totalMinutesNow >= (calculatedExitMinutes - 45) || totalMinutesNow >= (meioPeriodo ? 11 * 60 + 30 : 16 * 60));
       return {
         isAvailable,
         label: "Encerrar Dia",
