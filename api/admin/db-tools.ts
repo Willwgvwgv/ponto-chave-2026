@@ -239,6 +239,47 @@ export default async function handler(req: any, res: any) {
         return res.status(200).json({ ok: true, dryRun, total: alteradas.length, alteradas });
       }
 
+      // Diagnóstico SOMENTE LEITURA do ponto de uma pessoa (busca por trecho do nome ou e-mail)
+      if (action === "audit-ponto") {
+        const termo = String(req.query?.q || "").toLowerCase().trim();
+        if (termo.length < 3) return res.status(400).json({ error: "q (mín. 3 letras) é obrigatório" });
+        const usersSnap = await adminDb.collection("users").get();
+        const pessoas = usersSnap.docs
+          .map((d: any) => ({ id: d.id, ...(d.data() || {}) }))
+          .filter((u: any) => `${u.displayName || ""} ${u.name || ""} ${u.email || ""}`.toLowerCase().includes(termo));
+        const regsSnap = await adminDb.collection("ponto_registros").get();
+        const ajustesSnap = await adminDb.collection("ponto_ajustes").get();
+        const ts = (v: any) => v?.toDate ? v.toDate().toISOString() : (v || null);
+        const resultado = pessoas.map((u: any) => {
+          const meus = regsSnap.docs.filter((d: any) => (d.data() || {}).userId === u.id || String(d.id).startsWith(u.id + "_"));
+          const porMes: Record<string, number> = {};
+          const inconsistencias: any[] = [];
+          meus.forEach((d: any) => {
+            const r = d.data() || {};
+            const mes = String(r.date || "").slice(0, 7) || "sem-data";
+            porMes[mes] = (porMes[mes] || 0) + 1;
+            if (r.userId !== u.id || r.agencyId !== u.companyId || !String(d.id).startsWith(u.id + "_")) {
+              inconsistencias.push({ docId: d.id, userId: r.userId, agencyId: r.agencyId, date: r.date });
+            }
+          });
+          const datas = meus.map((d: any) => (d.data() || {}).date).filter(Boolean).sort();
+          return {
+            id: u.id, nome: u.displayName || u.name, email: u.email, role: u.role, status: u.status,
+            companyId: u.companyId, createdAt: ts(u.createdAt), updatedAt: ts(u.updatedAt),
+            migracao: { locked: u.migrationLocked, startedAt: ts(u.migrationStartedAt), migratedTo: u.migratedTo },
+            totalRegistros: meus.length, primeiraData: datas[0] || null, ultimaData: datas[datas.length - 1] || null,
+            porMes, inconsistencias: inconsistencias.slice(0, 30),
+            ajustes: ajustesSnap.docs.filter((d: any) => (d.data() || {}).userId === u.id).length
+          };
+        });
+        // Registros cujo nome bate mas o userId não pertence a nenhuma das pessoas acima
+        const ids = new Set(pessoas.map((p: any) => p.id));
+        const orfaosPorNome = regsSnap.docs
+          .filter((d: any) => { const r = d.data() || {}; return String(r.userName || "").toLowerCase().includes(termo) && !ids.has(r.userId); })
+          .map((d: any) => { const r = d.data() || {}; return { docId: d.id, userId: r.userId, userName: r.userName, date: r.date, agencyId: r.agencyId }; });
+        return res.status(200).json({ totalRegistrosNoBanco: regsSnap.size, pessoas: resultado, orfaosPorNome: orfaosPorNome.slice(0, 50), totalOrfaosPorNome: orfaosPorNome.length });
+      }
+
       if (action === "find-by-corretor") {
         const corretorId = req.query?.corretorId;
         if (!corretorId) return res.status(400).json({ error: "corretorId é obrigatório" });
