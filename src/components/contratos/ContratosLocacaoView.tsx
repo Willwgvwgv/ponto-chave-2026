@@ -113,8 +113,20 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
     diaVencimento: 10,
     prazoMeses: 30,
     dataInicio: new Date().toISOString().split("T")[0],
-    modalidadeGarantia: "caucao" as GuaranteeType
+    modalidadeGarantia: "caucao" as GuaranteeType,
+    // Compra e venda
+    valorVenda: 0,
+    valorSinal: 0,
+    valorFinanciado: 0,
+    bancoFinanciamento: "Caixa Econômica Federal",
+    prazoDocumentacaoDias: 15,
+    comissaoPercent: 6,
+    comissaoPagaPor: "VENDEDOR" as "VENDEDOR" | "COMPRADOR"
   });
+
+  // Modelo escolhido no assistente é de compra e venda? (muda os campos e textos do formulário)
+  const modeloSelecionado = modelos.find((m) => m.id === selectedTemplateId);
+  const isVenda = modeloSelecionado?.tipoDocumento === "venda";
 
   // 1. Subscribe to Contratos in Firestore
   useEffect(() => {
@@ -214,17 +226,19 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
   // Start new contract flow
   const handleOpenNewContractWizard = (preselectedTemplateId?: string) => {
     const defaultTemplate = modelos.find((m) => m.isPadrao) || modelos[0];
-    setSelectedTemplateId(preselectedTemplateId || defaultTemplate?.id || "modelo-padrao-caucao");
+    const idEscolhido = preselectedTemplateId || defaultTemplate?.id || "modelo-padrao-caucao";
+    const abrindoVenda = modelos.find((m) => m.id === idEscolhido)?.tipoDocumento === "venda";
+    setSelectedTemplateId(idEscolhido);
     setWizardStep(1);
     setNovoContratoForm({
-      titulo: "Contrato de Locação Residencial",
+      titulo: abrindoVenda ? "Contrato de Compra e Venda" : "Contrato de Locação Residencial",
       tipoLocacao: "residencial",
       locatarioNome: "",
       locatarioCpf: "",
       locatarioEmail: "",
       locatarioTelefone: "",
-      locadorNome: companySettings?.name || "Proprietário",
-      locadorCpf: companySettings?.cnpj || "",
+      locadorNome: abrindoVenda ? "" : (companySettings?.name || "Proprietário"),
+      locadorCpf: abrindoVenda ? "" : (companySettings?.cnpj || ""),
       imovelEndereco: "",
       imovelNumero: "",
       imovelBairro: "",
@@ -233,7 +247,14 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
       diaVencimento: 10,
       prazoMeses: 30,
       dataInicio: new Date().toISOString().split("T")[0],
-      modalidadeGarantia: "caucao"
+      modalidadeGarantia: "caucao",
+      valorVenda: 0,
+      valorSinal: 0,
+      valorFinanciado: 0,
+      bancoFinanciamento: "Caixa Econômica Federal",
+      prazoDocumentacaoDias: 15,
+      comissaoPercent: 6,
+      comissaoPagaPor: "VENDEDOR"
     });
     setIsNewContractModalOpen(true);
   };
@@ -241,10 +262,18 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
   // Submit and create new contract
   const handleCreateContractFromWizard = async () => {
     const chosenTemplate = modelos.find((m) => m.id === selectedTemplateId) || modelos[0];
+    const ehVenda = chosenTemplate?.tipoDocumento === "venda";
+
+    if (ehVenda) {
+      if (!novoContratoForm.locatarioNome.trim() || !novoContratoForm.imovelEndereco.trim()) {
+        toast.error("Informe o nome do comprador e o endereço do imóvel.");
+        return;
+      }
+    }
     
-    // Auto-generate number LOC-YYYY-XXXX
+    // Auto-generate number LOC-YYYY-XXXX (VEN- para compra e venda)
     const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-    const contractNumber = `LOC-${new Date().getFullYear()}-${randomSuffix}`;
+    const contractNumber = `${ehVenda ? "VEN" : "LOC"}-${new Date().getFullYear()}-${randomSuffix}`;
 
     const dataFim = (() => {
       try {
@@ -259,23 +288,24 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
     const newContractData: Omit<ContratoLocacao, "id"> = {
       companyId,
       numeroContrato: contractNumber,
-      titulo: novoContratoForm.titulo || `Locação - ${novoContratoForm.locatarioNome || "Novo Inquilino"}`,
+      titulo: novoContratoForm.titulo || (ehVenda ? `Compra e Venda - ${novoContratoForm.locatarioNome || "Novo Comprador"}` : `Locação - ${novoContratoForm.locatarioNome || "Novo Inquilino"}`),
       tipoLocacao: novoContratoForm.tipoLocacao,
+      tipoDocumento: ehVenda ? "venda" : "locacao",
       status: "rascunho",
       modeloOrigemId: chosenTemplate.id,
       modeloOrigemNome: chosenTemplate.nome,
       locador: {
         id: `loc_${Date.now()}`,
         role: "locador",
-        nome: novoContratoForm.locadorNome || "Proprietário",
+        nome: novoContratoForm.locadorNome || (ehVenda ? "" : "Proprietário"),
         cpfCnpj: novoContratoForm.locadorCpf || "",
-        endereco: companySettings?.address || "Goiânia - GO"
+        endereco: ehVenda ? "" : (companySettings?.address || "Goiânia - GO")
       },
       locatarios: [
         {
           id: `locat_${Date.now()}`,
           role: "locatario",
-          nome: novoContratoForm.locatarioNome || "Locatário",
+          nome: novoContratoForm.locatarioNome || (ehVenda ? "Comprador" : "Locatário"),
           cpfCnpj: novoContratoForm.locatarioCpf || "",
           email: novoContratoForm.locatarioEmail,
           telefone: novoContratoForm.locatarioTelefone
@@ -305,7 +335,18 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
         jurosMoraPercent: 1,
         multaRescisoriaMeses: 3,
         cidadeForo: novoContratoForm.imovelCidade || "Goiânia",
-        estadoForo: "Goiás"
+        estadoForo: "Goiás",
+        // Firestore não aceita undefined: só grava os campos de venda quando é venda
+        ...(ehVenda ? {
+          valorVenda: novoContratoForm.valorVenda || 0,
+          valorSinal: novoContratoForm.valorSinal || 0,
+          // vazio = o que falta depois do sinal
+          valorFinanciado: novoContratoForm.valorFinanciado || Math.max(0, (novoContratoForm.valorVenda || 0) - (novoContratoForm.valorSinal || 0)),
+          bancoFinanciamento: novoContratoForm.bancoFinanciamento || "",
+          prazoDocumentacaoDias: novoContratoForm.prazoDocumentacaoDias || 0,
+          comissaoPercent: novoContratoForm.comissaoPercent || 0,
+          comissaoPagaPor: novoContratoForm.comissaoPagaPor
+        } : {})
       },
       blocks: chosenTemplate.blocks,
       styleSettings: chosenTemplate.styleSettings || DEFAULT_STYLE_SETTINGS,
@@ -746,7 +787,7 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
                 </div>
                 <div>
                   <h2 className="text-base font-black text-slate-900">
-                    Novo Contrato de Locação
+                    {isVenda ? "Novo Contrato de Compra e Venda" : "Novo Contrato de Locação"}
                   </h2>
                   <p className="text-xs text-slate-500">
                     Selecione o modelo e informe os dados principais para carregar no Editor Visual.
@@ -770,7 +811,22 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
                 </label>
                 <select
                   value={selectedTemplateId}
-                  onChange={(e) => setSelectedTemplateId(e.target.value)}
+                  onChange={(e) => {
+                    const novoId = e.target.value;
+                    setSelectedTemplateId(novoId);
+                    const venda = modelos.find((m) => m.id === novoId)?.tipoDocumento === "venda";
+                    setNovoContratoForm((prev) => {
+                      const titulosPadrao = ["", "Contrato de Locação Residencial", "Contrato de Compra e Venda"];
+                      const nomeEmpresa = companySettings?.name || "Proprietário";
+                      return {
+                        ...prev,
+                        titulo: titulosPadrao.includes(prev.titulo) ? (venda ? "Contrato de Compra e Venda" : "Contrato de Locação Residencial") : prev.titulo,
+                        // Na venda o vendedor é o proprietário, não a imobiliária
+                        locadorNome: venda && prev.locadorNome === nomeEmpresa ? "" : (!venda && !prev.locadorNome ? nomeEmpresa : prev.locadorNome),
+                        locadorCpf: venda && prev.locadorCpf === (companySettings?.cnpj || "") ? "" : prev.locadorCpf
+                      };
+                    });
+                  }}
                   className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 outline-none focus:bg-white focus:ring-2 focus:ring-blue-500"
                 >
                   {modelos.map((m) => (
@@ -795,7 +851,35 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
                 />
               </div>
 
-              {/* 3. Inquilino e Proprietário */}
+              {/* 3. Partes */}
+              {isVenda ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+                  <div>
+                    <label htmlFor="nc-comprador" className="block text-slate-800 font-bold mb-1">Nome do Comprador*</label>
+                    <input id="nc-comprador" type="text" value={novoContratoForm.locatarioNome}
+                      onChange={(e) => setNovoContratoForm({ ...novoContratoForm, locatarioNome: e.target.value })}
+                      placeholder="Nome completo do comprador" className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                  </div>
+                  <div>
+                    <label htmlFor="nc-comprador-cpf" className="block text-slate-800 font-bold mb-1">CPF/CNPJ do Comprador</label>
+                    <input id="nc-comprador-cpf" type="text" value={novoContratoForm.locatarioCpf}
+                      onChange={(e) => setNovoContratoForm({ ...novoContratoForm, locatarioCpf: e.target.value })}
+                      placeholder="000.000.000-00" className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                  </div>
+                  <div>
+                    <label htmlFor="nc-vendedor" className="block text-slate-800 font-bold mb-1">Nome do Vendedor</label>
+                    <input id="nc-vendedor" type="text" value={novoContratoForm.locadorNome}
+                      onChange={(e) => setNovoContratoForm({ ...novoContratoForm, locadorNome: e.target.value })}
+                      placeholder="Nome completo do proprietário" className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                  </div>
+                  <div>
+                    <label htmlFor="nc-vendedor-cpf" className="block text-slate-800 font-bold mb-1">CPF/CNPJ do Vendedor</label>
+                    <input id="nc-vendedor-cpf" type="text" value={novoContratoForm.locadorCpf}
+                      onChange={(e) => setNovoContratoForm({ ...novoContratoForm, locadorCpf: e.target.value })}
+                      placeholder="000.000.000-00" className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                  </div>
+                </div>
+              ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
                 <div>
                   <label className="block text-slate-800 font-bold mb-1">
@@ -824,6 +908,7 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
                   />
                 </div>
               </div>
+              )}
 
               {/* 4. Imóvel */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -855,7 +940,70 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
                 </div>
               </div>
 
-              {/* 5. Valores e Prazos */}
+              {/* 5. Valores */}
+              {isVenda ? (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div>
+                      <label htmlFor="nc-valor-venda" className="block text-slate-800 font-bold mb-1">Valor da Venda (R$)*</label>
+                      <input id="nc-valor-venda" type="number" min="0" value={novoContratoForm.valorVenda || ""}
+                        onChange={(e) => setNovoContratoForm({ ...novoContratoForm, valorVenda: parseFloat(e.target.value) || 0 })}
+                        className="w-full p-2 border border-slate-300 rounded-xl outline-none font-bold" />
+                    </div>
+                    <div>
+                      <label htmlFor="nc-sinal" className="block text-slate-800 font-bold mb-1">Sinal (R$)</label>
+                      <input id="nc-sinal" type="number" min="0" value={novoContratoForm.valorSinal || ""}
+                        onChange={(e) => setNovoContratoForm({ ...novoContratoForm, valorSinal: parseFloat(e.target.value) || 0 })}
+                        className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                    </div>
+                    <div>
+                      <label htmlFor="nc-financiado" className="block text-slate-800 font-bold mb-1">Valor Financiado (R$)</label>
+                      <input id="nc-financiado" type="number" min="0" value={novoContratoForm.valorFinanciado || ""}
+                        onChange={(e) => setNovoContratoForm({ ...novoContratoForm, valorFinanciado: parseFloat(e.target.value) || 0 })}
+                        placeholder={novoContratoForm.valorVenda ? `${Math.max(0, novoContratoForm.valorVenda - (novoContratoForm.valorSinal || 0))} (automático)` : "venda − sinal"}
+                        className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                    </div>
+                  </div>
+                  {/* Só avisa quando o financiado foi digitado (vazio = calculado como venda − sinal) */}
+                  {novoContratoForm.valorVenda > 0 && (novoContratoForm.valorFinanciado || 0) > 0 &&
+                    Math.abs(novoContratoForm.valorVenda - (novoContratoForm.valorSinal || 0) - (novoContratoForm.valorFinanciado || 0)) > 0.01 && (
+                    <p className="text-[11px] font-medium text-amber-700">
+                      Sinal + financiado = {formatCurrencyBRL((novoContratoForm.valorSinal || 0) + (novoContratoForm.valorFinanciado || 0))}, diferente do valor da venda ({formatCurrencyBRL(novoContratoForm.valorVenda)}).
+                    </p>
+                  )}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div>
+                      <label htmlFor="nc-banco" className="block text-slate-800 font-bold mb-1">Banco do Financiamento</label>
+                      <input id="nc-banco" type="text" value={novoContratoForm.bancoFinanciamento}
+                        onChange={(e) => setNovoContratoForm({ ...novoContratoForm, bancoFinanciamento: e.target.value })}
+                        className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                    </div>
+                    <div>
+                      <label htmlFor="nc-prazo-doc" className="block text-slate-800 font-bold mb-1">Prazo p/ Documentação (dias úteis)</label>
+                      <input id="nc-prazo-doc" type="number" min="0" value={novoContratoForm.prazoDocumentacaoDias || ""}
+                        onChange={(e) => setNovoContratoForm({ ...novoContratoForm, prazoDocumentacaoDias: parseInt(e.target.value) || 0 })}
+                        className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                    </div>
+                    <div>
+                      <label htmlFor="nc-comissao" className="block text-slate-800 font-bold mb-1">Comissão (%)</label>
+                      <div className="flex gap-2">
+                        <input id="nc-comissao" type="number" min="0" step="0.5" value={novoContratoForm.comissaoPercent || ""}
+                          onChange={(e) => setNovoContratoForm({ ...novoContratoForm, comissaoPercent: parseFloat(e.target.value) || 0 })}
+                          className="w-20 p-2 border border-slate-300 rounded-xl outline-none" />
+                        <select aria-label="Comissão paga por" value={novoContratoForm.comissaoPagaPor}
+                          onChange={(e) => setNovoContratoForm({ ...novoContratoForm, comissaoPagaPor: e.target.value as "VENDEDOR" | "COMPRADOR" })}
+                          className="flex-1 min-w-0 p-2 border border-slate-300 rounded-xl outline-none bg-white">
+                          <option value="VENDEDOR">paga pelo vendedor</option>
+                          <option value="COMPRADOR">paga pelo comprador</option>
+                        </select>
+                      </div>
+                      {novoContratoForm.valorVenda > 0 && novoContratoForm.comissaoPercent > 0 && (
+                        <p className="text-[11px] text-slate-500 mt-1">= {formatCurrencyBRL(novoContratoForm.valorVenda * novoContratoForm.comissaoPercent / 100)}</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-slate-800 font-bold mb-1">
@@ -895,6 +1043,7 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
                   />
                 </div>
               </div>
+              )}
             </div>
 
             {/* Modal Footer */}

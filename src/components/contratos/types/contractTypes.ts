@@ -90,6 +90,15 @@ export interface ContractCommercialTerms {
   seguroIncendioAnual?: number;
   cidadeForo: string;
   estadoForo: string;
+
+  // Compra e venda (usados só nos modelos de venda)
+  valorVenda?: number;
+  valorSinal?: number;
+  valorFinanciado?: number;
+  bancoFinanciamento?: string;
+  prazoDocumentacaoDias?: number;
+  comissaoPercent?: number;
+  comissaoPagaPor?: "VENDEDOR" | "COMPRADOR";
 }
 
 export interface ContractBlock {
@@ -149,6 +158,7 @@ export interface ContratoLocacao {
   id: string;
   companyId: string;
   numeroContrato: string; // ex: "LOC-2026-0042"
+  tipoDocumento?: "locacao" | "venda"; // ausente = locação
   titulo: string; // ex: "Contrato de Locação Residencial - Apto 302 Ed. Bela Vista"
   tipoLocacao: "residencial" | "comercial" | "temporada" | "mista";
   status: ContractStatus;
@@ -191,6 +201,7 @@ export interface ContratoModelo {
   nome: string; // ex: "Padrão Residencial com Caução"
   descricao: string;
   tipoLocacao: "residencial" | "comercial" | "temporada" | "mista";
+  tipoDocumento?: "locacao" | "venda"; // ausente = locação
   isPadrao: boolean;
   blocks: ContractBlock[];
   styleSettings: ContractStyleSettings;

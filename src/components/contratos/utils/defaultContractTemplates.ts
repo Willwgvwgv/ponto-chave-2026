@@ -346,16 +346,16 @@ export const VENDA_FINANCIAMENTO_BLOCKS: ContractBlock[] = [
     type: "clause",
     clauseTitle: "DO PREÇO E DAS CONDIÇÕES DE PAGAMENTO",
     sectionCategory: "Preço e pagamento",
-    content: `<p>O preço total ajustado para a presente venda é de <strong>R$ ______________ (________________________________________)</strong>, que será pago da seguinte forma:</p>
-<p><strong>a) Sinal / Princípio de Pagamento:</strong> R$ ______________ (________________________________), pago diretamente pelo COMPRADOR ao VENDEDOR nesta data, servindo o presente instrumento como recibo.</p>
-<p><strong>b) Recursos do Financiamento:</strong> R$ ______________ (________________________________), que serão liberados pela instituição financeira ______________________________ em favor do VENDEDOR após a aprovação de crédito, a assinatura do contrato de financiamento habitacional e o respectivo registro no Cartório de Registro de Imóveis.</p>`
+    content: `<p>O preço total ajustado para a presente venda é de <strong>{{valor_venda}} ({{valor_venda_extenso}})</strong>, que será pago da seguinte forma:</p>
+<p><strong>a) Sinal / Princípio de Pagamento:</strong> {{valor_sinal}} ({{valor_sinal_extenso}}), pago diretamente pelo COMPRADOR ao VENDEDOR nesta data, servindo o presente instrumento como recibo.</p>
+<p><strong>b) Recursos do Financiamento:</strong> {{valor_financiado}} ({{valor_financiado_extenso}}), que serão liberados pela instituição financeira <strong>{{banco_financiamento}}</strong> em favor do VENDEDOR após a aprovação de crédito, a assinatura do contrato de financiamento habitacional e o respectivo registro no Cartório de Registro de Imóveis.</p>`
   },
   {
     id: "clause-3",
     type: "clause",
     clauseTitle: "DO PRAZO PARA O FINANCIAMENTO",
     sectionCategory: "Financiamento",
-    content: `<p><strong>3.1.</strong> O COMPRADOR compromete-se a apresentar toda a documentação necessária à instituição financeira no prazo de ______ (__________) dias úteis a contar desta data, para a efetivação da análise de crédito e emissão do contrato de financiamento.</p>
+    content: `<p><strong>3.1.</strong> O COMPRADOR compromete-se a apresentar toda a documentação necessária à instituição financeira no prazo de {{prazo_documentacao}} dias úteis a contar desta data, para a efetivação da análise de crédito e emissão do contrato de financiamento.</p>
 <p><strong>3.2.</strong> Caso o financiamento seja negado pela instituição financeira por motivo não atribuível ao VENDEDOR ou à INTERMEDIÁRIA, este contrato poderá ser rescindido de pleno direito, com a devolução dos valores pagos pelo COMPRADOR, deduzidos os custos operacionais e a comissão de intermediação previamente acordados.</p>`
   },
   {
@@ -371,7 +371,7 @@ export const VENDA_FINANCIAMENTO_BLOCKS: ContractBlock[] = [
     type: "clause",
     clauseTitle: "DA INTERMEDIAÇÃO E DA COMISSÃO",
     sectionCategory: "Intermediação",
-    content: `<p><strong>5.1.</strong> Pela intermediação imobiliária prestada pela {{nome_imobiliaria}}, será devida comissão de ______% (________________ por cento) sobre o valor total da venda, totalizando <strong>R$ ______________ (________________________________)</strong>, a ser paga pelo ______________ (VENDEDOR/COMPRADOR) no ato do recebimento do sinal ou da liberação do financiamento.</p>`
+    content: `<p><strong>5.1.</strong> Pela intermediação imobiliária prestada pela {{nome_imobiliaria}}, será devida comissão de {{comissao_percentual}} sobre o valor total da venda, totalizando <strong>{{valor_comissao}} ({{valor_comissao_extenso}})</strong>, a ser paga pelo <strong>{{comissao_paga_por}}</strong> no ato do recebimento do sinal ou da liberação do financiamento.</p>`
   },
   {
     id: "clause-6",
@@ -468,7 +468,8 @@ export const INITIAL_PREDEFINED_TEMPLATES: ContratoModelo[] = [
     id: "modelo-venda-financiamento",
     companyId: "global",
     nome: "Compra e Venda com Intermediação e Financiamento Bancário",
-    descricao: "Instrumento particular de compra e venda com sinal, recursos de financiamento (ex.: Caixa), prazo para documentação, posse, despesas e comissão da imobiliária. Locador = Vendedor, Locatário = Comprador.",
+    tipoDocumento: "venda",
+    descricao: "Instrumento particular de compra e venda com sinal, recursos de financiamento (ex.: Caixa), prazo para documentação, posse, despesas e comissão da imobiliária.",
     tipoLocacao: "residencial",
     isPadrao: false,
     categoria: "Compra e Venda",

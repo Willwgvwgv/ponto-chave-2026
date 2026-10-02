@@ -4,6 +4,16 @@ import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
 export const DYNAMIC_VARIABLES_CATALOG: DynamicVariableDefinition[] = [
+  // Compra e venda
+  { key: "valor_venda", label: "Valor Total da Venda", category: "comercial", description: "Preço total do imóvel (venda)", exampleValue: "R$ 250.000,00" },
+  { key: "valor_venda_extenso", label: "Valor da Venda por Extenso", category: "comercial", description: "Preço total por extenso", exampleValue: "duzentos e cinquenta mil reais" },
+  { key: "valor_sinal", label: "Valor do Sinal", category: "comercial", description: "Sinal / princípio de pagamento", exampleValue: "R$ 25.000,00" },
+  { key: "valor_financiado", label: "Valor Financiado", category: "comercial", description: "Recursos do financiamento bancário", exampleValue: "R$ 225.000,00" },
+  { key: "banco_financiamento", label: "Banco do Financiamento", category: "comercial", description: "Instituição financeira", exampleValue: "Caixa Econômica Federal" },
+  { key: "prazo_documentacao", label: "Prazo para Documentação (dias úteis)", category: "prazos", description: "Prazo do comprador para entregar documentos ao banco", exampleValue: "15 (quinze)" },
+  { key: "comissao_percentual", label: "Comissão (%)", category: "comercial", description: "Percentual da intermediação", exampleValue: "6% (seis por cento)" },
+  { key: "valor_comissao", label: "Valor da Comissão", category: "comercial", description: "Comissão calculada sobre a venda", exampleValue: "R$ 15.000,00" },
+  { key: "comissao_paga_por", label: "Comissão Paga Por", category: "comercial", description: "VENDEDOR ou COMPRADOR", exampleValue: "VENDEDOR" },
   // 1. Dados do Imóvel
   { key: "endereco_imovel", label: "Endereço Completo do Imóvel", category: "imovel", description: "Rua, número, complemento, bairro, cidade e UF", exampleValue: "Av. T-63, nº 1200, Apto 504, Ed. Horizonte, Setor Bueno, Goiânia - GO" },
   { key: "rua_imovel", label: "Logradouro do Imóvel", category: "imovel", description: "Nome da rua/avenida e número", exampleValue: "Av. T-63, nº 1200" },
@@ -312,6 +322,31 @@ export function buildVariableMap(
     juros_mora: `${cond.jurosMoraPercent || 1}% (${numberToExtenso(cond.jurosMoraPercent || 1).replace(/ rea(l|is)$/, "")} por cento) ao mês`,
     multa_rescisoria: `${cond.multaRescisoriaMeses || 3} (${numberToExtenso(cond.multaRescisoriaMeses || 3).replace(/ rea(l|is)$/, "")}) meses de aluguel`,
     cidade_foro: `Comarca de ${cond.cidadeForo || "Goiânia"}, Estado de ${cond.estadoForo || "Goiás"}`,
+
+    // Compra e venda — vazio vira linha em branco para preencher à mão
+    ...(() => {
+      const LINHA = "______________";
+      const LINHA_EXT = "________________________________";
+      const brl = (v?: number) => (v && v > 0 ? formatCurrencyBRL(v) : `R$ ${LINHA}`);
+      const ext = (v?: number) => (v && v > 0 ? numberToExtenso(v) : LINHA_EXT);
+      const semMoeda = (n: number) => numberToExtenso(n).replace(/ rea(l|is)$/, "");
+      const pct = cond.comissaoPercent;
+      const valorComissao = pct && cond.valorVenda ? Math.round(cond.valorVenda * pct) / 100 : undefined;
+      return {
+        valor_venda: brl(cond.valorVenda),
+        valor_venda_extenso: ext(cond.valorVenda),
+        valor_sinal: brl(cond.valorSinal),
+        valor_sinal_extenso: ext(cond.valorSinal),
+        valor_financiado: brl(cond.valorFinanciado),
+        valor_financiado_extenso: ext(cond.valorFinanciado),
+        banco_financiamento: cond.bancoFinanciamento?.trim() || LINHA_EXT,
+        prazo_documentacao: cond.prazoDocumentacaoDias ? `${cond.prazoDocumentacaoDias} (${semMoeda(cond.prazoDocumentacaoDias)})` : `${LINHA} (${LINHA})`,
+        comissao_percentual: pct ? `${String(pct).replace(".", ",")}% (${semMoeda(pct)} por cento)` : `${LINHA}% (${LINHA} por cento)`,
+        valor_comissao: brl(valorComissao),
+        valor_comissao_extenso: ext(valorComissao),
+        comissao_paga_por: cond.comissaoPagaPor || LINHA
+      };
+    })(),
 
     // Prazos e Datas
     prazo_meses: mesesToExtenso(cond.prazoMeses || 30),
