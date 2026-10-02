@@ -42,6 +42,7 @@ import {
 } from "./utils/defaultContractTemplates";
 import { printContractDocument } from "./utils/contractPdfGenerator";
 import { formatCurrencyBRL } from "./utils/contractVariableResolver";
+import { CurrencyInput } from "../ui/CurrencyInput";
 import { CompanySettings, UserProfile } from "../../types";
 import { 
   db, 
@@ -945,22 +946,22 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
                 <div className="space-y-3">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <div>
-                      <label htmlFor="nc-valor-venda" className="block text-slate-800 font-bold mb-1">Valor da Venda (R$)*</label>
-                      <input id="nc-valor-venda" type="number" min="0" value={novoContratoForm.valorVenda || ""}
-                        onChange={(e) => setNovoContratoForm({ ...novoContratoForm, valorVenda: parseFloat(e.target.value) || 0 })}
+                      <label htmlFor="nc-valor-venda" className="block text-slate-800 font-bold mb-1">Valor da Venda*</label>
+                      <CurrencyInput id="nc-valor-venda" value={novoContratoForm.valorVenda || ""}
+                        onChange={(v) => setNovoContratoForm({ ...novoContratoForm, valorVenda: v })}
                         className="w-full p-2 border border-slate-300 rounded-xl outline-none font-bold" />
                     </div>
                     <div>
-                      <label htmlFor="nc-sinal" className="block text-slate-800 font-bold mb-1">Sinal (R$)</label>
-                      <input id="nc-sinal" type="number" min="0" value={novoContratoForm.valorSinal || ""}
-                        onChange={(e) => setNovoContratoForm({ ...novoContratoForm, valorSinal: parseFloat(e.target.value) || 0 })}
+                      <label htmlFor="nc-sinal" className="block text-slate-800 font-bold mb-1">Sinal</label>
+                      <CurrencyInput id="nc-sinal" value={novoContratoForm.valorSinal || ""}
+                        onChange={(v) => setNovoContratoForm({ ...novoContratoForm, valorSinal: v })}
                         className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
                     </div>
                     <div>
-                      <label htmlFor="nc-financiado" className="block text-slate-800 font-bold mb-1">Valor Financiado (R$)</label>
-                      <input id="nc-financiado" type="number" min="0" value={novoContratoForm.valorFinanciado || ""}
-                        onChange={(e) => setNovoContratoForm({ ...novoContratoForm, valorFinanciado: parseFloat(e.target.value) || 0 })}
-                        placeholder={novoContratoForm.valorVenda ? `${Math.max(0, novoContratoForm.valorVenda - (novoContratoForm.valorSinal || 0))} (automático)` : "venda − sinal"}
+                      <label htmlFor="nc-financiado" className="block text-slate-800 font-bold mb-1">Valor Financiado</label>
+                      <CurrencyInput id="nc-financiado" value={novoContratoForm.valorFinanciado || ""}
+                        onChange={(v) => setNovoContratoForm({ ...novoContratoForm, valorFinanciado: v })}
+                        placeholder={novoContratoForm.valorVenda ? `${formatCurrencyBRL(Math.max(0, novoContratoForm.valorVenda - (novoContratoForm.valorSinal || 0)))} (automático)` : "venda − sinal"}
                         className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
                     </div>
                   </div>
@@ -1007,12 +1008,11 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-slate-800 font-bold mb-1">
-                    Valor do Aluguel (R$)*
+                    Valor do Aluguel*
                   </label>
-                  <input
-                    type="number"
-                    value={novoContratoForm.valorAluguel}
-                    onChange={(e) => setNovoContratoForm({ ...novoContratoForm, valorAluguel: parseFloat(e.target.value) || 0 })}
+                  <CurrencyInput
+                    value={novoContratoForm.valorAluguel || ""}
+                    onChange={(v) => setNovoContratoForm({ ...novoContratoForm, valorAluguel: v })}
                     className="w-full p-2 border border-slate-300 rounded-xl outline-none font-bold"
                   />
                 </div>
