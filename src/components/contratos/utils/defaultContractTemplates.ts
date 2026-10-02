@@ -302,6 +302,104 @@ export const CREDPAGO_TEMPLATE_BLOCKS: ContractBlock[] = [
   })
 ];
 
+
+// Compra e venda com intermediação imobiliária e financiamento bancário.
+// Usa os campos do sistema: Locador = VENDEDOR, Locatário = COMPRADOR.
+export const VENDA_FINANCIAMENTO_BLOCKS: ContractBlock[] = [
+  {
+    id: "block-title",
+    type: "title",
+    content: "INSTRUMENTO PARTICULAR DE COMPRA E VENDA DE IMÓVEL",
+    isLocked: true
+  },
+  {
+    id: "block-subtitle",
+    type: "subtitle",
+    content: "COM INTERMEDIAÇÃO IMOBILIÁRIA E PAGAMENTO MEDIANTE FINANCIAMENTO BANCÁRIO",
+    isLocked: true
+  },
+  {
+    id: "block-parties-venda",
+    type: "parties",
+    clauseTitle: "IDENTIFICAÇÃO DAS PARTES",
+    sectionCategory: "Identificação das partes",
+    content: `<p><strong>VENDEDOR(A):</strong> {{qualificacao_completa_locador}}, doravante denominado(a) simplesmente <strong>VENDEDOR</strong>.</p>
+<p class="mt-2"><strong>COMPRADOR(A):</strong> {{qualificacao_completa_locatario}}, doravante denominado(a) simplesmente <strong>COMPRADOR</strong>.</p>
+<p class="mt-2"><strong>INTERMEDIÁRIA (IMOBILIÁRIA):</strong> <strong>{{nome_imobiliaria}}</strong>, inscrita no CNPJ sob o nº {{cnpj_imobiliaria}}, registro no CRECI sob o nº {{creci_imobiliaria}}, estabelecida à {{endereco_imobiliaria}}.</p>`
+  },
+  {
+    id: "block-preambulo-venda",
+    type: "paragraph",
+    sectionCategory: "Identificação das partes",
+    content: `<p>As partes acima qualificadas têm, entre si, justo e contratado o presente instrumento, que se regerá pelas cláusulas e condições seguintes:</p>`
+  },
+  {
+    id: "clause-1",
+    type: "clause",
+    clauseTitle: "DO OBJETO",
+    sectionCategory: "Objeto",
+    content: `<p><strong>1.1.</strong> O VENDEDOR é legítimo possuidor e proprietário do imóvel situado à <strong>{{endereco_imovel}}</strong>, registrado no {{cartorio_imovel}}, Comarca de {{cidade_imovel}}/{{estado_imovel}}, sob a matrícula nº <strong>{{matricula_imovel}}</strong>.</p>
+<p><strong>1.2.</strong> O imóvel encontra-se atualmente ______________________________________________ (livre e desembaraçado de quaisquer ônus, ou com saldo devedor de financiamento junto a ____________________, contrato nº ____________).</p>`
+  },
+  {
+    id: "clause-2",
+    type: "clause",
+    clauseTitle: "DO PREÇO E DAS CONDIÇÕES DE PAGAMENTO",
+    sectionCategory: "Preço e pagamento",
+    content: `<p>O preço total ajustado para a presente venda é de <strong>R$ ______________ (________________________________________)</strong>, que será pago da seguinte forma:</p>
+<p><strong>a) Sinal / Princípio de Pagamento:</strong> R$ ______________ (________________________________), pago diretamente pelo COMPRADOR ao VENDEDOR nesta data, servindo o presente instrumento como recibo.</p>
+<p><strong>b) Recursos do Financiamento:</strong> R$ ______________ (________________________________), que serão liberados pela instituição financeira ______________________________ em favor do VENDEDOR após a aprovação de crédito, a assinatura do contrato de financiamento habitacional e o respectivo registro no Cartório de Registro de Imóveis.</p>`
+  },
+  {
+    id: "clause-3",
+    type: "clause",
+    clauseTitle: "DO PRAZO PARA O FINANCIAMENTO",
+    sectionCategory: "Financiamento",
+    content: `<p><strong>3.1.</strong> O COMPRADOR compromete-se a apresentar toda a documentação necessária à instituição financeira no prazo de ______ (__________) dias úteis a contar desta data, para a efetivação da análise de crédito e emissão do contrato de financiamento.</p>
+<p><strong>3.2.</strong> Caso o financiamento seja negado pela instituição financeira por motivo não atribuível ao VENDEDOR ou à INTERMEDIÁRIA, este contrato poderá ser rescindido de pleno direito, com a devolução dos valores pagos pelo COMPRADOR, deduzidos os custos operacionais e a comissão de intermediação previamente acordados.</p>`
+  },
+  {
+    id: "clause-4",
+    type: "clause",
+    clauseTitle: "DA POSSE E DAS DESPESAS",
+    sectionCategory: "Posse e despesas",
+    content: `<p><strong>4.1.</strong> A posse do imóvel será entregue ao COMPRADOR ______________________________________ (ex.: após a liberação dos recursos pela instituição financeira e quitação total do preço), estando o imóvel livre de pessoas e coisas.</p>
+<p><strong>4.2.</strong> Tributos (IPTU), taxas condominiais e contas de consumo (água e energia elétrica) referentes ao período anterior à entrega das chaves são de responsabilidade do VENDEDOR. Os posteriores são de responsabilidade do COMPRADOR.</p>`
+  },
+  {
+    id: "clause-5",
+    type: "clause",
+    clauseTitle: "DA INTERMEDIAÇÃO E DA COMISSÃO",
+    sectionCategory: "Intermediação",
+    content: `<p><strong>5.1.</strong> Pela intermediação imobiliária prestada pela {{nome_imobiliaria}}, será devida comissão de ______% (________________ por cento) sobre o valor total da venda, totalizando <strong>R$ ______________ (________________________________)</strong>, a ser paga pelo ______________ (VENDEDOR/COMPRADOR) no ato do recebimento do sinal ou da liberação do financiamento.</p>`
+  },
+  {
+    id: "clause-6",
+    type: "clause",
+    clauseTitle: "DO FORO",
+    sectionCategory: "Disposições gerais",
+    content: `<p><strong>6.1.</strong> As partes elegem o foro da <strong>{{cidade_foro}}</strong> para dirimir quaisquer dúvidas ou litígios decorrentes deste instrumento, com renúncia expressa a qualquer outro, por mais privilegiado que seja.</p>`
+  },
+  {
+    id: "block-assinaturas-venda",
+    type: "paragraph",
+    clauseTitle: "ASSINATURAS",
+    sectionCategory: "Assinaturas e testemunhas",
+    content: `<p style="text-align:center">E, por estarem justos e contratados, assinam o presente em 3 (três) vias de igual teor e forma.</p>
+<p style="text-align:center"><em>{{data_atual_extenso}}</em></p>
+<p><br></p>
+<p style="text-align:center">_______________________________________________<br><strong>{{nome_locador}}</strong><br>VENDEDOR(A)</p>
+<p><br></p>
+<p style="text-align:center">_______________________________________________<br><strong>{{nome_locatario}}</strong><br>COMPRADOR(A)</p>
+<p><br></p>
+<p style="text-align:center">_______________________________________________<br><strong>{{nome_imobiliaria}}</strong><br>INTERMEDIÁRIA — CRECI {{creci_imobiliaria}}</p>
+<p><br></p>
+<p>Testemunhas:</p>
+<p>1. _________________________________ CPF: ____________________</p>
+<p>2. _________________________________ CPF: ____________________</p>`
+  }
+];
+
 export const INITIAL_PREDEFINED_TEMPLATES: ContratoModelo[] = [
   {
     id: "modelo-padrao-caucao",
@@ -361,6 +459,21 @@ export const INITIAL_PREDEFINED_TEMPLATES: ContratoModelo[] = [
       ...DEFAULT_STYLE_SETTINGS,
       primaryColor: "#0f766e" // teal
     },
+    criadoPorUid: "system",
+    criadoPorNome: "Ponto Chave",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+  {
+    id: "modelo-venda-financiamento",
+    companyId: "global",
+    nome: "Compra e Venda com Intermediação e Financiamento Bancário",
+    descricao: "Instrumento particular de compra e venda com sinal, recursos de financiamento (ex.: Caixa), prazo para documentação, posse, despesas e comissão da imobiliária. Locador = Vendedor, Locatário = Comprador.",
+    tipoLocacao: "residencial",
+    isPadrao: false,
+    categoria: "Compra e Venda",
+    blocks: VENDA_FINANCIAMENTO_BLOCKS,
+    styleSettings: DEFAULT_STYLE_SETTINGS,
     criadoPorUid: "system",
     criadoPorNome: "Ponto Chave",
     createdAt: new Date().toISOString(),
