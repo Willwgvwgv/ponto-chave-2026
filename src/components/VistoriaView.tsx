@@ -70,6 +70,8 @@ export const VistoriaView = ({ isAdmin, user, profile, companySettings }: { isAd
   const [loading, setLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   const [isAddingComodo, setIsAddingComodo] = useState(false);
+  // Texto do "novo item" digitado em cada cômodo (chave = índice do cômodo)
+  const [novoItemPorComodo, setNovoItemPorComodo] = useState<Record<number, string>>({});
   const [newComodoName, setNewComodoName] = useState('');
   const [selectedTemplate, setSelectedTemplate] = useState(COMODOS_PADRAO[0].nome);
   const [editingVistoria, setEditingVistoria] = useState<Vistoria | null>(null);
@@ -1075,9 +1077,21 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
 
                   <div className="space-y-4">
                     {comodo.itens.map((item, iIdx) => (
-                      <div key={item.nome} className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center p-3 rounded-2xl bg-slate-50/50">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-bold text-slate-700">{item.nome}</span>
+                      <div key={`${cIdx}-${iIdx}`} className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center p-3 rounded-2xl bg-slate-50/50">
+                        <div className="flex items-center justify-between gap-2">
+                          {/* Nome do item editável (ex.: corrigir "Ar condicionado" → "Ar condicionado split") */}
+                          <input
+                            type="text"
+                            value={item.nome}
+                            aria-label={`Nome do item ${iIdx + 1} de ${comodo.nome}`}
+                            onChange={e => {
+                              const newComodos = [...comodos];
+                              newComodos[cIdx].itens[iIdx].nome = e.target.value;
+                              setComodos(newComodos);
+                            }}
+                            className="flex-1 min-w-0 text-sm font-bold text-slate-700 bg-transparent border border-transparent hover:border-slate-200 focus:border-blue-300 focus:bg-white rounded-lg px-2 py-1 -ml-2 focus:outline-none focus:ring-0 transition-colors"
+                          />
+                          <div className="flex items-center gap-1 shrink-0">
                           <div className="flex bg-white rounded-lg p-1 border border-slate-100">
                             <button
                               onClick={() => {
@@ -1106,6 +1120,21 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
                               RESSALVA
                             </button>
                           </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!window.confirm(`Remover o item "${item.nome}" de ${comodo.nome}?`)) return;
+                              const newComodos = [...comodos];
+                              newComodos[cIdx].itens = newComodos[cIdx].itens.filter((_, idx) => idx !== iIdx);
+                              setComodos(newComodos);
+                            }}
+                            className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                            title="Remover item"
+                            aria-label={`Remover item ${item.nome}`}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                          </div>
                         </div>
                         
                         {!item.ok && (
@@ -1123,6 +1152,36 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
                         )}
                       </div>
                     ))}
+
+                    {/* Adicionar item ao cômodo */}
+                    <form
+                      onSubmit={e => {
+                        e.preventDefault();
+                        const nome = (novoItemPorComodo[cIdx] || "").trim();
+                        if (!nome) return;
+                        const newComodos = [...comodos];
+                        newComodos[cIdx].itens = [...newComodos[cIdx].itens, { nome, ok: true, ressalva: '' }];
+                        setComodos(newComodos);
+                        setNovoItemPorComodo(prev => ({ ...prev, [cIdx]: "" }));
+                      }}
+                      className="flex gap-2"
+                    >
+                      <input
+                        type="text"
+                        value={novoItemPorComodo[cIdx] || ""}
+                        onChange={e => setNovoItemPorComodo(prev => ({ ...prev, [cIdx]: e.target.value }))}
+                        placeholder="Novo item (ex.: Box de vidro)"
+                        aria-label={`Novo item em ${comodo.nome}`}
+                        className="flex-1 min-w-0 text-xs px-3 py-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-200"
+                      />
+                      <button
+                        type="submit"
+                        className="inline-flex items-center gap-1 px-3 py-2 text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg transition-all"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        Adicionar item
+                      </button>
+                    </form>
                   </div>
 
                   {/* Room Photos */}
