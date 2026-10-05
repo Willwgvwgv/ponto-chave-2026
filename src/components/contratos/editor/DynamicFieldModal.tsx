@@ -246,6 +246,18 @@ export const DynamicFieldModal: React.FC<DynamicFieldModalProps> = ({
               </div>
 
               <div>
+                <label className="block text-slate-700 font-bold mb-1">Seguro Incêndio Anual (R$)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={condicoes.seguroIncendioAnual || ""}
+                  onChange={(e) => setCondicoes({ ...condicoes, seguroIncendioAnual: parseFloat(e.target.value) || 0 })}
+                  className="w-full p-2 border border-slate-300 rounded-lg text-slate-900"
+                />
+              </div>
+
+              <div>
                 <label className="block text-slate-700 font-bold mb-1">Comarca do Foro</label>
                 <input
                   type="text"
@@ -459,6 +471,16 @@ export const DynamicFieldModal: React.FC<DynamicFieldModalProps> = ({
                   className="w-full p-2 border border-slate-300 rounded-lg text-slate-900"
                 />
               </div>
+
+              <div className="md:col-span-3">
+                <label className="block text-slate-700 font-bold mb-1">Endereço Atual do Locatário</label>
+                <input
+                  type="text"
+                  value={locatario.endereco || ""}
+                  onChange={(e) => setLocatario({ ...locatario, endereco: e.target.value })}
+                  className="w-full p-2 border border-slate-300 rounded-lg text-slate-900"
+                />
+              </div>
             </div>
           )}
 
@@ -501,6 +523,26 @@ export const DynamicFieldModal: React.FC<DynamicFieldModalProps> = ({
                   type="text"
                   value={locador.estadoCivil || "casado(a)"}
                   onChange={(e) => setLocador({ ...locador, estadoCivil: e.target.value })}
+                  className="w-full p-2 border border-slate-300 rounded-lg text-slate-900"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-bold mb-1">Profissão</label>
+                <input
+                  type="text"
+                  value={locador.profissao || ""}
+                  onChange={(e) => setLocador({ ...locador, profissao: e.target.value })}
+                  className="w-full p-2 border border-slate-300 rounded-lg text-slate-900"
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-slate-700 font-bold mb-1">Endereço do Locador</label>
+                <input
+                  type="text"
+                  value={locador.endereco || ""}
+                  onChange={(e) => setLocador({ ...locador, endereco: e.target.value })}
                   className="w-full p-2 border border-slate-300 rounded-lg text-slate-900"
                 />
               </div>

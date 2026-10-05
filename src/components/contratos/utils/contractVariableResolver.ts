@@ -227,7 +227,17 @@ export function buildVariableMap(
     im.cep ? `CEP: ${im.cep}` : null
   ].filter(Boolean).join(", ");
 
-  const qualificacaoLocador = [
+  // Locador pessoa jurídica (CNPJ com 14 dígitos) não tem nacionalidade,
+  // estado civil nem "residente e domiciliado".
+  const locadorEhPJ = (loc.cpfCnpj || "").replace(/\D/g, "").length === 14;
+  const qualificacaoLocador = locadorEhPJ
+    ? [
+        loc.nome,
+        "pessoa jurídica de direito privado",
+        `inscrita no CNPJ sob o nº ${loc.cpfCnpj}`,
+        loc.endereco ? `com sede à ${loc.endereco}` : null
+      ].filter(Boolean).join(", ")
+    : [
     loc.nome,
     loc.nacionalidade || "brasileiro(a)",
     loc.estadoCivil || "casado(a)",
