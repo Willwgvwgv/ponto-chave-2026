@@ -1825,6 +1825,24 @@ function saveStoredEnergia(list: EnergiaLocacao[]) {
   }
 }
 
+// O Firestore deste projeto não aceita campos com valor `undefined` (não usa
+// ignoreUndefinedProperties). Campos opcionais vazios do formulário (CPF,
+// nascimento, vencimento, observações) chegam como undefined:
+// - no cadastro, são simplesmente omitidos;
+// - na edição, viram null, para que apagar um campo no formulário realmente
+//   limpe o valor gravado.
+function semUndefined<T extends Record<string, any>>(obj: T, modo: "omitir" | "nulo"): Record<string, any> {
+  const out: Record<string, any> = {};
+  Object.entries(obj).forEach(([k, v]) => {
+    if (v === undefined) {
+      if (modo === "nulo") out[k] = null;
+    } else {
+      out[k] = v;
+    }
+  });
+  return out;
+}
+
 export function useEnergiaLocacoes(companyId: string) {
   const safeId = companyId || "default_agency";
 
@@ -1872,7 +1890,7 @@ export function useCreateEnergiaMutation() {
       const docData: EnergiaLocacao = { ...energia, id: generatedId, createdAt: now, updatedAt: now };
 
       try {
-        await setDoc(doc(db, "energia_locacoes", generatedId), docData);
+        await setDoc(doc(db, "energia_locacoes", generatedId), semUndefined(docData, "omitir"));
       } catch (err) {
         // Falha real é reportada, não escondida — mesmo cuidado aplicado em
         // useCreateRentalMutation: um "sucesso" falso é pior que um erro visível.
@@ -1899,7 +1917,7 @@ export function useUpdateEnergiaMutation() {
     mutationFn: async (energia: EnergiaLocacao) => {
       const docData = { ...energia, updatedAt: new Date().toISOString() };
       try {
-        await updateDoc(doc(db, "energia_locacoes", energia.id), { ...docData });
+        await updateDoc(doc(db, "energia_locacoes", energia.id), semUndefined(docData, "nulo"));
       } catch (err) {
         handleFirestoreError(err, OperationType.UPDATE, `energia_locacoes/${energia.id}`);
         throw err;
