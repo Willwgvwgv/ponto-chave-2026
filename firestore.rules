@@ -21,7 +21,7 @@ service cloud.firestore {
 
     function isSuperAdmin() {
       return isSignedIn() && (
-        userRole() == 'superadmin' || 
+        userRole() == 'superadmin' ||
         request.auth.token.email == 'williangyn10@gmail.com'
       );
     }
@@ -41,7 +41,7 @@ service cloud.firestore {
 
     function belongsToCompany(companyId) {
       return isActiveUser() && (
-        isSuperAdmin() || 
+        isSuperAdmin() ||
         getUserData().companyId == companyId
       );
     }
@@ -49,7 +49,7 @@ service cloud.firestore {
     function isCompanyAdmin(companyId) {
       return isActiveUser() && (
         isSuperAdmin() || (
-          getUserData().companyId == companyId && 
+          getUserData().companyId == companyId &&
           (userRole() == 'admin' || userRole() == 'manager')
         )
       );
@@ -62,6 +62,17 @@ service cloud.firestore {
           request.auth.uid == userId ||
           isCompanyAdmin(resource.data.companyId)
         )
+      );
+           // Duas situações de "list" além do "get" (get já é coberto pelo allow read acima):
+      // 1) Qualquer colega ativo da mesma empresa pode listar a equipe (usado pra
+      //    atribuir tarefas etc.) — a consulta já filtra por companyId no código.
+      // 2) Localizar o(s) próprio(s) documento(s) por e-mail (usado no login, para
+      //    achar um convite pendente antes da migração pro uid definitivo) — só
+      //    enxerga documentos cujo e-mail bate com o do usuário autenticado.
+      allow list: if isSuperAdmin() || (
+        isSignedIn() && !isDeletedUser() && belongsToCompany(resource.data.companyId)
+      ) || (
+        isSignedIn() && resource.data.email == request.auth.token.email
       );
       allow create: if isSuperAdmin() || (
         isSignedIn() && isCompanyAdmin(request.resource.data.companyId)
@@ -147,10 +158,7 @@ service cloud.firestore {
       allow update, delete: if isSuperAdmin() || (isActiveUser() && isCompanyAdmin(resource.data.companyId));
     }
 
-    // Collection: energia_locacoes — Acompanhamento de Energia, módulo
-    // independente de "comissoes" (CPF e data de nascimento ficam protegidos
-    // pelo mesmo controle de acesso por empresa que os outros dados sensíveis
-    // já usam neste arquivo; sem regra extra de criptografia neste momento).
+    // Collection: energia_locacoes (Acompanhamento de Energia)
     match /energia_locacoes/{id} {
       allow read: if isSuperAdmin() || (isActiveUser() && belongsToCompany(resource.data.companyId));
       allow create: if isSuperAdmin() || (isActiveUser() && belongsToCompany(request.resource.data.companyId));
@@ -207,8 +215,8 @@ service cloud.firestore {
       allow read: if isSuperAdmin() || (isActiveUser() && belongsToCompany(resource.data.companyId));
       allow create: if isSuperAdmin() || (isActiveUser() && belongsToCompany(request.resource.data.companyId));
       allow update: if isSuperAdmin() || (
-        isActiveUser() && 
-        belongsToCompany(resource.data.companyId) && 
+        isActiveUser() &&
+        belongsToCompany(resource.data.companyId) &&
         belongsToCompany(request.resource.data.companyId)
       );
       allow delete: if isSuperAdmin() || (isActiveUser() && isCompanyAdmin(resource.data.companyId));
@@ -219,8 +227,8 @@ service cloud.firestore {
       allow read: if isSuperAdmin() || (isActiveUser() && belongsToCompany(resource.data.companyId));
       allow create: if isSuperAdmin() || (isActiveUser() && belongsToCompany(request.resource.data.companyId));
       allow update: if isSuperAdmin() || (
-        isActiveUser() && 
-        belongsToCompany(resource.data.companyId) && 
+        isActiveUser() &&
+        belongsToCompany(resource.data.companyId) &&
         belongsToCompany(request.resource.data.companyId)
       );
       allow delete: if isSuperAdmin() || (isActiveUser() && isCompanyAdmin(resource.data.companyId));
@@ -265,7 +273,8 @@ service cloud.firestore {
         request.resource.data.userId == request.auth.uid &&
         id.split('_')[0] == request.auth.uid);
       allow update: if isSuperAdmin() || (isActiveUser() && (
-        (id.split('_')[0] == request.auth.uid && request.resource.data.userId == request.auth.uid) ||
+        ((id.split('_')[0] == request.auth.uid || resource.data.userId == request.auth.uid) &&
+          request.resource.data.userId == request.auth.uid) ||
         isCompanyAdmin(getUserData().companyId)
       ));
       allow delete: if isSuperAdmin() || (isActiveUser() && isCompanyAdmin(getUserData().companyId));
@@ -274,7 +283,7 @@ service cloud.firestore {
     // Collection: ponto_ajustes
     match /ponto_ajustes/{id} {
       allow read: if isSuperAdmin() || (isActiveUser() && (
-        resource.data.userId == request.auth.uid ||
+        (resource != null && resource.data.userId == request.auth.uid) ||
         isCompanyAdmin(getUserData().companyId)
       ));
       allow create: if isSuperAdmin() || (isActiveUser() && request.resource.data.userId == request.auth.uid);
@@ -295,9 +304,13 @@ service cloud.firestore {
     }
 
     // Collection: process_templates
+    // Coleção compartilhada entre todas as empresas (os documentos não têm
+    // companyId — nunca tiveram). Por isso a leitura é liberada a qualquer
+    // usuário ativo, e a escrita a qualquer admin/gerente ativo, sem checar
+    // companyId (que não existe nesses documentos).
     match /process_templates/{id} {
-      allow read: if isSuperAdmin() || (isActiveUser() && belongsToCompany(resource.data.companyId));
-      allow create, update, delete: if isSuperAdmin() || (isActiveUser() && isCompanyAdmin(resource.data.companyId));
+      allow read: if isSuperAdmin() || isActiveUser();
+      allow create, update, delete: if isSuperAdmin() || (isActiveUser() && (userRole() == 'admin' || userRole() == 'manager'));
     }
 
     // Collection: settings
