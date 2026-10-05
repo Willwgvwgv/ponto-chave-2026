@@ -196,6 +196,7 @@ export function paginateBlocks(
 
   const pages: PageLayout[] = [];
   let currentPageBlocks: PageBlockItem[] = [];
+  let alturasItens: number[] = []; // altura de cada item da folha atual
   let currentHeight = 0;
   let currentPageIndex = 0;
 
@@ -216,6 +217,7 @@ export function paginateBlocks(
         });
         currentPageIndex++;
         currentPageBlocks = [];
+        alturasItens = [];
         currentHeight = 0;
       }
       continue;
@@ -224,7 +226,7 @@ export function paginateBlocks(
     // Cláusulas e parágrafos longos podem continuar na página seguinte,
     // para não deixar espaço em branco no fim da página.
     const medida = measuredParts?.[block.id];
-    if (medida && medida.parts.length > 1 && (block.type === "clause" || block.type === "paragraph")) {
+    if (medida && medida.parts.length >= 1 && (block.type === "clause" || block.type === "paragraph")) {
       const gap = Math.max(styles.paragraphSpacingPx || 12, 16);
       const fecharPagina = () => {
         pages.push({
@@ -236,6 +238,7 @@ export function paginateBlocks(
         });
         currentPageIndex++;
         currentPageBlocks = [];
+        alturasItens = [];
         currentHeight = 0;
       };
       let start = 0;
@@ -256,6 +259,7 @@ export function paginateBlocks(
         }
         const inteiro = start === 0 && end === medida.parts.length;
         currentPageBlocks.push(inteiro ? { block, globalIndex: i } : { block, globalIndex: i, partStart: start, partEnd: end });
+        alturasItens.push(altura);
         currentHeight += altura;
         start = end;
         if (start < medida.parts.length) fecharPagina();
@@ -269,6 +273,20 @@ export function paginateBlocks(
     // If adding this block would exceed page limit AND page already has at least one block:
     // Move block to next page!
     if (currentPageBlocks.length > 0 && currentHeight + blockHeight > maxH) {
+      // Assinaturas não ficam sozinhas na última folha: a última cláusula
+      // (ou o último trecho dela) desce junto, se couber.
+      let acompanha: PageBlockItem | null = null;
+      let alturaAcompanha = 0;
+      if (block.type === "signatures" && currentPageBlocks.length > 1) {
+        const ult = currentPageBlocks[currentPageBlocks.length - 1];
+        const hUlt = alturasItens[alturasItens.length - 1] || 0;
+        if ((ult.block.type === "clause" || ult.block.type === "paragraph") && hUlt + blockHeight <= getPageMax(currentPageIndex + 1)) {
+          acompanha = currentPageBlocks.pop() as PageBlockItem;
+          alturasItens.pop();
+          currentHeight -= hUlt;
+          alturaAcompanha = hUlt;
+        }
+      }
       pages.push({
         pageIndex: currentPageIndex,
         pageNumber: currentPageIndex + 1,
@@ -277,10 +295,12 @@ export function paginateBlocks(
         maxAvailableHeight: maxH
       });
       currentPageIndex++;
-      currentPageBlocks = [{ block, globalIndex: i }];
-      currentHeight = blockHeight;
+      currentPageBlocks = acompanha ? [acompanha, { block, globalIndex: i }] : [{ block, globalIndex: i }];
+      alturasItens = acompanha ? [alturaAcompanha, blockHeight] : [blockHeight];
+      currentHeight = alturaAcompanha + blockHeight;
     } else {
       currentPageBlocks.push({ block, globalIndex: i });
+      alturasItens.push(blockHeight);
       currentHeight += blockHeight;
     }
   }
