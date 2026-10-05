@@ -6020,6 +6020,75 @@ const ProcessesView = ({
     { id: "concluido", label: "Concluído", color: "bg-green-500" }
   ], []);
 
+  // Estado da janela de anexos "fechada" — usado para limpar tudo ao fechar,
+  // para que anexos de uma etapa nunca vazem para outra operação.
+  const ANEXOS_FECHADO = { isOpen: false, instance: null, stepLabel: "", attachments: [] as { name: string, url: string }[] };
+  const [salvandoAnexos, setSalvandoAnexos] = useState(false);
+  const [desmarcarEtapa, setDesmarcarEtapa] = useState<{ instance: ProcessInstance; stepLabel: string } | null>(null);
+  const [movendoProcessoId, setMovendoProcessoId] = useState<string | null>(null);
+
+  // Mensagem para o usuário + registro técnico no console. handleFirestoreError
+  // relança o erro; aqui ele já foi tratado, então não deixamos escapar como
+  // erro não capturado.
+  const reportarFalha = (mensagem: string, error: unknown, operacao: OperationType, caminho: string) => {
+    toast.error(mensagem);
+    try {
+      handleFirestoreError(error, operacao, caminho);
+    } catch {
+      // já registrado no console por handleFirestoreError
+    }
+  };
+
+  // Colunas antigas (modelo anterior do Kanban) continuam mapeadas para as atuais.
+  const normalizarColuna = (kanbanStatus?: string) => {
+    const s = kanbanStatus || "prospeccao";
+    if (s === "todo") return "prospeccao";
+    if (s === "in_progress") return "visita";
+    if (s === "waiting") return "proposta";
+    if (s === "done") return "concluido";
+    return s;
+  };
+
+  // ÚNICA função de movimentação do Kanban (seta avançar, seta voltar e
+  // arrastar). O status é calculado pela coluna de DESTINO:
+  // - destino = última coluna → status "completed" + completedAt
+  // - qualquer outra coluna   → status "active" + completedAt limpo
+  // Só mostra sucesso depois que o Firestore confirma a gravação.
+  const moverProcesso = async (proc: ProcessInstance, destinoId: string) => {
+    const origemId = normalizarColuna(proc.kanbanStatus);
+    if (origemId === destinoId || movendoProcessoId === proc.id) return;
+
+    const destinoIdx = kanbanColumns.findIndex(c => c.id === destinoId);
+    if (destinoIdx === -1) return;
+    const destino = kanbanColumns[destinoIdx];
+    const origemLabel = kanbanColumns.find(c => c.id === origemId)?.label || "Início";
+    const ehColunaFinal = destinoIdx === kanbanColumns.length - 1;
+
+    setHighlightedColumnId(destino.id);
+    setTimeout(() => setHighlightedColumnId(null), 500);
+    setMovendoProcessoId(proc.id);
+    try {
+      await updateDoc(doc(db, "processes", proc.id), {
+        kanbanStatus: destino.id,
+        status: ehColunaFinal ? "completed" : "active",
+        completedAt: ehColunaFinal ? serverTimestamp() : null,
+        updatedAt: serverTimestamp(),
+        kanbanHistory: arrayUnion({
+          from: origemLabel,
+          to: destino.label,
+          timestamp: new Date().toISOString(),
+          userId: user?.uid || null,
+          userName: profile?.displayName || user?.displayName || "Sistema"
+        })
+      });
+      toast.success(`Movido para ${destino.label}`);
+    } catch (error) {
+      reportarFalha("Erro ao mover o processo. Nada foi alterado.", error, OperationType.UPDATE, `processes/${proc.id}`);
+    } finally {
+      setMovendoProcessoId(null);
+    }
+  };
+
   const updateColumnName = async (colId: string) => {
     if (!isAdmin || !columnEditValue.trim()) return;
     try {
@@ -6033,7 +6102,7 @@ const ProcessesView = ({
       setColumnEditing(null);
       toast.success("Coluna renomeada!");
     } catch (err) {
-      toast.error("Erro ao renomear coluna.");
+      reportarFalha("Erro ao renomear coluna.", err, OperationType.UPDATE, "settings/company");
     }
   };
 
@@ -6077,8 +6146,7 @@ const ProcessesView = ({
       setActiveInstanceId(docRef.id);
       toast.success("Processo criado com sucesso!");
     } catch (error) {
-      toast.error("Erro ao criar processo.");
-      handleFirestoreError(error, OperationType.WRITE, "processes");
+      reportarFalha("Erro ao criar processo. Nada foi salvo; tente novamente.", error, OperationType.WRITE, "processes");
     } finally {
       setIsSubmitting(false);
     }
@@ -6108,8 +6176,7 @@ const ProcessesView = ({
       setActiveInstanceId(docRef.id);
       toast.success("Processo criado rapidamente!");
     } catch (error) {
-      toast.error("Erro ao criar processo.");
-      handleFirestoreError(error, OperationType.WRITE, "processes");
+      reportarFalha("Erro ao criar processo. Nada foi salvo; tente novamente.", error, OperationType.WRITE, "processes");
     } finally {
       setIsSubmitting(false);
     }
@@ -6125,8 +6192,7 @@ const ProcessesView = ({
       setIsEditingTitle(false);
       toast.success("Título atualizado!");
     } catch (error) {
-      toast.error("Erro ao atualizar título.");
-      handleFirestoreError(error, OperationType.UPDATE, `processes/${activeInstanceId}`);
+      reportarFalha("Erro ao atualizar título. O título anterior foi mantido.", error, OperationType.UPDATE, `processes/${activeInstanceId}`);
     }
   };
 
@@ -6157,22 +6223,8 @@ const ProcessesView = ({
         completedAt: isFullyCompleted ? serverTimestamp() : null
       };
 
-      if (stepProofModal.attachments && stepProofModal.attachments.length > 0) {
-        const currentAttachments = instance.stepAttachments || {};
-        updateData.stepAttachments = {
-          ...currentAttachments,
-          [stepProofModal.stepLabel]: stepProofModal.attachments
-        };
-        
-        // Mantemos retrocompatibilidade salvando o primeiro como proofUrl se existir
-        if (stepProofModal.attachments[0]) {
-          const currentProofs = instance.stepProofs || {};
-          updateData.stepProofs = {
-            ...currentProofs,
-            [stepProofModal.stepLabel]: stepProofModal.attachments[0].url
-          };
-        }
-      }
+      // Anexos NÃO são gravados aqui: concluir/desmarcar etapa e salvar
+      // anexos são operações independentes (ver salvarAnexosEtapa).
 
       await updateDoc(doc(db, "processes", instance.id), updateData);
       
@@ -6195,8 +6247,66 @@ const ProcessesView = ({
         toast.info(isCompleted ? "Etapa desmarcada" : "Etapa concluída!");
       }
     } catch (error) {
-      toast.error("Erro ao atualizar etapa.");
-      handleFirestoreError(error, OperationType.UPDATE, `processes/${instance.id}`);
+      reportarFalha("Erro ao atualizar etapa. Nada foi alterado; tente novamente.", error, OperationType.UPDATE, `processes/${instance.id}`);
+    }
+  };
+
+  // ---- Anexos da etapa: operação INDEPENDENTE da conclusão da etapa ----
+  // Grava somente stepAttachments[etapa]. Não toca em completedSteps,
+  // stepHistory, status, Kanban nem em stepProofs (stepProofs antigos ficam
+  // como estão; não se criam novas cópias). Lê o documento atual dentro de
+  // uma transação para não sobrescrever anexos de outras etapas gravados
+  // por outra pessoa nesse meio tempo. Lista vazia = remove a entrada.
+  const fecharJanelaAnexos = () => {
+    setStepProofModal(ANEXOS_FECHADO);
+  };
+
+  const salvarAnexosEtapa = async (processId: string, stepLabel: string, anexos: { name: string, url: string }[]): Promise<boolean> => {
+    const ref = doc(db, "processes", processId);
+    try {
+      await runTransaction(db, async (transaction: any) => {
+        const snap = await transaction.get(ref);
+        if (!snap.exists()) throw new Error("Processo não encontrado.");
+        const atual = { ...((snap.data()?.stepAttachments as Record<string, { name: string, url: string }[]>) || {}) };
+        if (anexos.length > 0) {
+          atual[stepLabel] = anexos;
+        } else {
+          delete atual[stepLabel];
+        }
+        transaction.update(ref, { stepAttachments: atual, updatedAt: serverTimestamp() });
+      });
+      return true;
+    } catch (error) {
+      reportarFalha("Erro ao salvar anexos. Nada foi gravado; tente novamente.", error, OperationType.UPDATE, `processes/${processId}`);
+      return false;
+    }
+  };
+
+  // Botão da janela de anexos. concluirEtapa = true só é oferecido para etapa
+  // ainda pendente: grava os anexos e, se der certo, conclui a etapa usando a
+  // regra atual do checklist (toggleStep, inalterada nesta fase).
+  const confirmarJanelaAnexos = async (concluirEtapa: boolean) => {
+    const instancia = stepProofModal.instance;
+    const etapa = stepProofModal.stepLabel;
+    if (!instancia || !etapa || salvandoAnexos) return;
+
+    const atualizado = processes.find(p => p.id === instancia.id) || instancia;
+    const anexosSalvos = atualizado.stepAttachments?.[etapa] || [];
+    const mudou = JSON.stringify(anexosSalvos) !== JSON.stringify(stepProofModal.attachments);
+
+    setSalvandoAnexos(true);
+    try {
+      if (mudou) {
+        const ok = await salvarAnexosEtapa(instancia.id, etapa, stepProofModal.attachments);
+        if (!ok) return; // mantém a janela aberta com o rascunho, para tentar de novo
+        toast.success(stepProofModal.attachments.length > 0 ? "Anexos salvos." : "Anexos removidos.");
+      }
+      fecharJanelaAnexos();
+      if (concluirEtapa && !atualizado.completedSteps.includes(etapa)) {
+        await toggleStep(atualizado, etapa);
+      }
+    } finally {
+      setSalvandoAnexos(false);
     }
   };
 
@@ -6213,8 +6323,7 @@ const ProcessesView = ({
       if (activeInstanceId === id) setActiveInstanceId(null);
       toast.success("Processo excluído com sucesso.");
     } catch (error) {
-      toast.error("Erro ao excluir processo.");
-      handleFirestoreError(error, OperationType.DELETE, `processes/${id}`);
+      reportarFalha("Erro ao excluir processo. Ele não foi excluído.", error, OperationType.DELETE, `processes/${id}`);
     } finally {
       setDeleteProcessModal({ isOpen: false, processId: null });
     }
@@ -6229,8 +6338,7 @@ const ProcessesView = ({
       });
       toast.success(newStatus === "archived" ? "Processo arquivado." : "Processo reativado.");
     } catch (error) {
-      toast.error("Erro ao alterar status do processo.");
-      handleFirestoreError(error, OperationType.UPDATE, `processes/${id}`);
+      reportarFalha("Erro ao alterar status do processo. Nada foi alterado.", error, OperationType.UPDATE, `processes/${id}`);
     }
   };
 
@@ -6244,8 +6352,7 @@ const ProcessesView = ({
       setIsEditingNotes(false);
       toast.success("Notas salvas!");
     } catch (error) {
-      toast.error("Erro ao salvar notas.");
-      handleFirestoreError(error, OperationType.UPDATE, `processes/${activeInstanceId}`);
+      reportarFalha("Erro ao salvar notas. Seu texto continua na tela; tente salvar de novo.", error, OperationType.UPDATE, `processes/${activeInstanceId}`);
     }
   };
 
@@ -6491,34 +6598,9 @@ const ProcessesView = ({
                     e.preventDefault();
                     const procId = e.dataTransfer.getData("procId");
                     if (!procId) return;
-                    setHighlightedColumnId(column.id);
-                    setTimeout(() => setHighlightedColumnId(null), 500);
-                    try {
-                      const proc = filteredProcesses.find(p => p.id === procId);
-                      let fromStatus = proc?.kanbanStatus || "prospeccao";
-                      if (fromStatus === "todo") fromStatus = "prospeccao";
-                      else if (fromStatus === "in_progress") fromStatus = "visita";
-                      else if (fromStatus === "waiting") fromStatus = "proposta";
-                      else if (fromStatus === "done") fromStatus = "concluido";
-                      const fromLabel = kanbanColumns.find(c => c.id === fromStatus)?.label || "Início";
-                      
-                      const isLast = colIdx === kanbanColumns.length - 1;
-                      await updateDoc(doc(db, "processes", procId), {
-                        kanbanStatus: column.id,
-                        status: isLast ? "completed" : "active",
-                        updatedAt: serverTimestamp(),
-                        kanbanHistory: arrayUnion({
-                          from: fromLabel,
-                          to: column.label,
-                          timestamp: new Date().toISOString(),
-                          userId: user?.uid,
-                          userName: profile?.displayName || user?.displayName || "Sistema"
-                        })
-                      });
-                      toast.success(`Movido para ${column.label}`);
-                    } catch (err) {
-                      toast.error("Erro ao mover card.");
-                    }
+                    const proc = filteredProcesses.find(p => p.id === procId);
+                    if (!proc) return;
+                    await moverProcesso(proc, column.id);
                   }}
                   className={cn(
                     "w-72 flex flex-col h-full rounded-[32px] border p-4 shadow-sm",
@@ -6600,41 +6682,39 @@ const ProcessesView = ({
                                 <Icon className={cn("w-3.5 h-3.5", procTemplate.color)} />
                               </div>
                               <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button 
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    let currentStatusId = proc.kanbanStatus || "prospeccao";
-                                    if (currentStatusId === "todo") currentStatusId = "prospeccao";
-                                    else if (currentStatusId === "in_progress") currentStatusId = "visita";
-                                    else if (currentStatusId === "waiting") currentStatusId = "proposta";
-                                    else if (currentStatusId === "done") currentStatusId = "concluido";
-
-                                    const currentIndex = kanbanColumns.findIndex(c => c.id === currentStatusId);
-                                    const nextCol = kanbanColumns[(currentIndex + 1) % kanbanColumns.length];
-                                    const fromLabel = kanbanColumns[currentIndex]?.label || "Início";
-                                    const isLast = (currentIndex + 1) === kanbanColumns.length;
-
-                                    setHighlightedColumnId(nextCol.id);
-                                    setTimeout(() => setHighlightedColumnId(null), 500);
-
-                                    updateDoc(doc(db, "processes", proc.id), { 
-                                      kanbanStatus: nextCol.id,
-                                      status: isLast ? "completed" : "active",
-                                      updatedAt: serverTimestamp(),
-                                      kanbanHistory: arrayUnion({
-                                        from: fromLabel,
-                                        to: nextCol.label,
-                                        timestamp: new Date().toISOString(),
-                                        userId: user?.uid,
-                                        userName: profile?.displayName || user?.displayName || "Sistema"
-                                      })
-                                    });
-                                    toast.info(`Movido para ${nextCol.label}`);
-                                  }}
-                                  className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-blue-600 transition-colors"
-                                >
-                                  <ChevronRight className="w-3 h-3" />
-                                </button>
+                                {/* Setas usam a mesma função do arrastar (moverProcesso).
+                                    Sem "volta ao início": na primeira coluna não há
+                                    "voltar" e na última não há "avançar". */}
+                                {colIdx > 0 && (
+                                  <button
+                                    type="button"
+                                    disabled={movendoProcessoId === proc.id}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      moverProcesso(proc, kanbanColumns[colIdx - 1].id);
+                                    }}
+                                    title={`Voltar para ${kanbanColumns[colIdx - 1].label}`}
+                                    aria-label={`Voltar para ${kanbanColumns[colIdx - 1].label}`}
+                                    className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-blue-600 transition-colors disabled:opacity-40"
+                                  >
+                                    <ChevronLeft className="w-3 h-3" />
+                                  </button>
+                                )}
+                                {colIdx < kanbanColumns.length - 1 && (
+                                  <button
+                                    type="button"
+                                    disabled={movendoProcessoId === proc.id}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      moverProcesso(proc, kanbanColumns[colIdx + 1].id);
+                                    }}
+                                    title={`Avançar para ${kanbanColumns[colIdx + 1].label}`}
+                                    aria-label={`Avançar para ${kanbanColumns[colIdx + 1].label}`}
+                                    className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-blue-600 transition-colors disabled:opacity-40"
+                                  >
+                                    <ChevronRight className="w-3 h-3" />
+                                  </button>
+                                )}
                               </div>
                             </div>
                             
@@ -6867,7 +6947,7 @@ const ProcessesView = ({
                                 });
                                 toast.success("Prazo atualizado!");
                               } catch (err) {
-                                toast.error("Erro ao atualizar prazo.");
+                                reportarFalha("Erro ao atualizar prazo. O prazo anterior foi mantido.", err, OperationType.UPDATE, `processes/${activeInstance.id}`);
                               }
                             }}
                           />
@@ -6974,11 +7054,13 @@ const ProcessesView = ({
                         <div 
                           key={sIdx} 
                           onClick={() => {
+                            // Abre a janela de anexos com uma CÓPIA dos anexos salvos
+                            // (rascunho). Nada é gravado até "Salvar anexos".
                             setStepProofModal({ 
                               isOpen: true, 
                               instance: activeInstance, 
                               stepLabel: step.label,
-                              attachments: attachments
+                              attachments: [...attachments]
                             });
                           }}
                           className={cn(
@@ -6986,19 +7068,26 @@ const ProcessesView = ({
                             isDone ? "bg-green-50/30 border-green-100 shadow-sm" : "bg-white border-slate-100 hover:border-slate-200"
                           )}
                         >
-                          <div 
+                          {/* Concluir/desmarcar a etapa é só pelo círculo — separado dos
+                              anexos. Desmarcar pede confirmação (apaga a data de conclusão). */}
+                          <button
+                            type="button"
                             onClick={(e) => {
+                              e.stopPropagation();
                               if (isDone) {
-                                e.stopPropagation();
+                                setDesmarcarEtapa({ instance: activeInstance, stepLabel: step.label });
+                              } else {
                                 toggleStep(activeInstance, step.label);
                               }
                             }}
+                            title={isDone ? "Desmarcar etapa" : "Concluir etapa"}
+                            aria-label={isDone ? `Desmarcar etapa ${step.label}` : `Concluir etapa ${step.label}`}
                             className={cn(
                               "w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 transition-all z-10",
                               isDone ? "bg-green-500 border-green-500 text-white shadow-lg shadow-green-200" : "border-slate-200 group-hover:border-blue-400"
                             )}>
                             {isDone ? <CheckCircle2 className="w-4 h-4" /> : <Circle className="w-4 h-4 text-transparent" />}
-                          </div>
+                          </button>
                           <div className="space-y-1 flex-1">
                             <h4 className={cn("font-bold text-sm transition-all", isDone ? "text-green-700" : "text-slate-800")}>{step.label}</h4>
                             <p className="text-xs text-slate-500 leading-relaxed font-medium">{step.desc}</p>
@@ -7227,7 +7316,7 @@ const ProcessesView = ({
                         });
                         toast.success("Prazo agendado para a próxima etapa!");
                       } catch (err) {
-                        toast.error("Erro ao agendar prazo.");
+                        reportarFalha("Erro ao agendar prazo. Nada foi alterado.", err, OperationType.UPDATE, `processes/${suggestionModal.instance.id}`);
                       }
                     }
                     setSuggestionModal({ ...suggestionModal, isOpen: false });
@@ -7387,15 +7476,39 @@ const ProcessesView = ({
         )}
       </AnimatePresence>
       
+      {/* Confirmação para desmarcar etapa (a data de conclusão é apagada) */}
+      <ConfirmModal
+        isOpen={!!desmarcarEtapa}
+        title="Desmarcar etapa?"
+        message={`Desmarcar "${desmarcarEtapa?.stepLabel || ""}" apaga a data de conclusão registrada para esta etapa. Os anexos da etapa são mantidos.`}
+        confirmText="Desmarcar etapa"
+        cancelText="Manter concluída"
+        confirmColor="red"
+        onConfirm={async () => {
+          const alvo = desmarcarEtapa;
+          setDesmarcarEtapa(null);
+          if (!alvo) return;
+          const atual = processes.find(p => p.id === alvo.instance.id) || alvo.instance;
+          if (atual.completedSteps.includes(alvo.stepLabel)) {
+            await toggleStep(atual, alvo.stepLabel);
+          }
+        }}
+        onCancel={() => setDesmarcarEtapa(null)}
+      />
+
       {/* Step Proof Modal */}
       <AnimatePresence>
         {stepProofModal.isOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setStepProofModal({ ...stepProofModal, isOpen: false })} className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" />
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => { if (!salvandoAnexos) fecharJanelaAnexos(); }} className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" />
             <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="relative bg-white w-full max-w-sm rounded-[32px] shadow-2xl overflow-y-auto max-h-[90vh] custom-scrollbar p-8 text-center flex flex-col items-center">
               <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mb-6"><CheckCircle2 className="w-8 h-8" /></div>
               <h3 className="text-xl font-bold text-slate-900 mb-2 truncate max-w-full px-4">{stepProofModal.stepLabel}</h3>
-              <p className="text-slate-500 mb-6 text-sm">Etapa concluída! Deseja anexar um comprovante ou foto desta atividade?</p>
+              <p className="text-slate-500 mb-6 text-sm">
+                {(processes.find(p => p.id === stepProofModal.instance?.id) || stepProofModal.instance)?.completedSteps.includes(stepProofModal.stepLabel)
+                  ? "Etapa concluída. Adicione ou remova comprovantes; a conclusão da etapa não é alterada."
+                  : "Anexe comprovantes ou documentos desta etapa."}
+              </p>
               
               <div className="w-full space-y-4 mb-8 text-left">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Anexos e Documentos / Contratos</label>
@@ -7409,11 +7522,12 @@ const ProcessesView = ({
                           <span className="text-xs font-bold text-slate-700 truncate">{file.name}</span>
                         </div>
                         <button 
+                          type="button"
                           onClick={() => {
-                            const newAtts = [...stepProofModal.attachments];
-                            newAtts.splice(fIdx, 1);
-                            setStepProofModal({ ...stepProofModal, attachments: newAtts });
+                            setStepProofModal(prev => ({ ...prev, attachments: prev.attachments.filter((_, i) => i !== fIdx) }));
                           }}
+                          title={`Remover ${file.name}`}
+                          aria-label={`Remover ${file.name}`}
                           className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -7435,7 +7549,7 @@ const ProcessesView = ({
 
                       setStepProofModal(prev => ({ ...prev, isUploading: true }));
                       
-                      const newAttachments = [...(stepProofModal.attachments || [])];
+                      const newAttachments: { name: string, url: string }[] = [];
                       
                       for (const file of files) {
                         if (file.size > 1024 * 1024) { // Increased to 1MB for contracts, but warning remains
@@ -7456,8 +7570,9 @@ const ProcessesView = ({
                         }
                       }
 
-                      setStepProofModal(prev => ({ ...prev, attachments: newAttachments, isUploading: false }));
-                      toast.success("Arquivos anexados!");
+                      // Ainda NÃO está gravado: só entra no rascunho da janela.
+                      // A gravação acontece em "Salvar anexos".
+                      setStepProofModal(prev => ({ ...prev, attachments: [...prev.attachments, ...newAttachments], isUploading: false }));
                     };
                     input.click();
                   }}
@@ -7474,20 +7589,47 @@ const ProcessesView = ({
                 </button>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 w-full shrink-0">
-                <button onClick={() => setStepProofModal({ ...stepProofModal, isOpen: false })} className="py-3 bg-slate-100 text-slate-600 rounded-2xl font-bold text-sm hover:bg-slate-200 transition-all">Cancelar</button>
-                <button 
-                  onClick={() => {
-                    if (stepProofModal.instance) {
-                      toggleStep(stepProofModal.instance, stepProofModal.stepLabel);
-                      setStepProofModal({ ...stepProofModal, isOpen: false, instance: null, stepLabel: "" });
-                    }
-                  }} 
-                  className="py-3 bg-[#3B82F6] text-white rounded-2xl font-bold text-sm shadow-lg shadow-blue-500/25 hover:scale-[1.02] active:scale-95 transition-all"
-                >
-                  Finalizar
-                </button>
-              </div>
+              {(() => {
+                const atual = processes.find(p => p.id === stepProofModal.instance?.id) || stepProofModal.instance;
+                const etapaPendente = !!atual && !atual.completedSteps.includes(stepProofModal.stepLabel);
+                const salvos = atual?.stepAttachments?.[stepProofModal.stepLabel] || [];
+                const temAlteracao = JSON.stringify(salvos) !== JSON.stringify(stepProofModal.attachments);
+                return (
+                  <div className="w-full shrink-0 space-y-3">
+                    {temAlteracao && (
+                      <p className="text-[11px] font-semibold text-amber-600">Alterações ainda não salvas.</p>
+                    )}
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        disabled={salvandoAnexos || stepProofModal.isUploading}
+                        onClick={fecharJanelaAnexos}
+                        className="py-3 bg-slate-100 text-slate-600 rounded-2xl font-bold text-sm hover:bg-slate-200 transition-all disabled:opacity-50"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        disabled={salvandoAnexos || stepProofModal.isUploading}
+                        onClick={() => confirmarJanelaAnexos(false)}
+                        className="py-3 bg-[#3B82F6] text-white rounded-2xl font-bold text-sm shadow-lg shadow-blue-500/25 hover:bg-blue-600 transition-all disabled:opacity-50"
+                      >
+                        {salvandoAnexos ? "Salvando..." : "Salvar anexos"}
+                      </button>
+                    </div>
+                    {etapaPendente && (
+                      <button
+                        type="button"
+                        disabled={salvandoAnexos || stepProofModal.isUploading}
+                        onClick={() => confirmarJanelaAnexos(true)}
+                        className="w-full py-3 bg-green-50 text-green-700 border border-green-200 rounded-2xl font-bold text-sm hover:bg-green-100 transition-all disabled:opacity-50"
+                      >
+                        Salvar e concluir etapa
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
             </motion.div>
           </div>
         )}
