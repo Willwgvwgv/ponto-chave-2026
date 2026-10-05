@@ -63,6 +63,7 @@ import {
   PlusCircle,
   Minimize2,
   Maximize2,
+  Paperclip,
   Menu,
   Sliders,
   Calculator,
@@ -6042,6 +6043,31 @@ const ProcessesView = ({
     }
   };
 
+  // Cor do tipo de processo em tom legível sobre fundo branco. Mapeamento
+  // explícito (o Tailwind só gera classes escritas por inteiro no código).
+  const COR_TIPO: Record<string, string> = {
+    "text-blue-500": "text-blue-700",
+    "text-amber-500": "text-amber-700",
+    "text-green-500": "text-green-700",
+    "text-pink-500": "text-pink-700",
+    "text-purple-500": "text-purple-700",
+    "text-red-500": "text-red-700",
+    "text-slate-500": "text-zinc-700"
+  };
+  const corTipo = (cor?: string) => COR_TIPO[cor || ""] || "text-zinc-700";
+
+  // Exibição do responsável (campo uid). Só leitura, sem mudar dados.
+  const nomeResponsavel = (uid?: string) => {
+    const u = uid ? allUsers.find(x => x.uid === uid) : null;
+    return u?.displayName || u?.email || "Sem responsável";
+  };
+  const iniciaisResponsavel = (uid?: string) => {
+    const nome = nomeResponsavel(uid);
+    if (nome === "Sem responsável") return "?";
+    const partes = nome.trim().split(/\s+/);
+    return ((partes[0]?.[0] || "") + (partes.length > 1 ? partes[partes.length - 1][0] : "")).toUpperCase();
+  };
+
   // Colunas antigas (modelo anterior do Kanban) continuam mapeadas para as atuais.
   const normalizarColuna = (kanbanStatus?: string) => {
     const s = kanbanStatus || "prospeccao";
@@ -6527,100 +6553,90 @@ const ProcessesView = ({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 text-zinc-900">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-black text-slate-900 tracking-tight">Gestão de Processos</h2>
-          <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold mt-1">Acompanhe o monitoramento individual</p>
+        <div className="space-y-1">
+          <h2 className="text-2xl font-semibold tracking-tight text-zinc-900">Gestão de Processos</h2>
+          <p className="text-sm text-zinc-600">Acompanhe cada processo, a etapa em que está e quem é o responsável.</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           {viewMode === "kanban" && (
             <button 
+              type="button"
               onClick={() => setIsMaximized(!isMaximized)}
               className={cn(
-                "p-3 rounded-2xl border transition-all flex items-center gap-2 font-bold text-xs uppercase tracking-widest",
-                isMaximized ? "bg-blue-50 border-blue-200 text-blue-600" : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50"
+                "h-10 px-3.5 rounded-lg border text-sm font-medium flex items-center gap-2 transition-colors",
+                isMaximized ? "bg-blue-50 border-blue-200 text-blue-800" : "bg-white border-zinc-300 text-zinc-700 hover:bg-zinc-50"
               )}
-              title={isMaximized ? "Sair da Visão Ampla" : "Visão Ampla"}
+              title={isMaximized ? "Sair da tela cheia" : "Ver em tela cheia"}
             >
-              <div className="flex gap-0.5">
-                <div className="w-1.5 h-3 bg-current rounded-full" />
-                <div className="w-1.5 h-3 bg-current rounded-full" />
-                <div className="w-1.5 h-3 bg-current rounded-full" />
-              </div>
-              {isMaximized ? "Reduzir" : "Ampla"}
+              {isMaximized ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+              {isMaximized ? "Sair da tela cheia" : "Tela cheia"}
             </button>
           )}
-          <div className="flex p-1 bg-slate-100 rounded-2xl border border-slate-200 shadow-inner">
+          <div className="flex p-[3px] bg-zinc-200/70 rounded-[10px] gap-0.5" role="group" aria-label="Modo de visualização">
             <button 
+              type="button"
               onClick={() => setViewMode("list")}
+              aria-pressed={viewMode === "list"}
               className={cn(
-                "p-2 rounded-xl transition-all",
-                viewMode === "list" ? "bg-white text-blue-600 shadow-md" : "text-slate-400 hover:text-slate-600"
+                "h-9 px-3.5 rounded-lg text-sm flex items-center gap-2 transition-colors",
+                viewMode === "list" ? "bg-white text-zinc-900 font-semibold shadow-sm" : "text-zinc-700 font-medium hover:text-zinc-900"
               )}
             >
-              <LayoutList className="w-5 h-5" />
+              <LayoutList className="w-4 h-4" />
+              Lista
             </button>
             <button 
+              type="button"
               onClick={() => setViewMode("kanban")}
+              aria-pressed={viewMode === "kanban"}
               className={cn(
-                "p-2 rounded-xl transition-all",
-                viewMode === "kanban" ? "bg-white text-blue-600 shadow-md" : "text-slate-400 hover:text-slate-600"
+                "h-9 px-3.5 rounded-lg text-sm flex items-center gap-2 transition-colors",
+                viewMode === "kanban" ? "bg-white text-zinc-900 font-semibold shadow-sm" : "text-zinc-700 font-medium hover:text-zinc-900"
               )}
             >
-              <LayoutDashboard className="w-5 h-5 rotate-90" />
+              <LayoutDashboard className="w-4 h-4 rotate-90" />
+              Quadro
             </button>
           </div>
           <button 
+            type="button"
             onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-2 px-6 py-3 bg-[#3B82F6] text-white rounded-2xl font-bold text-sm shadow-lg shadow-blue-500/25 hover:scale-[1.02] active:scale-95 transition-all"
+            className="h-[42px] px-[18px] flex items-center gap-2 bg-blue-700 hover:bg-blue-800 text-white rounded-[10px] font-semibold text-sm transition-colors"
           >
-            <Plus className="w-5 h-5" />
-            Novo Processo
+            <Plus className="w-4 h-4" />
+            Novo processo
           </button>
         </div>
       </div>
 
       {viewMode === "kanban" ? (
         <div className={cn(
-          "overflow-x-auto pb-6 custom-scrollbar transition-all duration-500",
+          "overflow-x-auto pb-6 custom-scrollbar",
           isMaximized 
-            ? "fixed inset-0 z-50 bg-[#F1F5F9] p-6 md:p-10 overflow-y-auto" 
+            ? "fixed inset-0 z-50 bg-zinc-100 p-6 md:p-10 overflow-y-auto" 
             : "h-[calc(100vh-280px)] -mx-4 px-4"
         )}>
           {isMaximized && (
-            <div className="max-w-[1800px] mx-auto flex items-center justify-between mb-8 pb-6 border-b border-slate-200">
-              <div>
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-200">
-                    <ClipboardList className="w-6 h-6 text-white" />
-                  </div>
-                  <div>
-                    <h2 className="text-2xl font-black text-slate-900 tracking-tight leading-none">Gestão de Processos</h2>
-                    <div className="flex items-center gap-2 mt-1.5 focus-within:ring-2 ring-blue-500">
-                      <span className="flex items-center gap-1.5 px-2 py-0.5 bg-blue-50 border border-blue-100 rounded-full text-[9px] font-black text-blue-600 uppercase tracking-widest">
-                        <div className="w-1 h-1 rounded-full bg-blue-500 animate-pulse" />
-                        Modo Amplo Ativo
-                      </span>
-                      <span className="text-[10px] font-medium text-slate-400 italic">Visualização otimizada para monitoramento em tempo real</span>
-                    </div>
-                  </div>
-                </div>
+            <div className="max-w-[1800px] mx-auto flex flex-wrap items-center justify-between gap-4 mb-6 pb-5 border-b border-zinc-200">
+              <div className="space-y-1">
+                <h2 className="text-2xl font-semibold tracking-tight text-zinc-900">Gestão de Processos</h2>
+                <p className="text-sm text-zinc-600">Tela cheia</p>
               </div>
-              <div className="flex items-center gap-3">
-                <button 
-                  onClick={() => setIsMaximized(false)}
-                  className="group flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl shadow-sm text-slate-600 hover:text-red-600 hover:border-red-100 hover:bg-red-50 transition-all duration-300 font-bold text-xs uppercase tracking-widest"
-                >
-                  <Minimize2 className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                  Reduzir
-                </button>
-              </div>
+              <button 
+                type="button"
+                onClick={() => setIsMaximized(false)}
+                className="h-10 px-3.5 flex items-center gap-2 bg-white border border-zinc-300 rounded-lg text-sm font-medium text-zinc-700 hover:bg-zinc-50 transition-colors"
+              >
+                <Minimize2 className="w-4 h-4" />
+                Sair da tela cheia
+              </button>
             </div>
           )}
           
           <div className={cn(
-            "flex gap-6 h-full min-w-max",
+            "flex gap-4 h-full min-w-max",
             isMaximized && "max-w-[1800px] mx-auto h-[calc(100vh-180px)]"
           )}>
             {kanbanColumns.map((column, colIdx) => {
@@ -6645,23 +6661,16 @@ const ProcessesView = ({
                     if (!proc) return;
                     await moverProcesso(proc, column.id);
                   }}
+                  aria-label={column.label}
                   className={cn(
-                    "w-72 flex flex-col h-full rounded-[32px] border p-4 shadow-sm",
-                    isMaximized && "w-80 shadow-md border-slate-300"
+                    "w-72 flex flex-col h-full rounded-xl border p-3 transition-colors duration-300",
+                    isMaximized && "w-80",
+                    highlightedColumnId === column.id ? "bg-green-50 border-green-600" : "bg-zinc-200/60 border-transparent"
                   )}
-                  animate={{ 
-                    backgroundColor: highlightedColumnId === column.id 
-                      ? "#f0fdf4" 
-                      : (isMaximized ? "#ffffff" : "rgba(241, 245, 249, 0.3)"),
-                    borderColor: highlightedColumnId === column.id
-                      ? "#10b981"
-                      : (isMaximized ? "#cbd5e1" : "#e2e8f0")
-                  }}
-                  transition={{ duration: 0.5, ease: "easeOut" }}
                 >
-                  <div className="flex items-center justify-between mb-4 px-1 pb-3 border-b border-slate-200">
+                  <div className="flex items-center justify-between mb-3 px-1 pt-0.5">
                     <div className="flex items-center gap-2 flex-1 group/header">
-                      <div className={cn("w-3 h-3 rounded-full shadow-sm ring-2 ring-white transition-transform group-hover:scale-125", column.color)} />
+                      <div className={cn("w-2 h-2 rounded-full", column.color)} />
                       {columnEditing === column.id ? (
                         <input 
                           autoFocus
@@ -6672,7 +6681,7 @@ const ProcessesView = ({
                             if (e.key === 'Enter') updateColumnName(column.id);
                             if (e.key === 'Escape') setColumnEditing(null);
                           }}
-                          className="bg-white border border-blue-200 rounded px-2 py-0.5 text-xs font-black text-slate-800 focus:outline-none w-full"
+                          className="bg-white border border-blue-300 rounded-md px-2 py-0.5 text-sm font-semibold text-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-600/20 w-full"
                         />
                       ) : (
                         <div className="flex items-center gap-2 cursor-pointer" onClick={() => {
@@ -6681,17 +6690,17 @@ const ProcessesView = ({
                             setColumnEditValue(column.label);
                           }
                         }}>
-                          <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">{column.label}</h3>
-                          {isAdmin && <Edit2 className="w-3 h-3 text-slate-300 opacity-0 group-hover/header:opacity-100 transition-opacity" />}
+                          <h3 className="text-sm font-semibold text-zinc-900">{column.label}</h3>
+                          {isAdmin && <Edit2 className="w-3 h-3 text-zinc-500 opacity-0 group-hover/header:opacity-100 transition-opacity" />}
                         </div>
                       )}
                     </div>
-                    <span className="px-2 py-1 bg-white border border-slate-100 rounded-lg text-[10px] font-bold text-slate-500 shadow-sm">
+                    <span className="min-w-6 h-[22px] px-2 rounded-full bg-white text-xs font-semibold text-zinc-700 flex items-center justify-center">
                       {columnProcesses.length}
                     </span>
                   </div>
 
-                  <div className="flex-1 space-y-3 overflow-y-auto pr-1 custom-scrollbar">
+                  <div className="flex-1 space-y-2.5 overflow-y-auto pr-0.5 custom-scrollbar">
                     <AnimatePresence mode="popLayout">
                       {columnProcesses.map((proc) => {
                         const procTemplate = templates.find(t => t.type === proc.type);
@@ -6713,93 +6722,94 @@ const ProcessesView = ({
                               if (isMaximized) setIsMaximized(false);
                               setViewMode("list");
                             }}
-                            initial={{ opacity: 0, y: -20, scale: 0.95 }}
-                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                            exit={{ opacity: 0, x: 50, scale: 0.95 }}
-                            whileDrag={{ scale: 1.05, boxShadow: "0 10px 30px rgba(0,0,0,0.2)", zIndex: 50 }}
-                            transition={{ duration: 0.25, ease: "easeOut" }}
-                            className="bg-slate-50 p-3 rounded-2xl border border-slate-200/60 shadow-sm hover:shadow-md hover:bg-white hover:border-blue-200 transition-all cursor-grab active:cursor-grabbing group active:scale-95"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            whileDrag={{ boxShadow: "0 8px 24px rgba(24,24,27,0.16)", zIndex: 50 }}
+                            transition={{ duration: 0.15 }}
+                            className="bg-white p-3.5 rounded-[10px] border border-zinc-200 shadow-[0_1px_2px_rgba(24,24,27,0.04)] hover:border-zinc-300 transition-colors cursor-grab active:cursor-grabbing flex flex-col gap-3"
                           >
-                            <div className="flex items-start justify-between mb-2">
-                              <div className={cn("w-7 h-7 rounded-lg flex items-center justify-center shadow-sm", (procTemplate.color || "text-blue-500").replace('text-', 'bg-').replace('500', '100'))}>
-                                <Icon className={cn("w-3.5 h-3.5", procTemplate.color)} />
-                              </div>
-                              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                {/* Setas usam a mesma função do arrastar (moverProcesso).
-                                    Sem "volta ao início": na primeira coluna não há
-                                    "voltar" e na última não há "avançar". */}
-                                {colIdx > 0 && (
-                                  <button
-                                    type="button"
-                                    disabled={movendoProcessoId === proc.id}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      moverProcesso(proc, kanbanColumns[colIdx - 1].id);
-                                    }}
-                                    title={`Voltar para ${kanbanColumns[colIdx - 1].label}`}
-                                    aria-label={`Voltar para ${kanbanColumns[colIdx - 1].label}`}
-                                    className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-blue-600 transition-colors disabled:opacity-40"
-                                  >
-                                    <ChevronLeft className="w-3 h-3" />
-                                  </button>
-                                )}
-                                {colIdx < kanbanColumns.length - 1 && (
-                                  <button
-                                    type="button"
-                                    disabled={movendoProcessoId === proc.id}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      moverProcesso(proc, kanbanColumns[colIdx + 1].id);
-                                    }}
-                                    title={`Avançar para ${kanbanColumns[colIdx + 1].label}`}
-                                    aria-label={`Avançar para ${kanbanColumns[colIdx + 1].label}`}
-                                    className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-blue-600 transition-colors disabled:opacity-40"
-                                  >
-                                    <ChevronRight className="w-3 h-3" />
-                                  </button>
-                                )}
-                              </div>
+                            <div className="space-y-1">
+                              <span className={cn("text-xs font-medium", corTipo(procTemplate.color))}>{procTemplate.title}</span>
+                              <h4 className="font-semibold text-zinc-900 text-[15px] leading-[21px] line-clamp-2">{proc.title}</h4>
                             </div>
-                            
-                            <h4 className="font-bold text-slate-900 text-[11px] mb-1.5 line-clamp-2 leading-tight">{proc.title}</h4>
-                            
-                            <div className="space-y-2">
-                              <div className="flex justify-between items-center text-[8px] font-black uppercase tracking-wider">
-                                <span className="text-slate-500">{procTemplate.title}</span>
-                                <span className="text-blue-700">{progress}%</span>
+
+                            <div className="space-y-1.5">
+                              <div className="flex justify-between text-xs text-zinc-600">
+                                <span>{proc.completedSteps.length} de {procTemplate.steps.length} etapas</span>
+                                <span className="tabular-nums">{progress}%</span>
                               </div>
-                              <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                              <div className="h-1 bg-zinc-100 rounded-full overflow-hidden">
                                 <div 
-                                  className="h-full bg-blue-600 transition-all duration-500 shadow-[0_0_8px_rgba(37,99,235,0.4)]" 
-                                  style={{ width: `${progress}%` }}
+                                  className={cn("h-full rounded-full", progress >= 100 ? "bg-green-700" : "bg-blue-700")}
+                                  style={{ width: `${Math.min(progress, 100)}%` }}
                                 />
                               </div>
-                              
-                              <div className="flex items-center justify-between pt-0.5">
-                                <div className="flex -space-x-1">
-                                  <div className="w-4.5 h-4.5 rounded-full bg-blue-100 border border-white flex items-center justify-center text-[8px] font-bold text-blue-600" title={proc.uid ? allUsers.find(u => u.uid === proc.uid)?.displayName || "Sistema" : user?.displayName}>
-                                    {proc.uid ? (allUsers.find(u => u.uid === proc.uid)?.displayName || "U")?.charAt(0) : user?.displayName?.charAt(0)}
-                                  </div>
-                                </div>
-                                {proc.dueDate && (
-                                  <div className={cn(
-                                    "flex items-center gap-0.5 text-[8px] font-bold",
-                                    proc.dueDate < TODAY_ISO ? "text-red-500" : "text-slate-400"
-                                  )}>
-                                    <Clock className="w-2.5 h-2.5" />
-                                    {format(parseISO(proc.dueDate), "dd MMM", { locale: ptBR })}
-                                  </div>
-                                )}
+                            </div>
+
+                            <div className="flex items-center justify-between gap-2 pt-2.5 border-t border-zinc-100">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className="w-[26px] h-[26px] flex-none rounded-full bg-blue-50 text-blue-800 text-[11px] font-bold flex items-center justify-center">
+                                  {iniciaisResponsavel(proc.uid)}
+                                </span>
+                                <span className="text-[13px] text-zinc-700 truncate">{nomeResponsavel(proc.uid)}</span>
                               </div>
+                              {proc.dueDate && (
+                                <span className={cn(
+                                  "text-xs font-medium px-2 py-[3px] rounded-md whitespace-nowrap",
+                                  proc.status === "completed" ? "bg-green-100 text-green-800"
+                                    : proc.dueDate < TODAY_ISO ? "bg-orange-100 text-orange-800"
+                                    : "bg-zinc-100 text-zinc-700"
+                                )}>
+                                  {proc.status !== "completed" && proc.dueDate < TODAY_ISO ? "Venceu " : ""}{format(parseISO(proc.dueDate), "dd MMM", { locale: ptBR })}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Setas usam a mesma função do arrastar (moverProcesso).
+                                Sem "volta ao início": na primeira coluna não há
+                                "voltar" e na última não há "avançar". */}
+                            <div className="flex gap-2">
+                              {colIdx > 0 && (
+                                <button
+                                  type="button"
+                                  disabled={movendoProcessoId === proc.id}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    moverProcesso(proc, kanbanColumns[colIdx - 1].id);
+                                  }}
+                                  title={`Voltar para ${kanbanColumns[colIdx - 1].label}`}
+                                  aria-label={`Voltar para ${kanbanColumns[colIdx - 1].label}`}
+                                  className="flex-1 min-w-0 h-9 px-2 border border-zinc-200 rounded-lg bg-white text-[13px] font-medium text-zinc-700 hover:bg-zinc-50 flex items-center justify-center gap-1 transition-colors disabled:opacity-50"
+                                >
+                                  <ChevronLeft className="w-3.5 h-3.5 flex-none" />
+                                  <span className="truncate">{kanbanColumns[colIdx - 1].label}</span>
+                                </button>
+                              )}
+                              {colIdx < kanbanColumns.length - 1 && (
+                                <button
+                                  type="button"
+                                  disabled={movendoProcessoId === proc.id}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    moverProcesso(proc, kanbanColumns[colIdx + 1].id);
+                                  }}
+                                  title={`Avançar para ${kanbanColumns[colIdx + 1].label}`}
+                                  aria-label={`Avançar para ${kanbanColumns[colIdx + 1].label}`}
+                                  className="flex-1 min-w-0 h-9 px-2 border border-zinc-200 rounded-lg bg-white text-[13px] font-semibold text-zinc-900 hover:bg-zinc-50 flex items-center justify-center gap-1 transition-colors disabled:opacity-50"
+                                >
+                                  <span className="truncate">{kanbanColumns[colIdx + 1].label}</span>
+                                  <ChevronRight className="w-3.5 h-3.5 flex-none" />
+                                </button>
+                              )}
                             </div>
                           </motion.div>
                         );
                       })}
                     </AnimatePresence>
                     {columnProcesses.length === 0 && (
-                      <div className="py-8 border-2 border-dashed border-slate-300 bg-slate-100/50 rounded-2xl flex flex-col items-center justify-center text-slate-500">
-                        <PlusCircle className="w-6 h-6 mb-1.5 opacity-40" />
-                        <p className="text-[9px] font-black uppercase tracking-widest">Aguardando...</p>
+                      <div className="py-5 px-3.5 border border-dashed border-zinc-300 rounded-[10px] text-center text-[13px] text-zinc-600">
+                        Nenhum processo nesta etapa.
                       </div>
                     )}
                   </div>
@@ -6809,314 +6819,348 @@ const ProcessesView = ({
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {/* Sidebar: List of Instances */}
-        <div className="lg:col-span-1 flex flex-col gap-4">
-          <div className="bg-white p-4 rounded-[32px] border border-slate-200 shadow-sm space-y-4">
-            <div className="flex items-center justify-between px-1">
-              <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest">Filtros</h3>
-              {profile?.role === 'admin' && (
-                <button 
-                  onClick={() => onNavigate("process_config")}
-                  className="text-[10px] font-bold text-blue-500 hover:underline uppercase tracking-widest flex items-center gap-1"
-                >
-                  <Settings className="w-3 h-3" />
-                  Configurar
-                </button>
-              )}
+        <div className="lg:col-span-1 flex flex-col gap-3 min-w-0">
+          <div className="bg-white p-4 rounded-xl border border-zinc-200 space-y-3.5">
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between">
+                <label htmlFor="busca-processos" className="text-[13px] font-medium text-zinc-700">Buscar</label>
+                {profile?.role === 'admin' && (
+                  <button 
+                    type="button"
+                    onClick={() => onNavigate("process_config")}
+                    className="text-[13px] font-medium text-blue-700 hover:text-blue-800 hover:underline flex items-center gap-1"
+                  >
+                    <Settings className="w-3.5 h-3.5" />
+                    Configurar modelos
+                  </button>
+                )}
+              </div>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                <input 
+                  id="busca-processos"
+                  type="text"
+                  placeholder="Buscar pelo título"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full h-10 pl-9 pr-3 bg-white border border-zinc-300 rounded-lg text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 placeholder:text-zinc-500"
+                />
+              </div>
             </div>
 
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-              <input 
-                type="text"
-                placeholder="Buscar processo..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all placeholder:text-slate-400"
-              />
-            </div>
-
-            <div className="flex p-1 bg-slate-100 rounded-xl border border-slate-200/50">
-              {(["active", "completed", "archived"] as const).map((status) => (
-                <button
-                  key={status}
-                  onClick={() => setStatusFilter(status)}
-                  className={cn(
-                    "flex-1 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all",
-                    statusFilter === status 
-                      ? "bg-white text-blue-600 shadow-sm" 
-                      : "text-slate-400 hover:text-slate-600"
-                  )}
-                >
-                  {status === "active" ? "Ativos" : status === "completed" ? "Concluídos" : "Arquivados"}
-                </button>
-              ))}
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[13px] font-medium text-zinc-700">Situação</span>
+              <div className="flex p-[3px] bg-zinc-100 border border-zinc-200 rounded-lg gap-0.5" role="group" aria-label="Situação">
+                {(["active", "completed", "archived"] as const).map((status) => (
+                  <button
+                    key={status}
+                    type="button"
+                    onClick={() => setStatusFilter(status)}
+                    aria-pressed={statusFilter === status}
+                    className={cn(
+                      "flex-1 h-8 text-[13px] rounded-md transition-colors",
+                      statusFilter === status 
+                        ? "bg-white text-zinc-900 font-semibold shadow-sm" 
+                        : "text-zinc-600 font-medium hover:text-zinc-900"
+                    )}
+                  >
+                    {status === "active" ? "Em andamento" : status === "completed" ? "Concluídos" : "Arquivados"}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
-          <div className="space-y-2 overflow-y-auto max-h-[600px] pr-1 custom-scrollbar">
+          <ul className="space-y-2 overflow-y-auto max-h-[600px] pr-0.5 custom-scrollbar">
             {filteredProcesses.length === 0 ? (
-              <div className="p-8 text-center bg-slate-50 rounded-3xl border border-dashed border-slate-200 text-slate-400 text-sm">
-                {searchTerm ? "Nenhum resultado encontrado." : "Nenhum processo nesta categoria."}
-              </div>
+              <li className="p-6 text-center rounded-[10px] border border-dashed border-zinc-300 text-zinc-600 text-sm">
+                {searchTerm ? "Nenhum processo encontrado para essa busca." : "Nenhum processo nesta situação."}
+              </li>
             ) : filteredProcesses.map((proc) => {
               const procTemplate = templates.find(t => t.type === proc.type);
               if (!procTemplate) return null;
-              const Icon = ICON_MAP[procTemplate.icon] || ClipboardList;
               const progress = Math.round((proc.completedSteps.length / procTemplate.steps.length) * 100);
+              const atrasado = !!proc.dueDate && proc.dueDate < TODAY_ISO && proc.status === 'active';
+              const colunaLabel = kanbanColumns.find(c => c.id === normalizarColuna(proc.kanbanStatus))?.label;
 
               return (
-                <div 
-                  key={proc.id}
-                  onClick={() => setActiveInstanceId(proc.id)}
-                  className={cn(
-                    "group p-4 rounded-2xl border transition-all cursor-pointer relative overflow-hidden",
-                    activeInstanceId === proc.id 
-                      ? "bg-white border-blue-400 shadow-lg ring-1 ring-blue-100" 
-                      : "bg-white border-slate-200 hover:border-blue-200 shadow-sm"
-                  )}
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center", (procTemplate.color || "text-blue-500").replace('text-', 'bg-').replace('500', '100'))}>
-                        <Icon className={cn("w-4 h-4", procTemplate.color)} />
-                      </div>
-                      <div>
-                        <h4 className="font-bold text-slate-900 text-sm truncate max-w-[120px]">{proc.title}</h4>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{procTemplate.title}</p>
-                      </div>
-                    </div>
-                    {proc.dueDate && proc.dueDate < TODAY_ISO && proc.status === 'active' && (
-                      <div className="p-1 bg-red-100 text-red-600 rounded-full animate-pulse" title="Atrasado">
-                        <AlertCircle className="w-3.5 h-3.5" />
-                      </div>
+                <li key={proc.id}>
+                  <button 
+                    type="button"
+                    onClick={() => setActiveInstanceId(proc.id)}
+                    aria-current={activeInstanceId === proc.id ? "true" : undefined}
+                    className={cn(
+                      "w-full text-left p-3.5 rounded-[10px] border bg-white transition-colors flex flex-col gap-2.5",
+                      activeInstanceId === proc.id 
+                        ? "border-blue-700 ring-[3px] ring-blue-700/10" 
+                        : "border-zinc-200 hover:border-zinc-300"
                     )}
-                  </div>
-                  
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between text-[10px] font-bold">
-                      <span className="text-slate-400">Progresso</span>
-                      <span className="text-blue-600">{progress}%</span>
-                    </div>
-                    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                      <div 
-                        className="h-full bg-blue-500 transition-all duration-500" 
-                        style={{ width: `${progress}%` }}
-                      />
-                    </div>
-                    <div className="flex items-center justify-between pt-1">
-                      <div className="text-[9px] text-slate-400 font-medium">
-                        Atualizado {proc.updatedAt?.toDate ? format(proc.updatedAt.toDate(), "dd/MM") : 'Agora'}
-                      </div>
+                  >
+                    <span className="flex items-baseline justify-between gap-2 w-full">
+                      <span className="font-semibold text-zinc-900 text-[15px] leading-[21px] line-clamp-2">{proc.title}</span>
                       {proc.dueDate && (
-                        <div className={cn(
-                          "text-[9px] font-bold",
-                          (proc.dueDate < TODAY_ISO && proc.status === 'active') ? "text-red-500" : "text-slate-400"
-                        )}>
-                          Prazo: {format(parseISO(proc.dueDate), "dd/MM")}
-                        </div>
+                        <span className={cn("text-xs font-medium whitespace-nowrap", atrasado ? "text-orange-800" : "text-zinc-600")}>
+                          {atrasado ? "Venceu " : ""}{format(parseISO(proc.dueDate), "dd/MM")}
+                        </span>
                       )}
-                    </div>
-                  </div>
-                </div>
+                    </span>
+                    <span className="flex items-center justify-between gap-2 w-full text-[13px] text-zinc-600">
+                      <span className="truncate">{procTemplate.title}{colunaLabel ? ` · ${colunaLabel}` : ""}</span>
+                      <span className="truncate">{nomeResponsavel(proc.uid)}</span>
+                    </span>
+                    <span className="block h-1 w-full bg-zinc-100 rounded-full overflow-hidden">
+                      <span 
+                        className={cn("block h-full rounded-full", progress >= 100 ? "bg-green-700" : "bg-blue-700")}
+                        style={{ width: `${Math.min(progress, 100)}%` }}
+                      />
+                    </span>
+                  </button>
+                </li>
               );
             })}
-          </div>
+          </ul>
         </div>
 
         {/* Main Content: Steps for Active Instance */}
         <div className="lg:col-span-3">
           {activeInstance && template ? (
-            <div className="bg-white rounded-[40px] border border-slate-200 shadow-sm overflow-hidden">
-              <div className="p-8 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className={cn("w-14 h-14 rounded-2xl bg-white shadow-sm flex items-center justify-center border border-slate-100")}>
-                    {React.createElement(ICON_MAP[template.icon] || ClipboardList, { className: cn("w-7 h-7", template.color) })}
-                  </div>
-                  <div>
-                    {isEditingTitle ? (
-                      <div className="flex items-center gap-2">
+            <div className="bg-white rounded-xl border border-zinc-200 overflow-hidden">
+              <div className="px-6 py-5 md:px-7 md:py-6 border-b border-zinc-200 flex flex-wrap justify-between gap-4">
+                <div className="flex flex-col gap-2 min-w-0 flex-1">
+                  <span className={cn("text-[13px] font-medium", corTipo(template.color))}>{template.title}</span>
+                  {isEditingTitle ? (
+                    <div className="flex items-center gap-2">
+                      <label htmlFor="titulo-processo" className="sr-only">Título do processo</label>
+                      <input 
+                        id="titulo-processo"
+                        type="text"
+                        value={editingTitleValue}
+                        onChange={(e) => setEditingTitleValue(e.target.value)}
+                        className="flex-1 min-w-0 h-[38px] text-xl font-semibold text-zinc-900 bg-white border border-blue-600 rounded-lg px-2 focus:outline-none focus:ring-2 focus:ring-blue-600/20"
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') updateProcessTitle();
+                          if (e.key === 'Escape') setIsEditingTitle(false);
+                        }}
+                      />
+                      <button type="button" onClick={updateProcessTitle} aria-label="Salvar título" className="w-[38px] h-[38px] flex items-center justify-center bg-blue-700 text-white rounded-lg hover:bg-blue-800 transition-colors">
+                        <Check className="w-4 h-4" />
+                      </button>
+                      <button type="button" onClick={() => setIsEditingTitle(false)} aria-label="Cancelar edição do título" className="w-[38px] h-[38px] flex items-center justify-center border border-zinc-300 text-zinc-700 rounded-lg hover:bg-zinc-50 transition-colors">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5 group/title min-h-[38px]">
+                      <h3 className="text-[22px] leading-[30px] font-semibold text-zinc-900">{activeInstance.title}</h3>
+                      <button 
+                        type="button"
+                        onClick={() => setIsEditingTitle(true)}
+                        aria-label="Editar título"
+                        title="Editar título"
+                        className="p-1.5 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 rounded-md transition-colors"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+                  <dl className="flex flex-wrap gap-x-6 gap-y-2 text-[13px]">
+                    <div className="flex gap-1.5">
+                      <dt className="text-zinc-600">Responsável</dt>
+                      <dd className="font-medium text-zinc-900">{nomeResponsavel(activeInstance.uid)}</dd>
+                    </div>
+                    <div className="flex gap-1.5">
+                      <dt className="text-zinc-600">Iniciado em</dt>
+                      <dd className="font-medium text-zinc-900">{activeInstance.createdAt?.toDate ? format(activeInstance.createdAt.toDate(), "dd/MM/yyyy") : format(new Date(), "dd/MM/yyyy")}</dd>
+                    </div>
+                    <div className="flex gap-1.5 items-center">
+                      <dt className="text-zinc-600">Prazo</dt>
+                      <dd className="relative">
+                        <span className={cn(
+                          "font-medium px-1.5 py-0.5 rounded-md cursor-pointer hover:bg-zinc-100",
+                          (activeInstance.dueDate && activeInstance.dueDate < TODAY_ISO && activeInstance.status === 'active') ? "text-orange-800 bg-orange-100 hover:bg-orange-100" : "text-zinc-900"
+                        )}>
+                          {activeInstance.dueDate ? format(parseISO(activeInstance.dueDate), "dd/MM/yyyy") : "Definir prazo"}
+                          {(activeInstance.dueDate && activeInstance.dueDate < TODAY_ISO && activeInstance.status === 'active') && " · vencido"}
+                        </span>
                         <input 
-                          type="text"
-                          value={editingTitleValue}
-                          onChange={(e) => setEditingTitleValue(e.target.value)}
-                          className="text-2xl font-bold text-slate-900 bg-white border border-blue-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                          autoFocus
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') updateProcessTitle();
-                            if (e.key === 'Escape') setIsEditingTitle(false);
+                          type="date"
+                          aria-label="Alterar prazo do processo"
+                          className="absolute inset-0 opacity-0 cursor-pointer"
+                          value={activeInstance.dueDate || ""}
+                          onChange={async (e) => {
+                            try {
+                              await updateDoc(doc(db, "processes", activeInstance.id), {
+                                dueDate: e.target.value || null,
+                                updatedAt: serverTimestamp()
+                              });
+                              toast.success("Prazo atualizado!");
+                            } catch (err) {
+                              reportarFalha("Erro ao atualizar prazo. O prazo anterior foi mantido.", err, OperationType.UPDATE, `processes/${activeInstance.id}`);
+                            }
                           }}
                         />
-                        <button onClick={updateProcessTitle} className="p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors">
-                          <Check className="w-4 h-4" />
-                        </button>
-                        <button onClick={() => setIsEditingTitle(false)} className="p-2 bg-slate-100 text-slate-500 rounded-lg hover:bg-slate-200 transition-colors">
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-2 group/title">
-                        <h3 className="text-2xl font-bold text-slate-900">{activeInstance.title}</h3>
-                        <button 
-                          onClick={() => setIsEditingTitle(true)}
-                          className="opacity-0 group-hover/title:opacity-100 p-1.5 text-slate-300 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-all"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    )}
-                    <p className="text-sm font-medium text-slate-500">
-                      {template.title} • {activeInstance.completedSteps.length} de {template.steps.length} etapas concluídas
-                      <span className="block text-[10px] font-bold uppercase mt-1">
-                        <span className="text-slate-400">Iniciado em: {activeInstance.createdAt?.toDate ? format(activeInstance.createdAt.toDate(), "dd/MM/yyyy 'às' HH:mm") : format(new Date(), "dd/MM/yyyy")}</span>
-                        <span className="ml-3 group/date relative inline-flex items-center gap-1">
-                          <span className={cn(
-                            "px-2 py-0.5 rounded cursor-pointer hover:bg-slate-200 transition-colors",
-                            (activeInstance.dueDate && activeInstance.dueDate < TODAY_ISO && activeInstance.status === 'active') ? "bg-red-100 text-red-600" : "bg-slate-100 text-slate-600"
-                          )}>
-                            Prazo: {activeInstance.dueDate ? format(parseISO(activeInstance.dueDate), "dd/MM/yyyy") : "Não definido"}
-                            {(activeInstance.dueDate && activeInstance.dueDate < TODAY_ISO && activeInstance.status === 'active') && " (ATRASADO)"}
-                          </span>
-                          <input 
-                            type="date"
-                            className="absolute inset-0 opacity-0 cursor-pointer"
-                            value={activeInstance.dueDate || ""}
-                            onChange={async (e) => {
-                              try {
-                                await updateDoc(doc(db, "processes", activeInstance.id), {
-                                  dueDate: e.target.value || null,
-                                  updatedAt: serverTimestamp()
-                                });
-                                toast.success("Prazo atualizado!");
-                              } catch (err) {
-                                reportarFalha("Erro ao atualizar prazo. O prazo anterior foi mantido.", err, OperationType.UPDATE, `processes/${activeInstance.id}`);
-                              }
-                            }}
-                          />
-                        </span>
-                        {activeInstance.status === 'completed' && activeInstance.completedAt && (
-                          <span className="text-green-600 ml-2">
-                            • Concluído em: {activeInstance.completedAt.toDate ? format(activeInstance.completedAt.toDate(), "dd/MM/yyyy 'às' HH:mm") : 'Recentemente'}
-                          </span>
-                        )}
-                      </span>
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="px-4 py-2 bg-white rounded-xl border border-slate-200 shadow-sm">
-                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Status</div>
-                    <div className="flex items-center gap-2">
-                      <div className={cn(
-                        "w-2 h-2 rounded-full",
-                        activeInstance.status === 'completed' ? "bg-green-500" : activeInstance.status === 'archived' ? "bg-slate-400" : "bg-blue-500 animate-pulse"
-                      )} />
-                      <span className="text-xs font-bold text-slate-700">
-                        {activeInstance.status === 'completed' ? "Concluído" : activeInstance.status === 'archived' ? "Arquivado" : "Em Andamento"}
-                      </span>
+                      </dd>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {activeInstance.type === "locacao" && !activeInstance.isCommissionLaunched && (
-                      <button 
-                        onClick={() => onLaunchCommission?.({
-                          imovel: activeInstance.propertyAddress || activeInstance.title,
-                          inquilino: activeInstance.tenantName || "",
-                          aluguelMensal: activeInstance.rentAmount || 0,
-                          processId: activeInstance.id
-                        })}
-                        className="p-3 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-2xl border border-indigo-100 transition-all flex items-center gap-2"
-                        title="Lançar Comissão"
-                      >
-                        <DollarSign className="w-5 h-5" />
-                        <span className="text-[10px] font-bold uppercase hidden sm:inline">Lançar Comissão</span>
-                      </button>
+                    {activeInstance.tenantName && (
+                      <div className="flex gap-1.5">
+                        <dt className="text-zinc-600">Inquilino</dt>
+                        <dd className="font-medium text-zinc-900">{activeInstance.tenantName}</dd>
+                      </div>
                     )}
-                    {activeInstance.isCommissionLaunched && (
-                       <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 border border-slate-100 rounded-2xl text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                          <CheckCircle2 className="w-4 h-4 text-indigo-500" />
-                          Comissão Lançada
-                       </div>
-                    )}
+                    <div className="flex gap-1.5">
+                      <dt className="text-zinc-600">Situação</dt>
+                      <dd className={cn(
+                        "font-medium",
+                        activeInstance.status === 'completed' ? "text-green-800" : activeInstance.status === 'archived' ? "text-zinc-600" : "text-zinc-900"
+                      )}>
+                        {activeInstance.status === 'completed'
+                          ? `Concluído${activeInstance.completedAt?.toDate ? " em " + format(activeInstance.completedAt.toDate(), "dd/MM/yyyy") : ""}`
+                          : activeInstance.status === 'archived' ? "Arquivado" : "Em andamento"}
+                      </dd>
+                    </div>
+                  </dl>
+                </div>
+                <div className="flex items-start gap-2 flex-wrap">
+                  {activeInstance.type === "locacao" && !activeInstance.isCommissionLaunched && (
                     <button 
-                      onClick={() => setIsReportModalOpen(true)}
-                      className="p-3 text-slate-400 hover:text-blue-500 hover:bg-blue-50 rounded-2xl border border-slate-100 transition-all flex items-center gap-2"
-                      title="Gerar Relatório de Execução"
+                      type="button"
+                      onClick={() => onLaunchCommission?.({
+                        imovel: activeInstance.propertyAddress || activeInstance.title,
+                        inquilino: activeInstance.tenantName || "",
+                        aluguelMensal: activeInstance.rentAmount || 0,
+                        processId: activeInstance.id
+                      })}
+                      className="h-10 px-3.5 border border-zinc-300 rounded-lg bg-white text-sm font-medium text-zinc-900 hover:bg-zinc-50 flex items-center gap-2 transition-colors"
                     >
-                      <Download className="w-5 h-5" />
-                      <span className="text-[10px] font-bold uppercase hidden sm:inline">Relatório</span>
+                      <DollarSign className="w-4 h-4" />
+                      Lançar comissão
                     </button>
-                    <button 
-                      onClick={() => archiveProcess(activeInstance.id, activeInstance.status)}
-                      className="p-3 text-slate-400 hover:text-blue-500 hover:bg-blue-50 rounded-2xl border border-slate-100 transition-all"
-                      title={activeInstance.status === 'archived' ? "Reativar" : "Arquivar"}
-                    >
-                      <Archive className="w-5 h-5" />
-                    </button>
-                    <button 
-                      onClick={() => deleteProcess(activeInstance.id)}
-                      className="p-3 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-2xl border border-slate-100 transition-all"
-                      title="Excluir Processo"
-                    >
-                      <Trash2 className="w-5 h-5" />
-                    </button>
-                  </div>
+                  )}
+                  {activeInstance.isCommissionLaunched && (
+                    <span className="h-10 px-3.5 rounded-lg bg-green-50 text-sm font-medium text-green-800 flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4" />
+                      Comissão lançada
+                    </span>
+                  )}
+                  <button 
+                    type="button"
+                    onClick={() => setIsReportModalOpen(true)}
+                    className="h-10 px-3.5 border border-zinc-300 rounded-lg bg-white text-sm font-medium text-zinc-900 hover:bg-zinc-50 flex items-center gap-2 transition-colors"
+                  >
+                    <Download className="w-4 h-4" />
+                    Relatório
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => archiveProcess(activeInstance.id, activeInstance.status)}
+                    aria-label={activeInstance.status === 'archived' ? "Reativar processo" : "Arquivar processo"}
+                    title={activeInstance.status === 'archived' ? "Reativar processo" : "Arquivar processo"}
+                    className="w-10 h-10 border border-zinc-300 rounded-lg bg-white text-zinc-700 hover:bg-zinc-50 flex items-center justify-center transition-colors"
+                  >
+                    <Archive className="w-4 h-4" />
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => deleteProcess(activeInstance.id)}
+                    aria-label="Excluir processo"
+                    title="Excluir processo"
+                    className="w-10 h-10 border border-zinc-300 rounded-lg bg-white text-red-700 hover:bg-red-50 flex items-center justify-center transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
 
-              <div className="flex border-b border-slate-100 bg-white">
+              {activeInstance.status !== 'archived' && (() => {
+                const idxColuna = kanbanColumns.findIndex(c => c.id === normalizarColuna(activeInstance.kanbanStatus));
+                if (idxColuna === -1) return null;
+                const anterior = kanbanColumns[idxColuna - 1];
+                const proxima = kanbanColumns[idxColuna + 1];
+                return (
+                  <div className="px-6 md:px-7 py-3.5 border-b border-zinc-200 bg-zinc-50 flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5 text-sm">
+                      <span className="text-zinc-600">Etapa no quadro</span>
+                      <span className="font-semibold text-zinc-900">{kanbanColumns[idxColuna].label}</span>
+                    </div>
+                    <div className="flex gap-2">
+                      {anterior && (
+                        <button
+                          type="button"
+                          disabled={movendoProcessoId === activeInstance.id}
+                          onClick={() => moverProcesso(activeInstance, anterior.id)}
+                          className="h-9 px-3 border border-zinc-300 rounded-lg bg-white text-[13px] font-medium text-zinc-700 hover:bg-zinc-50 flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                        >
+                          <ChevronLeft className="w-3.5 h-3.5" />
+                          Voltar para {anterior.label}
+                        </button>
+                      )}
+                      {proxima && (
+                        <button
+                          type="button"
+                          disabled={movendoProcessoId === activeInstance.id}
+                          onClick={() => moverProcesso(activeInstance, proxima.id)}
+                          className="h-9 px-3 border border-zinc-300 rounded-lg bg-white text-[13px] font-semibold text-zinc-900 hover:bg-zinc-50 flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                        >
+                          Avançar para {proxima.label}
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div className="flex gap-1 px-5 border-b border-zinc-200 overflow-x-auto" role="tablist" aria-label="Seções do processo">
                 {[
-                  { id: "checklist", label: "Checklist", icon: ClipboardList },
-                  { id: "history", label: "Histórico", icon: History },
-                  { id: "notes", label: "Notas", icon: MessageSquare },
+                  { id: "checklist", label: `Checklist · ${template.steps.filter(st => activeInstance.completedSteps.includes(st.label)).length} de ${template.steps.length}` },
+                  { id: "history", label: "Histórico" },
+                  { id: "notes", label: "Notas" },
                 ].map((tab) => (
                   <button
                     key={tab.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={activeSubTab === tab.id}
                     onClick={() => setActiveSubTab(tab.id as any)}
                     className={cn(
-                      "flex items-center gap-2 px-8 py-4 text-xs font-bold uppercase tracking-widest border-b-2 transition-all",
+                      "h-12 px-3 text-sm border-b-2 whitespace-nowrap transition-colors",
                       activeSubTab === tab.id 
-                        ? "border-blue-500 text-blue-600 bg-blue-50/30" 
-                        : "border-transparent text-slate-400 hover:text-slate-600 hover:bg-slate-50"
+                        ? "border-blue-700 text-zinc-900 font-semibold" 
+                        : "border-transparent text-zinc-600 font-medium hover:text-zinc-900"
                     )}
                   >
-                    <tab.icon className="w-4 h-4" />
                     {tab.label}
                   </button>
                 ))}
               </div>
 
-              <div className="p-8">
+              <div className="px-6 md:px-7 pt-2 pb-7">
                 {activeSubTab === "checklist" && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-8">
+                  <ol className="flex flex-col">
                     {template.steps.map((step, sIdx) => {
                       const isDone = activeInstance.completedSteps.includes(step.label);
                       const attachments = activeInstance.stepAttachments?.[step.label] || [];
+                      const registro = isDone ? (activeInstance.stepHistory || []).find(h => h.label === step.label) : null;
+                      const abrirAnexos = () => {
+                        // Abre a janela de anexos com uma CÓPIA dos anexos salvos
+                        // (rascunho). Nada é gravado até "Salvar anexos".
+                        setStepProofModal({ 
+                          isOpen: true, 
+                          instance: activeInstance, 
+                          stepLabel: step.label,
+                          attachments: [...attachments]
+                        });
+                      };
                       return (
-                        <div 
-                          key={sIdx} 
-                          onClick={() => {
-                            // Abre a janela de anexos com uma CÓPIA dos anexos salvos
-                            // (rascunho). Nada é gravado até "Salvar anexos".
-                            setStepProofModal({ 
-                              isOpen: true, 
-                              instance: activeInstance, 
-                              stepLabel: step.label,
-                              attachments: [...attachments]
-                            });
-                          }}
-                          className={cn(
-                            "group relative flex gap-4 p-4 rounded-2xl border transition-all cursor-pointer",
-                            isDone ? "bg-green-50/30 border-green-100 shadow-sm" : "bg-white border-slate-100 hover:border-slate-200"
-                          )}
-                        >
+                        <li key={sIdx} className="flex gap-3.5 py-3.5 border-b border-zinc-100 last:border-b-0 items-start">
                           {/* Concluir/desmarcar a etapa é só pelo círculo — separado dos
                               anexos. Desmarcar pede confirmação (apaga a data de conclusão). */}
                           <button
                             type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
+                            onClick={() => {
                               if (isDone) {
                                 setDesmarcarEtapa({ instance: activeInstance, stepLabel: step.label });
                               } else {
@@ -7126,70 +7170,78 @@ const ProcessesView = ({
                             title={isDone ? "Desmarcar etapa" : "Concluir etapa"}
                             aria-label={isDone ? `Desmarcar etapa ${step.label}` : `Concluir etapa ${step.label}`}
                             className={cn(
-                              "w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 transition-all z-10",
-                              isDone ? "bg-green-500 border-green-500 text-white shadow-lg shadow-green-200" : "border-slate-200 group-hover:border-blue-400"
+                              "mt-0.5 w-7 h-7 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors",
+                              isDone ? "bg-green-700 border-green-700 text-white" : "border-zinc-400 bg-white hover:border-blue-700"
                             )}>
-                            {isDone ? <CheckCircle2 className="w-4 h-4" /> : <Circle className="w-4 h-4 text-transparent" />}
+                            {isDone && <Check className="w-3.5 h-3.5" strokeWidth={3} />}
                           </button>
-                          <div className="space-y-1 flex-1">
-                            <h4 className={cn("font-bold text-sm transition-all", isDone ? "text-green-700" : "text-slate-800")}>{step.label}</h4>
-                            <p className="text-xs text-slate-500 leading-relaxed font-medium">{step.desc}</p>
-                            
+                          <div className="flex-1 min-w-0 flex flex-col gap-1">
+                            <span className="font-semibold text-[15px] text-zinc-900">{step.label}</span>
+                            {step.desc && <span className="text-[13px] leading-[19px] text-zinc-600">{step.desc}</span>}
+                            {isDone && registro?.completedAt && (
+                              <span className="text-xs text-green-800">Concluída em {formatSafeDate(registro.completedAt, "dd/MM/yyyy")}</span>
+                            )}
                             {attachments.length > 0 && (
-                              <div className="mt-3 flex flex-wrap gap-2">
+                              <div className="mt-1.5 flex flex-wrap gap-1.5">
                                 {attachments.map((att, aIdx) => (
                                   <button 
                                     key={aIdx}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleOpenAttachment(att.url, att.name);
-                                    }}
-                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white text-slate-600 border border-slate-200 rounded-xl text-[10px] font-bold hover:bg-slate-50 hover:border-blue-200 transition-all shadow-sm"
+                                    type="button"
+                                    onClick={() => handleOpenAttachment(att.url, att.name)}
+                                    className="inline-flex items-center gap-1.5 h-8 px-2.5 bg-white text-zinc-700 border border-zinc-200 rounded-md text-[13px] hover:bg-zinc-50 transition-colors max-w-full"
                                   >
-                                    <FileText className="w-3 h-3 text-blue-500" />
-                                    {att.name}
+                                    <FileText className="w-3.5 h-3.5 text-zinc-500 flex-none" />
+                                    <span className="truncate">{att.name}</span>
                                   </button>
                                 ))}
                               </div>
                             )}
                           </div>
-                        </div>
+                          <button
+                            type="button"
+                            onClick={abrirAnexos}
+                            className="h-[34px] px-3 border border-zinc-200 rounded-lg bg-white text-[13px] font-medium text-zinc-700 hover:bg-zinc-50 flex items-center gap-1.5 whitespace-nowrap transition-colors"
+                          >
+                            <Paperclip className="w-3.5 h-3.5" />
+                            {attachments.length === 0 ? "Anexar" : attachments.length === 1 ? "1 anexo" : `${attachments.length} anexos`}
+                          </button>
+                        </li>
                       );
                     })}
-                  </div>
+                  </ol>
                 )}
 
                 {activeSubTab === "history" && (
-                  <div className="max-w-xl space-y-10 transition-all duration-300">
+                  <div className="max-w-2xl space-y-8 pt-4">
                     {/* Linha do Tempo de Etapas Kanban */}
                     <div className="space-y-6">
-                      <div className="flex items-center gap-2 px-2">
-                        <LayoutDashboard className="w-4 h-4 text-slate-400" />
-                        <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Trajetória no Kanban</h4>
+                      <div className="flex items-center gap-2">
+                        <LayoutDashboard className="w-4 h-4 text-zinc-500 rotate-90" />
+                        <h4 className="text-sm font-semibold text-zinc-900">Movimentações no quadro</h4>
                       </div>
                       {(!activeInstance.kanbanHistory || activeInstance.kanbanHistory.length === 0) ? (
-                        <div className="p-8 text-center bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
-                          <p className="text-xs text-slate-400 italic">Nenhuma movimentação de colunas registrada ainda.</p>
+                        <div className="p-5 text-center rounded-[10px] border border-dashed border-zinc-300">
+                          <p className="text-[13px] text-zinc-600">Nenhuma movimentação registrada ainda.</p>
                         </div>
                       ) : (
-                        <div className="relative space-y-8 before:absolute before:left-5 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-100 ml-1">
+                        <div className="relative space-y-5 before:absolute before:left-4 before:top-2 before:bottom-2 before:w-px before:bg-zinc-200">
                           {[...activeInstance.kanbanHistory].reverse().map((entry, idx) => (
-                            <div key={idx} className="relative pl-12 group/history">
-                              <div className="absolute left-0 top-0.5 w-10 h-10 rounded-xl bg-white border border-slate-200 flex items-center justify-center z-10 shadow-sm group-hover/history:border-blue-300 transition-all">
-                                <ChevronRight className="w-5 h-5 text-blue-500" />
+                            <div key={idx} className="relative pl-11">
+                              <div className="absolute left-0 top-0 w-8 h-8 rounded-full bg-white border border-zinc-200 flex items-center justify-center z-10">
+                                <ChevronRight className="w-4 h-4 text-zinc-600" />
                               </div>
                               <div className="pt-0.5">
-                                <p className="text-sm font-bold text-slate-800 leading-tight">
-                                  Movido de <span className="text-slate-400 line-through decoration-slate-200">{entry.from}</span> para <span className="text-blue-600">{entry.to}</span>
+                                <p className="text-sm font-medium text-zinc-900 leading-5">
+                                  Movido de <span className="text-zinc-600">{entry.from}</span> para <span className="font-semibold">{entry.to}</span>
                                 </p>
-                                <div className="flex items-center gap-2 mt-2">
-                                  <div className="flex items-center gap-1 text-[9px] font-black text-slate-400 uppercase tracking-tighter bg-slate-100 px-1.5 py-0.5 rounded">
-                                    <Clock className="w-2.5 h-2.5" />
+                                <div className="flex flex-wrap items-center gap-2 mt-1">
+                                  <div className="flex items-center gap-1 text-xs text-zinc-600">
+                                    <Clock className="w-3 h-3" />
                                     {formatSafeDate(entry.timestamp, "dd/MM/yyyy 'às' HH:mm")}
                                   </div>
-                                  <span className="text-[9px] text-slate-300 font-bold">•</span>
-                                  <div className="flex items-center gap-1 text-[9px] font-black text-slate-500 uppercase tracking-tighter">
-                                    <UserIcon className="w-2.5 h-2.5" />
+                                  <span className="text-xs text-zinc-400">·</span>
+                                  <div className="flex items-center gap-1 text-xs text-zinc-600">
+                                    <UserIcon className="w-3 h-3" />
                                     {entry.userName}
                                   </div>
                                 </div>
@@ -7200,29 +7252,29 @@ const ProcessesView = ({
                       )}
                     </div>
 
-                    <div className="h-px bg-slate-100 mx-2" />
+                    <div className="h-px bg-zinc-200" />
 
                     {/* Linha do Tempo de Checklist */}
                     <div className="space-y-6">
-                      <div className="flex items-center gap-2 px-2">
-                        <CheckCircle2 className="w-4 h-4 text-slate-400" />
-                        <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Execução de Atividades</h4>
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-zinc-500" />
+                        <h4 className="text-sm font-semibold text-zinc-900">Etapas concluídas</h4>
                       </div>
                       {(!activeInstance.stepHistory || activeInstance.stepHistory.length === 0) ? (
-                        <div className="p-8 text-center bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
-                          <p className="text-xs text-slate-400 italic">Nenhuma atividade do checklist concluída ainda.</p>
+                        <div className="p-5 text-center rounded-[10px] border border-dashed border-zinc-300">
+                          <p className="text-[13px] text-zinc-600">Nenhuma etapa do checklist concluída ainda.</p>
                         </div>
                       ) : (
-                        <div className="relative space-y-8 before:absolute before:left-5 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-100 ml-1">
+                        <div className="relative space-y-5 before:absolute before:left-4 before:top-2 before:bottom-2 before:w-px before:bg-zinc-200">
                           {[...activeInstance.stepHistory].reverse().map((entry, idx) => (
-                            <div key={idx} className="relative pl-12 group/step">
-                              <div className="absolute left-0 top-0.5 w-10 h-10 rounded-xl bg-green-50 border border-green-100 flex items-center justify-center z-10 shadow-sm group-hover/step:border-green-300 transition-all">
-                                <Check className="w-5 h-5 text-green-600" />
+                            <div key={idx} className="relative pl-11">
+                              <div className="absolute left-0 top-0 w-8 h-8 rounded-full bg-green-50 border border-green-200 flex items-center justify-center z-10">
+                                <Check className="w-4 h-4 text-green-700" />
                               </div>
                               <div className="pt-0.5">
-                                <p className="text-sm font-bold text-slate-800 leading-tight">{entry.label}</p>
-                                <div className="flex items-center gap-1 text-[9px] font-black text-slate-400 uppercase tracking-tighter bg-slate-100 px-1.5 py-0.5 rounded mt-2 w-fit">
-                                  <Clock className="w-2.5 h-2.5" />
+                                <p className="text-sm font-medium text-zinc-900 leading-5">{entry.label}</p>
+                                <div className="flex items-center gap-1 text-xs text-zinc-600 mt-1 w-fit">
+                                  <Clock className="w-3 h-3" />
                                   Concluído em {formatSafeDate(entry.completedAt, "dd/MM/yyyy 'às' HH:mm")}
                                 </div>
                               </div>
@@ -7235,13 +7287,13 @@ const ProcessesView = ({
                 )}
 
                 {activeSubTab === "notes" && (
-                  <div className="space-y-6">
+                  <div className="space-y-4 pt-4">
                     <div className="flex items-center justify-between">
-                      <h4 className="text-sm font-bold text-slate-800 uppercase tracking-widest">Notas do Processo</h4>
+                      <h4 className="text-sm font-semibold text-zinc-900">Notas do processo</h4>
                       {!isEditingNotes && (
                         <button 
                           onClick={() => setIsEditingNotes(true)}
-                          className="text-xs font-bold text-blue-500 hover:underline"
+                          className="text-sm font-medium text-blue-700 hover:text-blue-800 hover:underline"
                         >
                           Editar Notas
                         </button>
@@ -7255,32 +7307,33 @@ const ProcessesView = ({
                           onChange={(e) => setNotesValue(e.target.value)}
                           placeholder="Adicione observações importantes sobre este processo..."
                           rows={10}
-                          className="w-full p-6 bg-slate-50 border border-slate-100 rounded-[32px] focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-slate-700 leading-relaxed resize-none"
+                          aria-label="Notas do processo"
+                          className="w-full p-4 bg-white border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 text-[15px] text-zinc-900 leading-relaxed resize-none"
                         />
                         <div className="flex gap-3">
                           <button 
                             onClick={saveNotes}
-                            className="px-6 py-3 bg-blue-500 text-white rounded-2xl font-bold text-xs hover:bg-blue-600 transition-all"
+                            className="h-10 px-4 bg-blue-700 text-white rounded-lg font-semibold text-sm hover:bg-blue-800 transition-colors"
                           >
                             Salvar Notas
                           </button>
                           <button 
                             onClick={() => setIsEditingNotes(false)}
-                            className="px-6 py-3 bg-slate-100 text-slate-500 rounded-2xl font-bold text-xs hover:bg-slate-200 transition-all"
+                            className="h-10 px-4 border border-zinc-300 bg-white text-zinc-900 rounded-lg font-medium text-sm hover:bg-zinc-50 transition-colors"
                           >
                             Cancelar
                           </button>
                         </div>
                       </div>
                     ) : (
-                      <div className="p-8 bg-slate-50 rounded-[32px] border border-slate-100 min-h-[200px]">
+                      <div className="p-5 bg-zinc-50 rounded-lg border border-zinc-200 min-h-[160px]">
                         {activeInstance.notes ? (
-                          <div className="text-slate-700 whitespace-pre-wrap leading-relaxed break-words break-all">
+                          <div className="text-[15px] text-zinc-900 whitespace-pre-wrap leading-relaxed break-words">
                             {activeInstance.notes}
                           </div>
                         ) : (
-                          <div className="flex flex-col items-center justify-center h-full text-slate-400">
-                            <MessageSquare className="w-8 h-8 mb-2 opacity-20" />
+                          <div className="flex flex-col items-center justify-center h-full text-zinc-600">
+                            <MessageSquare className="w-6 h-6 mb-2 text-zinc-400" />
                             <p className="text-sm">Nenhuma nota adicionada.</p>
                           </div>
                         )}
@@ -7291,24 +7344,25 @@ const ProcessesView = ({
               </div>
             </div>
           ) : (
-            <div className="h-full min-h-[500px] flex flex-col items-center justify-center bg-white rounded-[40px] border border-dashed border-slate-200 text-center p-12">
-              <div className="w-20 h-20 bg-slate-50 rounded-3xl flex items-center justify-center mb-6">
-                <ClipboardList className="w-10 h-10 text-slate-300" />
+            <div className="h-full min-h-[480px] flex flex-col items-center justify-center bg-white rounded-xl border border-dashed border-zinc-300 text-center p-10">
+              <div className="w-12 h-12 bg-zinc-100 rounded-xl flex items-center justify-center mb-4">
+                <ClipboardList className="w-6 h-6 text-zinc-500" />
               </div>
-              <h3 className="text-xl font-bold text-slate-900 mb-2">Selecione ou Crie um Processo</h3>
-              <p className="text-slate-500 max-w-xs mb-8">Escolha um processo na lista ao lado ou use os atalhos abaixo para começar agora.</p>
+              <h3 className="text-lg font-semibold text-zinc-900 mb-1.5">Selecione ou crie um processo</h3>
+              <p className="text-sm text-zinc-600 max-w-sm mb-6">Escolha um processo na lista ao lado ou crie um rápido pelo tipo abaixo.</p>
               
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full max-w-2xl">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-2xl">
                 {templates.map((t) => (
                   <button
                     key={t.id}
                     onClick={() => quickCreate(t.type)}
-                    className="flex flex-col items-center gap-3 p-6 rounded-3xl border border-slate-100 bg-slate-50/50 hover:bg-white hover:border-blue-200 hover:shadow-md transition-all group"
+                    type="button"
+                    className="flex flex-col items-center gap-2.5 p-5 rounded-[10px] border border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50 transition-colors"
                   >
-                    <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center bg-white shadow-sm group-hover:scale-110 transition-transform")}>
-                      {React.createElement(ICON_MAP[t.icon] || ClipboardList, { className: cn("w-6 h-6", t.color) })}
+                    <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-zinc-100">
+                      {React.createElement(ICON_MAP[t.icon] || ClipboardList, { className: cn("w-5 h-5", corTipo(t.color)) })}
                     </div>
-                    <span className="text-xs font-bold text-slate-700">{t.title}</span>
+                    <span className="text-sm font-medium text-zinc-900">{t.title}</span>
                   </button>
                 ))}
               </div>
@@ -7322,34 +7376,32 @@ const ProcessesView = ({
       <AnimatePresence>
         {suggestionModal.isOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setSuggestionModal({ ...suggestionModal, isOpen: false })} className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" />
-            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="relative bg-white w-full max-w-sm rounded-[32px] shadow-2xl overflow-y-auto max-h-[90vh] custom-scrollbar p-8 text-center">
-              <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-6"><Clock className="w-8 h-8" /></div>
-              <h3 className="text-xl font-bold text-slate-900 mb-2">Próxima Etapa</h3>
-              <p className="text-slate-500 text-sm mb-6 leading-relaxed">
-                Etapa concluída! Deseja agendar um prazo para a próxima tarefa: <strong className="text-slate-900">{suggestionModal.nextStepLabel}</strong>?
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setSuggestionModal({ ...suggestionModal, isOpen: false })} className="absolute inset-0 bg-zinc-900/30" />
+            <motion.div role="dialog" aria-modal="true" aria-labelledby="titulo-proxima-etapa" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }} className="relative bg-white w-full max-w-sm rounded-xl shadow-xl overflow-y-auto max-h-[90vh] p-6">
+              <h3 id="titulo-proxima-etapa" className="text-lg font-semibold text-zinc-900 mb-1.5">Próxima etapa</h3>
+              <p className="text-sm text-zinc-600 mb-5 leading-relaxed">
+                Quer definir uma data para <strong className="font-semibold text-zinc-900">{suggestionModal.nextStepLabel}</strong>?
               </p>
-              
-              <div className="space-y-4 text-left mb-8">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-1">Previsão</label>
-                  <input 
-                    type="date" 
-                    value={suggestionModal.suggestedDate}
-                    onChange={(e) => setSuggestionModal({ ...suggestionModal, suggestedDate: e.target.value })}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all font-medium"
-                  />
-                </div>
+              <div className="flex flex-col gap-1.5 mb-6">
+                <label htmlFor="data-proxima-etapa" className="text-sm font-medium text-zinc-900">Previsão</label>
+                <input 
+                  id="data-proxima-etapa"
+                  type="date" 
+                  value={suggestionModal.suggestedDate}
+                  onChange={(e) => setSuggestionModal({ ...suggestionModal, suggestedDate: e.target.value })}
+                  className="w-full h-[42px] px-3 bg-white border border-zinc-300 rounded-lg text-[15px] text-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 placeholder:text-zinc-500"
+                />
               </div>
-
-              <div className="grid grid-cols-2 gap-3">
+              <div className="flex justify-end gap-2.5">
                 <button 
+                  type="button"
                   onClick={() => setSuggestionModal({ ...suggestionModal, isOpen: false })} 
-                  className="py-3 bg-slate-100 text-slate-600 rounded-2xl font-bold text-sm hover:bg-slate-200 transition-all"
+                  className="h-10 px-4 border border-zinc-300 bg-white text-zinc-900 rounded-lg font-medium text-sm hover:bg-zinc-50 transition-colors"
                 >
-                  Pular
+                  Agora não
                 </button>
                 <button 
+                  type="button"
                   onClick={async () => {
                     if (suggestionModal.instance) {
                       try {
@@ -7364,9 +7416,9 @@ const ProcessesView = ({
                     }
                     setSuggestionModal({ ...suggestionModal, isOpen: false });
                   }} 
-                  className="py-3 bg-[#3B82F6] text-white rounded-2xl font-bold text-sm shadow-lg shadow-blue-500/25 hover:scale-[1.02] active:scale-95 transition-all"
+                  className="h-10 px-4 bg-blue-700 text-white rounded-lg font-semibold text-sm hover:bg-blue-800 transition-colors"
                 >
-                  Agendar
+                  Definir data
                 </button>
               </div>
             </motion.div>
@@ -7374,151 +7426,165 @@ const ProcessesView = ({
         )}
       </AnimatePresence>
 
-      {/* New Process Modal */}
+      {/* New Process — painel lateral com o botão de criar sempre visível no rodapé */}
       <AnimatePresence>
         {isModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-50">
             <motion.div 
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setIsModalOpen(false)}
-              className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+              className="absolute inset-0 bg-zinc-900/30"
             />
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative bg-white rounded-[40px] shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]"
+            <motion.section 
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="titulo-novo-processo"
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className="absolute top-0 right-0 bottom-0 w-full max-w-[480px] bg-white shadow-xl flex flex-col"
             >
-              <div className="p-8 border-b border-slate-100 flex items-center justify-between shrink-0">
-                <h3 className="text-2xl font-bold text-slate-900">Novo Processo</h3>
-                <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-xl transition-all">
-                  <X className="w-6 h-6 text-slate-400" />
+              <div className="px-6 py-5 border-b border-zinc-200 flex items-center justify-between shrink-0">
+                <h3 id="titulo-novo-processo" className="text-lg font-semibold text-zinc-900">Novo processo</h3>
+                <button type="button" onClick={() => setIsModalOpen(false)} aria-label="Fechar" className="w-10 h-10 flex items-center justify-center rounded-lg text-zinc-700 hover:bg-zinc-100 transition-colors">
+                  <X className="w-5 h-5" />
                 </button>
               </div>
-              <form onSubmit={addProcess} className="p-8 space-y-6 overflow-y-auto custom-scrollbar flex-1">
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">Nome do Processo</label>
+              <form id="form-novo-processo" onSubmit={addProcess} className="p-6 space-y-5 overflow-y-auto custom-scrollbar flex-1">
+                <div className="flex flex-col gap-1.5">
+                  <label htmlFor="novo-nome" className="text-sm font-medium text-zinc-900">Nome do processo</label>
                   <input 
+                    id="novo-nome"
                     autoFocus
                     required
                     type="text"
                     value={newProcessTitle}
                     onChange={(e) => setNewProcessTitle(e.target.value)}
-                    placeholder="Ex: Locação Casa Maria Nadir"
-                    className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
+                    placeholder="Ex.: Locação casa Maria Nadir"
+                    className="w-full h-[42px] px-3 bg-white border border-zinc-300 rounded-lg text-[15px] text-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 placeholder:text-zinc-500"
                   />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">Tipo de Operação</label>
-                  <div className="grid grid-cols-1 gap-3">
-                    {templates.map((t) => (
-                      <button
-                        key={t.id}
-                        type="button"
-                        onClick={() => setNewProcessType(t.type)}
-                        className={cn(
-                          "flex items-center gap-4 p-4 rounded-2xl border transition-all text-left",
-                          newProcessType === t.type 
-                            ? "bg-blue-50 border-blue-200 ring-1 ring-blue-100" 
-                            : "bg-white border-slate-100 hover:border-slate-200"
-                        )}
-                      >
-                        <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", 
-                          newProcessType === t.type ? "bg-white shadow-sm" : "bg-slate-50")}>
-                          {React.createElement(ICON_MAP[t.icon] || ClipboardList, { 
-                            className: cn("w-5 h-5", newProcessType === t.type ? t.color : "text-slate-400") 
-                          })}
-                        </div>
-                        <div>
-                          <p className={cn("font-bold text-sm", newProcessType === t.type ? "text-blue-900" : "text-slate-700")}>
-                            {t.title}
-                          </p>
-                          <p className="text-[10px] text-slate-500 font-medium">
-                            {t.steps.length} etapas no checklist
-                          </p>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                <fieldset className="flex flex-col gap-2">
+                  <legend className="text-sm font-medium text-zinc-900 mb-2">Tipo de processo</legend>
+                  {templates.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setNewProcessType(t.type)}
+                      aria-pressed={newProcessType === t.type}
+                      className={cn(
+                        "flex items-center gap-3 px-3.5 py-3 rounded-[10px] border transition-colors text-left",
+                        newProcessType === t.type 
+                          ? "bg-blue-50 border-blue-700" 
+                          : "bg-white border-zinc-200 hover:border-zinc-300"
+                      )}
+                    >
+                      <span className={cn(
+                        "w-[18px] h-[18px] rounded-full border-2 flex-none flex items-center justify-center",
+                        newProcessType === t.type ? "border-blue-700" : "border-zinc-400"
+                      )}>
+                        {newProcessType === t.type && <span className="w-2 h-2 rounded-full bg-blue-700" />}
+                      </span>
+                      <span className="flex flex-col">
+                        <span className="font-semibold text-[15px] text-zinc-900">{t.title}</span>
+                        <span className="text-[13px] text-zinc-600">{t.steps.length} etapas no checklist</span>
+                      </span>
+                    </button>
+                  ))}
+                </fieldset>
                 {newProcessType === "locacao" && (
-                  <motion.div 
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    className="space-y-6 pt-2"
-                  >
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">Nome do Inquilino</label>
+                  <fieldset className="p-4 border border-zinc-200 rounded-[10px] flex flex-col gap-4">
+                    <legend className="text-[13px] font-semibold text-zinc-700 px-1.5">Dados da locação</legend>
+                    <div className="flex flex-col gap-1.5">
+                      <label htmlFor="novo-inquilino" className="text-sm font-medium text-zinc-900">Inquilino</label>
                       <input 
+                        id="novo-inquilino"
                         type="text"
                         value={newProcessTenantName}
                         onChange={(e) => setNewProcessTenantName(e.target.value)}
-                        placeholder="Nome completo do futuro inquilino"
-                        className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
+                        placeholder="Nome completo"
+                        className="w-full h-[42px] px-3 bg-white border border-zinc-300 rounded-lg text-[15px] text-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 placeholder:text-zinc-500"
                       />
                     </div>
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">Endereço do Imóvel</label>
+                    <div className="flex flex-col gap-1.5">
+                      <label htmlFor="novo-endereco" className="text-sm font-medium text-zinc-900">Endereço do imóvel</label>
                       <input 
+                        id="novo-endereco"
                         type="text"
                         value={newProcessPropertyAddress}
                         onChange={(e) => setNewProcessPropertyAddress(e.target.value)}
-                        placeholder="Rua, Número, Bairro"
-                        className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
+                        placeholder="Rua, número, bairro"
+                        className="w-full h-[42px] px-3 bg-white border border-zinc-300 rounded-lg text-[15px] text-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 placeholder:text-zinc-500"
                       />
                     </div>
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">Valor do Aluguel (R$)</label>
+                    <div className="flex flex-col gap-1.5">
+                      <label htmlFor="novo-aluguel" className="text-sm font-medium text-zinc-900">Valor do aluguel (R$)</label>
                       <input 
+                        id="novo-aluguel"
                         type="number"
                         value={newProcessRentAmount}
                         onChange={(e) => setNewProcessRentAmount(Number(e.target.value))}
                         placeholder="0,00"
-                        className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
+                        className="w-full h-[42px] px-3 bg-white border border-zinc-300 rounded-lg text-[15px] text-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 placeholder:text-zinc-500"
                       />
                     </div>
-                  </motion.div>
+                  </fieldset>
                 )}
 
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">Prazo para Conclusão (Opcional)</label>
-                  <input 
-                    type="date"
-                    value={newProcessDueDate}
-                    onChange={(e) => setNewProcessDueDate(e.target.value)}
-                    className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
-                  />
-                </div>
-                {isAdmin && (
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">Atribuir a</label>
-                    <select 
-                      value={newProcessAssignedTo || user?.uid} 
-                      onChange={(e) => setNewProcessAssignedTo(e.target.value)} 
-                      className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all font-medium"
-                    >
-                      <option value={user?.uid}>Mim mesmo (Admin)</option>
-                      {allUsers.filter(u => u.uid !== user?.uid).map(u => (
-                        <option key={u.uid} value={u.uid}>{u.displayName || u.email} {u.role === 'admin' ? '(Admin)' : ''}</option>
-                      ))}
-                    </select>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-1.5">
+                    <label htmlFor="novo-prazo" className="text-sm font-medium text-zinc-900">Prazo <span className="font-normal text-zinc-600">(opcional)</span></label>
+                    <input 
+                      id="novo-prazo"
+                      type="date"
+                      value={newProcessDueDate}
+                      onChange={(e) => setNewProcessDueDate(e.target.value)}
+                      className="w-full h-[42px] px-3 bg-white border border-zinc-300 rounded-lg text-[15px] text-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 placeholder:text-zinc-500"
+                    />
                   </div>
-                )}
+                  {isAdmin && (
+                    <div className="flex flex-col gap-1.5">
+                      <label htmlFor="novo-responsavel" className="text-sm font-medium text-zinc-900">Responsável</label>
+                      <select 
+                        id="novo-responsavel"
+                        value={newProcessAssignedTo || user?.uid} 
+                        onChange={(e) => setNewProcessAssignedTo(e.target.value)} 
+                        className="w-full h-[42px] px-3 bg-white border border-zinc-300 rounded-lg text-[15px] text-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 placeholder:text-zinc-500"
+                      >
+                        <option value={user?.uid}>Eu mesmo</option>
+                        {allUsers.filter(u => u.uid !== user?.uid).map(u => (
+                          <option key={u.uid} value={u.uid}>{u.displayName || u.email}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+              </form>
+              <div className="px-6 py-4 border-t border-zinc-200 flex justify-end gap-3 shrink-0 bg-white">
+                <button 
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="h-11 px-[18px] border border-zinc-300 bg-white text-zinc-900 rounded-[10px] font-medium text-[15px] hover:bg-zinc-50 transition-colors"
+                >
+                  Cancelar
+                </button>
                 <button 
                   type="submit"
+                  form="form-novo-processo"
                   disabled={isSubmitting}
-                  className="w-full py-5 bg-[#3B82F6] text-white rounded-2xl font-bold uppercase tracking-widest text-xs shadow-lg shadow-blue-500/25 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50"
+                  className="h-11 px-5 bg-blue-700 text-white rounded-[10px] font-semibold text-[15px] hover:bg-blue-800 transition-colors disabled:opacity-50"
                 >
-                  {isSubmitting ? "Criando..." : "Criar Processo"}
+                  {isSubmitting ? "Criando..." : "Criar processo"}
                 </button>
-              </form>
-            </motion.div>
+              </div>
+            </motion.section>
           </div>
         )}
       </AnimatePresence>
-      
+
       {/* C2 — Checklist 100%: concluir o processo só com confirmação, usando a
           mesma função de movimentação do Kanban (moverProcesso). */}
       <ConfirmModal
@@ -7563,26 +7629,25 @@ const ProcessesView = ({
       <AnimatePresence>
         {stepProofModal.isOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => { if (!salvandoAnexos) fecharJanelaAnexos(); }} className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" />
-            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="relative bg-white w-full max-w-sm rounded-[32px] shadow-2xl overflow-y-auto max-h-[90vh] custom-scrollbar p-8 text-center flex flex-col items-center">
-              <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mb-6"><CheckCircle2 className="w-8 h-8" /></div>
-              <h3 className="text-xl font-bold text-slate-900 mb-2 truncate max-w-full px-4">{stepProofModal.stepLabel}</h3>
-              <p className="text-slate-500 mb-6 text-sm">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => { if (!salvandoAnexos) fecharJanelaAnexos(); }} className="absolute inset-0 bg-zinc-900/30" />
+            <motion.div role="dialog" aria-modal="true" aria-labelledby="titulo-anexos" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }} className="relative bg-white w-full max-w-md rounded-xl shadow-xl overflow-y-auto max-h-[90vh] custom-scrollbar p-6 flex flex-col">
+              <span className="text-[13px] font-medium text-zinc-600 mb-1">Anexos da etapa</span>
+              <h3 id="titulo-anexos" className="text-lg font-semibold text-zinc-900 mb-1.5">{stepProofModal.stepLabel}</h3>
+              <p className="text-sm text-zinc-600 mb-5">
                 {(processes.find(p => p.id === stepProofModal.instance?.id) || stepProofModal.instance)?.completedSteps.includes(stepProofModal.stepLabel)
                   ? "Etapa concluída. Adicione ou remova comprovantes; a conclusão da etapa não é alterada."
                   : "Anexe comprovantes ou documentos desta etapa."}
               </p>
               
-              <div className="w-full space-y-4 mb-8 text-left">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Anexos e Documentos / Contratos</label>
+              <div className="w-full space-y-3 mb-6 text-left">
                 
                 {stepProofModal.attachments && stepProofModal.attachments.length > 0 && (
                   <div className="space-y-2">
                     {stepProofModal.attachments.map((file, fIdx) => (
-                      <div key={fIdx} className="flex items-center justify-between p-3 bg-slate-50 border border-slate-100 rounded-2xl group">
+                      <div key={fIdx} className="flex items-center justify-between gap-2 pl-3 pr-1 py-1 bg-white border border-zinc-200 rounded-lg">
                         <div className="flex items-center gap-3 overflow-hidden">
-                          <FileText className="w-4 h-4 text-blue-500 shrink-0" />
-                          <span className="text-xs font-bold text-slate-700 truncate">{file.name}</span>
+                          <FileText className="w-4 h-4 text-zinc-500 shrink-0" />
+                          <span className="text-sm text-zinc-900 truncate">{file.name}</span>
                         </div>
                         <button 
                           type="button"
@@ -7591,7 +7656,7 @@ const ProcessesView = ({
                           }}
                           title={`Remover ${file.name}`}
                           aria-label={`Remover ${file.name}`}
-                          className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                          className="w-9 h-9 flex items-center justify-center text-zinc-600 hover:text-red-700 hover:bg-red-50 rounded-md transition-colors"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -7639,14 +7704,15 @@ const ProcessesView = ({
                     };
                     input.click();
                   }}
-                  className="w-full py-4 border-2 border-dashed border-slate-100 rounded-2xl flex flex-col items-center justify-center gap-2 text-slate-400 hover:border-blue-400 hover:bg-blue-50/50 transition-all group"
+                  type="button"
+                  className="w-full h-[52px] border border-dashed border-zinc-300 rounded-lg flex items-center justify-center gap-2 text-zinc-700 hover:border-blue-700 hover:text-blue-800 hover:bg-blue-50/50 transition-colors"
                 >
                   {stepProofModal.isUploading ? (
-                    <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                    <span className="text-sm text-zinc-600">Preparando arquivo…</span>
                   ) : (
                     <>
-                      <Upload className="w-5 h-5 group-hover:text-blue-500 transition-colors" />
-                      <span className="text-[10px] font-bold uppercase">Anexar Contrato / Documento</span>
+                      <Upload className="w-4 h-4" />
+                      <span className="text-sm font-medium">Adicionar arquivo</span>
                     </>
                   )}
                 </button>
@@ -7660,14 +7726,14 @@ const ProcessesView = ({
                 return (
                   <div className="w-full shrink-0 space-y-3">
                     {temAlteracao && (
-                      <p className="text-[11px] font-semibold text-amber-600">Alterações ainda não salvas.</p>
+                      <p className="text-[13px] font-medium text-amber-800">Alterações ainda não salvas.</p>
                     )}
                     <div className="grid grid-cols-2 gap-3">
                       <button
                         type="button"
                         disabled={salvandoAnexos || stepProofModal.isUploading}
                         onClick={fecharJanelaAnexos}
-                        className="py-3 bg-slate-100 text-slate-600 rounded-2xl font-bold text-sm hover:bg-slate-200 transition-all disabled:opacity-50"
+                        className="h-10 border border-zinc-300 bg-white text-zinc-900 rounded-lg font-medium text-sm hover:bg-zinc-50 transition-colors disabled:opacity-50"
                       >
                         Cancelar
                       </button>
@@ -7675,7 +7741,7 @@ const ProcessesView = ({
                         type="button"
                         disabled={salvandoAnexos || stepProofModal.isUploading}
                         onClick={() => confirmarJanelaAnexos(false)}
-                        className="py-3 bg-[#3B82F6] text-white rounded-2xl font-bold text-sm shadow-lg shadow-blue-500/25 hover:bg-blue-600 transition-all disabled:opacity-50"
+                        className="h-10 bg-blue-700 text-white rounded-lg font-semibold text-sm hover:bg-blue-800 transition-colors disabled:opacity-50"
                       >
                         {salvandoAnexos ? "Salvando..." : "Salvar anexos"}
                       </button>
@@ -7685,7 +7751,7 @@ const ProcessesView = ({
                         type="button"
                         disabled={salvandoAnexos || stepProofModal.isUploading}
                         onClick={() => confirmarJanelaAnexos(true)}
-                        className="w-full py-3 bg-green-50 text-green-700 border border-green-200 rounded-2xl font-bold text-sm hover:bg-green-100 transition-all disabled:opacity-50"
+                        className="w-full h-10 bg-white text-green-800 border border-green-700 rounded-lg font-semibold text-sm hover:bg-green-50 transition-colors disabled:opacity-50"
                       >
                         Salvar e concluir etapa
                       </button>
@@ -7862,32 +7928,36 @@ const ProcessesView = ({
               animate={{ opacity: 1 }} 
               exit={{ opacity: 0 }} 
               onClick={() => setDeleteProcessModal({ isOpen: false, processId: null })} 
-              className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" 
+              className="absolute inset-0 bg-zinc-900/30" 
             />
             <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 20 }} 
-              animate={{ opacity: 1, scale: 1, y: 0 }} 
-              exit={{ opacity: 0, scale: 0.95, y: 20 }} 
-              className="relative bg-white w-full max-w-sm rounded-[32px] shadow-2xl overflow-hidden p-8 text-center"
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="titulo-excluir-processo"
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              exit={{ opacity: 0 }} 
+              transition={{ duration: 0.15 }}
+              className="relative bg-white w-full max-w-sm rounded-xl shadow-xl overflow-hidden p-6"
             >
-              <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-6">
-                <Trash2 className="w-8 h-8" />
-              </div>
-              <h3 className="text-xl font-bold text-slate-900 mb-2">Excluir Processo?</h3>
-              <p className="text-slate-500 mb-8 text-sm">Esta ação removerá permanentemente o processo, incluindo todo o histórico e checklist. Não poderá ser desfeita.</p>
-              
-              <div className="grid grid-cols-2 gap-3">
+              <h3 id="titulo-excluir-processo" className="text-lg font-semibold text-zinc-900 mb-1.5">Excluir processo?</h3>
+              <p className="text-sm text-zinc-600 mb-6 leading-relaxed">
+                <strong className="font-semibold text-zinc-900">{processes.find(p => p.id === deleteProcessModal.processId)?.title || "Este processo"}</strong> será removido permanentemente, com todo o histórico e o checklist. Não é possível desfazer.
+              </p>
+              <div className="flex justify-end gap-2.5">
                 <button 
+                  type="button"
                   onClick={() => setDeleteProcessModal({ isOpen: false, processId: null })}
-                  className="py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold uppercase tracking-widest text-[10px] hover:bg-slate-200 transition-all font-black"
+                  className="h-10 px-4 border border-zinc-300 bg-white text-zinc-900 rounded-lg font-medium text-sm hover:bg-zinc-50 transition-colors"
                 >
                   Cancelar
                 </button>
                 <button 
+                  type="button"
                   onClick={confirmDeleteProcess}
-                  className="py-4 bg-red-500 text-white rounded-2xl font-bold uppercase tracking-widest text-[10px] shadow-lg shadow-red-200 hover:bg-red-600 transition-all font-black"
+                  className="h-10 px-4 bg-red-700 text-white rounded-lg font-semibold text-sm hover:bg-red-800 transition-colors"
                 >
-                  Excluir
+                  Excluir processo
                 </button>
               </div>
             </motion.div>
