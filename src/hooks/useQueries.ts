@@ -1808,10 +1808,25 @@ export function useResponderAjuste() {
 
 const ENERGIA_LOCAL_KEY = "ponto_chave_energia_locacoes_cache";
 
+// A cópia local (usada só para consulta sem internet) NÃO guarda CPF nem data
+// de nascimento: ela fica no navegador mesmo depois do logout, e em computador
+// compartilhado esses dados ficariam expostos. Registros vindos dessa cópia são
+// marcados como "_cache" e não podem ser editados (a edição apagaria o CPF).
+const CAMPOS_SENSIVEIS_ENERGIA = ["cpf", "dataNascimento"] as const;
+
+function semDadosSensiveis(e: EnergiaLocacao): EnergiaLocacao {
+  const copia: any = { ...e };
+  CAMPOS_SENSIVEIS_ENERGIA.forEach(campo => delete copia[campo]);
+  delete copia._cache;
+  return copia;
+}
+
 function getStoredEnergia(): EnergiaLocacao[] {
   try {
     const raw = localStorage.getItem(ENERGIA_LOCAL_KEY);
-    return raw ? JSON.parse(raw) : [];
+    const list: EnergiaLocacao[] = raw ? JSON.parse(raw) : [];
+    // Limpa também cópias antigas que ainda tenham CPF/nascimento.
+    return list.map(e => ({ ...semDadosSensiveis(e), _cache: true } as EnergiaLocacao));
   } catch {
     return [];
   }
@@ -1819,7 +1834,7 @@ function getStoredEnergia(): EnergiaLocacao[] {
 
 function saveStoredEnergia(list: EnergiaLocacao[]) {
   try {
-    localStorage.setItem(ENERGIA_LOCAL_KEY, JSON.stringify(list));
+    localStorage.setItem(ENERGIA_LOCAL_KEY, JSON.stringify(list.map(semDadosSensiveis)));
   } catch (e) {
     console.warn("Erro ao salvar cache local de energia:", e);
   }
@@ -1915,6 +1930,9 @@ export function useUpdateEnergiaMutation() {
 
   return useMutation({
     mutationFn: async (energia: EnergiaLocacao) => {
+      if ((energia as any)._cache) {
+        throw new Error("Registro carregado sem conexão; reconecte para editar.");
+      }
       const docData = { ...energia, updatedAt: new Date().toISOString() };
       try {
         await updateDoc(doc(db, "energia_locacoes", energia.id), semUndefined(docData, "nulo"));

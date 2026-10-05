@@ -51,6 +51,8 @@ export interface UserProfile {
   perm_vistorias?: boolean;
   permProcessos?: boolean;
   perm_processos?: boolean;
+  permEnergia?: boolean;
+  perm_energia?: boolean;
   permPonto?: boolean;        // true para "colaborador" por padrão
   perm_ponto?: boolean;
   jornadaDiariaMinutos?: number; // padrão 480 (8h)
