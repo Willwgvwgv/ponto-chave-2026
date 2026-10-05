@@ -422,9 +422,8 @@ function locacaoModeloImobiliaria(subtitulo: string, garantia: string): Contract
       type: "parties",
       clauseTitle: "IDENTIFICAÇÃO DAS PARTES",
       sectionCategory: "Identificação das partes",
-      content: `<p><strong>LOCADOR(A):</strong> {{qualificacao_completa_locador}}, doravante denominado(a) simplesmente <strong>LOCADOR</strong>.</p>
-<p class="mt-2"><strong>LOCATÁRIO(A):</strong> {{qualificacao_completa_locatario}}, doravante denominado(a) simplesmente <strong>LOCATÁRIO</strong>.</p>
-<p class="mt-2"><strong>ADMINISTRADORA:</strong> <strong>{{nome_imobiliaria}}</strong>, inscrita no CNPJ sob o nº {{cnpj_imobiliaria}}, CRECI {{creci_imobiliaria}}, com sede à {{endereco_imobiliaria}}, que intervém neste instrumento exclusivamente na qualidade de administradora e procuradora do LOCADOR, não sendo parte da relação locatícia nem assumindo as obrigações legais ou contratuais do LOCADOR.</p>`
+      content: `<p><strong>LOCADOR:</strong> o proprietário do imóvel, neste ato representado por sua administradora e procuradora <strong>{{nome_imobiliaria}}</strong>, inscrita no CNPJ sob o nº {{cnpj_imobiliaria}}, CRECI {{creci_imobiliaria}}, com sede à {{endereco_imobiliaria}}, nos termos do contrato de administração firmado entre ambos, doravante denominado simplesmente <strong>LOCADOR</strong>.</p>
+<p class="mt-2"><strong>LOCATÁRIO(A):</strong> {{qualificacao_completa_locatario}}, doravante denominado(a) simplesmente <strong>LOCATÁRIO</strong>.</p>`
     },
     {
       id: "block-imovel-locacao",
