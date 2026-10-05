@@ -59,8 +59,8 @@ export function printContractDocument(
       const clauseNum = `CLÁUSULA ${num}ª - `;
       const clauseTitle = block.clauseTitle ? block.clauseTitle.toUpperCase() : "";
       bodyHtml += `
-        <div class="contract-clause-block" style="margin-bottom: ${styles.paragraphSpacingPx}px; page-break-inside: avoid;">
-          <h3 style="font-size: 11pt; font-weight: 700; color: ${primaryColor}; margin-bottom: 6px; text-transform: uppercase;">
+        <div class="contract-clause-block" style="margin-bottom: ${styles.paragraphSpacingPx}px;">
+          <h3 style="font-size: 11pt; font-weight: 700; color: ${primaryColor}; margin-bottom: 6px; text-transform: uppercase; page-break-after: avoid; break-after: avoid;">
             ${clauseNum}${clauseTitle}
           </h3>
           <div class="clause-text" style="text-align: justify; line-height: ${styles.lineSpacing};">
