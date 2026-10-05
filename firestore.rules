@@ -55,6 +55,22 @@ service cloud.firestore {
       );
     }
 
+    // Permissão de módulo marcada no cadastro do usuário (aba Permissões de Módulos).
+    function hasModulePerm(modulo, campo, campoAntigo) {
+      return modulo in getUserData().get('permissions', []) ||
+        getUserData().get(campo, false) == true ||
+        getUserData().get(campoAntigo, false) == true;
+    }
+
+    // Campos de permissão: só admin/gerente (ou superadmin) altera. O próprio
+    // usuário pode editar o perfil (nome, WhatsApp), mas não se dar acesso.
+    function permissionFields() {
+      return ['permissions', 'permRateioLocacao', 'permRateioVendas',
+        'permComissoes', 'perm_comissoes', 'permFinanceiro', 'perm_financeiro',
+        'permVistorias', 'perm_vistorias', 'permProcessos', 'perm_processos',
+        'permPonto', 'perm_ponto', 'permEnergia', 'perm_energia'];
+    }
+
     // Collection: users
     match /users/{userId} {
       allow read: if isSuperAdmin() || (
@@ -79,7 +95,8 @@ service cloud.firestore {
       ) || (
         isSignedIn() && request.auth.uid == userId && request.resource.data.uid == userId &&
         request.resource.data.role != 'admin' && request.resource.data.role != 'superadmin' && request.resource.data.role != 'manager' &&
-        request.resource.data.status != 'active' && request.resource.data.status != 'APPROVED' && request.resource.data.status != 'APPROVED_BY_ADMIN'
+        request.resource.data.status != 'active' && request.resource.data.status != 'APPROVED' && request.resource.data.status != 'APPROVED_BY_ADMIN' &&
+        !request.resource.data.keys().hasAny(permissionFields())
       );
       allow update: if isSuperAdmin() || (
         isSignedIn() && !isDeletedUser() && (
@@ -88,7 +105,8 @@ service cloud.firestore {
             request.resource.data.role == resource.data.role &&
             request.resource.data.status == resource.data.status &&
             request.resource.data.companyId == resource.data.companyId &&
-            request.resource.data.uid == resource.data.uid
+            request.resource.data.uid == resource.data.uid &&
+            !request.resource.data.diff(resource.data).affectedKeys().hasAny(permissionFields())
           )
         )
       );
@@ -159,10 +177,18 @@ service cloud.firestore {
     }
 
     // Collection: energia_locacoes (Acompanhamento de Energia)
+    // Ver e cadastrar: admin/gerente da empresa ou quem tem a permissão "Energia".
+    // Editar e excluir: só admin/gerente, sem trocar o registro de empresa.
+    function canEnergia(companyId) {
+      return belongsToCompany(companyId) &&
+        (isCompanyAdmin(companyId) || hasModulePerm('energia', 'permEnergia', 'perm_energia'));
+    }
     match /energia_locacoes/{id} {
-      allow read: if isSuperAdmin() || (isActiveUser() && belongsToCompany(resource.data.companyId));
-      allow create: if isSuperAdmin() || (isActiveUser() && belongsToCompany(request.resource.data.companyId));
-      allow update, delete: if isSuperAdmin() || (isActiveUser() && isCompanyAdmin(resource.data.companyId));
+      allow read: if isSuperAdmin() || (isActiveUser() && canEnergia(resource.data.companyId));
+      allow create: if isSuperAdmin() || (isActiveUser() && canEnergia(request.resource.data.companyId));
+      allow update: if isSuperAdmin() || (isActiveUser() && isCompanyAdmin(resource.data.companyId) &&
+        request.resource.data.companyId == resource.data.companyId);
+      allow delete: if isSuperAdmin() || (isActiveUser() && isCompanyAdmin(resource.data.companyId));
     }
 
     // Collection: sales

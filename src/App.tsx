@@ -1120,6 +1120,9 @@ const UserManagement = ({
     } else if (permission === "processos") {
       updates.permProcessos = hasPerm;
       updates.perm_processos = hasPerm;
+    } else if (permission === "energia") {
+      updates.permEnergia = hasPerm;
+      updates.perm_energia = hasPerm;
     }
 
     try {
@@ -1306,6 +1309,8 @@ const UserManagement = ({
         perm_vistorias: permissions.includes("vistorias"),
         permProcessos: permissions.includes("processos"),
         perm_processos: permissions.includes("processos"),
+        permEnergia: permissions.includes("energia"),
+        perm_energia: permissions.includes("energia"),
         permPonto: editingUserProfile.permPonto ?? true,
         perm_ponto: editingUserProfile.permPonto ?? true,
         jornadaDiariaMinutos: finalDiariaMinutos,
@@ -2232,7 +2237,8 @@ const UserManagement = ({
                       { id: "comissoes", label: "Comissões", color: "text-emerald-500", icon: DollarSign },
                       { id: "vistorias", label: "Vistorias", color: "text-blue-500", icon: ClipboardCheck },
                       { id: "financeiro", label: "Financeiro", color: "text-amber-500", icon: Wallet },
-                      { id: "processos", label: "Processos", color: "text-purple-500", icon: FileText }
+                      { id: "processos", label: "Processos", color: "text-purple-500", icon: FileText },
+                      { id: "energia", label: "Energia", color: "text-amber-500", icon: Zap }
                     ].map((perm) => {
                       const isAtivo = editingUserProfile.permissions?.includes(perm.id) || false;
                       const Icon = perm.icon;
