@@ -1,6 +1,6 @@
 import { ContratoLocacao, DynamicVariableDefinition } from "../types/contractTypes";
 import { CompanySettings } from "../../../types";
-import { format, parseISO } from "date-fns";
+import { addMonths, format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
 export const DYNAMIC_VARIABLES_CATALOG: DynamicVariableDefinition[] = [
@@ -76,6 +76,8 @@ export const DYNAMIC_VARIABLES_CATALOG: DynamicVariableDefinition[] = [
   // 6. Datas e Prazos
   { key: "prazo_meses", label: "Prazo Contratual em Meses", category: "prazos", description: "Duração do contrato", exampleValue: "30 (trinta) meses" },
   { key: "data_inicio", label: "Data de Início da Locação", category: "prazos", description: "Data de entrega das chaves e posse", exampleValue: "01/10/2026" },
+  { key: "data_aniversario_contrato", label: "Data de 12 Meses do Contrato", category: "prazos", description: "Início + 12 meses (reajuste e rescisão sem multa)", exampleValue: "01/10/2027" },
+  { key: "seguro_incendio", label: "Seguro Incêndio", category: "comercial", description: "Valor anual do seguro incêndio", exampleValue: "R$ 230,19" },
   { key: "data_fim", label: "Data de Término da Locação", category: "prazos", description: "Data de encerramento do contrato", exampleValue: "31/03/2029" },
   { key: "data_atual_extenso", label: "Data Atual por Extenso", category: "datas", description: "Cidade e data atual formatada", exampleValue: "Goiânia, 28 de setembro de 2026" },
   { key: "numero_contrato", label: "Número do Contrato", category: "prazos", description: "Código de identificação do contrato", exampleValue: "LOC-2026-0042" },
@@ -352,6 +354,12 @@ export function buildVariableMap(
     prazo_meses: mesesToExtenso(cond.prazoMeses || 30),
     data_inicio: formatBrDate(cond.dataInicio),
     data_fim: formatBrDate(cond.dataTermino),
+    data_aniversario_contrato: (() => {
+      if (!cond.dataInicio) return "___/___/______";
+      const d = parseISO(cond.dataInicio);
+      return isNaN(d.getTime()) ? "___/___/______" : format(addMonths(d, 12), "dd/MM/yyyy");
+    })(),
+    seguro_incendio: cond.seguroIncendioAnual && cond.seguroIncendioAnual > 0 ? formatCurrencyBRL(cond.seguroIncendioAnual) : "R$ ______________",
     data_atual_extenso: formattedCurrentDate,
     data_extenso: formattedCurrentDate,
     numero_contrato: contract.numeroContrato || "LOC-2026",
