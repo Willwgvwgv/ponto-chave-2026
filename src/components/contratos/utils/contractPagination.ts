@@ -158,6 +158,15 @@ export function estimateBlockHeight(
 export interface PageBlockItem {
   block: ContractBlock;
   globalIndex: number;
+  /** Quando a cláusula é dividida entre páginas: trechos [partStart, partEnd) */
+  partStart?: number;
+  partEnd?: number;
+}
+
+/** Medida real de um bloco divisível: altura do título e de cada trecho do texto */
+export interface BlockPartsMeasure {
+  header: number;
+  parts: number[];
 }
 
 export interface PageLayout {
@@ -176,11 +185,14 @@ export function paginateBlocks(
   blocks: ContractBlock[],
   styles: ContractStyleSettings,
   measuredHeights?: Record<string, number>,
-  hasFiador = false
+  hasFiador = false,
+  measuredParts?: Record<string, BlockPartsMeasure>,
+  alturaUtilMedida?: { primeira?: number; demais?: number }
 ): PageLayout[] {
   const marginConfig = getMarginConfig(styles.marginType);
-  const maxPage1 = getAvailableContentHeight(0, styles, marginConfig);
-  const maxOther = getAvailableContentHeight(1, styles, marginConfig);
+  // Usa a altura útil medida na tela (cabeçalho/rodapé reais) quando houver
+  const maxPage1 = alturaUtilMedida?.primeira || getAvailableContentHeight(0, styles, marginConfig);
+  const maxOther = alturaUtilMedida?.demais || getAvailableContentHeight(1, styles, marginConfig);
 
   const pages: PageLayout[] = [];
   let currentPageBlocks: PageBlockItem[] = [];
@@ -205,6 +217,48 @@ export function paginateBlocks(
         currentPageIndex++;
         currentPageBlocks = [];
         currentHeight = 0;
+      }
+      continue;
+    }
+
+    // Cláusulas e parágrafos longos podem continuar na página seguinte,
+    // para não deixar espaço em branco no fim da página.
+    const medida = measuredParts?.[block.id];
+    if (medida && medida.parts.length > 1 && (block.type === "clause" || block.type === "paragraph")) {
+      const gap = Math.max(styles.paragraphSpacingPx || 12, 16);
+      const fecharPagina = () => {
+        pages.push({
+          pageIndex: currentPageIndex,
+          pageNumber: currentPageIndex + 1,
+          blocks: currentPageBlocks,
+          estimatedHeight: currentHeight,
+          maxAvailableHeight: getPageMax(currentPageIndex)
+        });
+        currentPageIndex++;
+        currentPageBlocks = [];
+        currentHeight = 0;
+      };
+      let start = 0;
+      while (start < medida.parts.length) {
+        const restante = getPageMax(currentPageIndex) - currentHeight;
+        // o primeiro bloco da folha não tem espaço acima dele
+        let altura = (start === 0 ? medida.header : 0) + (currentPageBlocks.length > 0 ? gap : 0);
+        let end = start;
+        while (end < medida.parts.length && altura + medida.parts[end] <= restante) {
+          altura += medida.parts[end];
+          end++;
+        }
+        if (end === start) {
+          if (currentPageBlocks.length > 0) { fecharPagina(); continue; }
+          // Página vazia e o trecho não cabe: coloca assim mesmo
+          altura += medida.parts[start];
+          end = start + 1;
+        }
+        const inteiro = start === 0 && end === medida.parts.length;
+        currentPageBlocks.push(inteiro ? { block, globalIndex: i } : { block, globalIndex: i, partStart: start, partEnd: end });
+        currentHeight += altura;
+        start = end;
+        if (start < medida.parts.length) fecharPagina();
       }
       continue;
     }

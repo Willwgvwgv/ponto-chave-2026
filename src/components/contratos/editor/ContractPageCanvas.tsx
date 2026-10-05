@@ -19,9 +19,32 @@ import {
   getMarginConfig, 
   A4_DIMENSIONS,
   PageLayout,
-  PageBlockItem
+  PageBlockItem,
+  BlockPartsMeasure
 } from "../utils/contractPagination";
 import { RichHtmlBlockEditor } from "./RichHtmlBlockEditor";
+
+// Divide o HTML em trechos de nível superior (parágrafo, lista, tabela...).
+// Texto solto entre eles vira um trecho próprio.
+function dividirHtmlEmTrechos(html: string): string[] {
+  if (typeof document === "undefined") return [html];
+  const tpl = document.createElement("template");
+  tpl.innerHTML = html;
+  const trechos: string[] = [];
+  let solto = "";
+  const blocos = new Set(["P", "DIV", "UL", "OL", "TABLE", "H1", "H2", "H3", "H4", "H5", "H6", "BLOCKQUOTE", "SECTION", "PRE", "HR"]);
+  tpl.content.childNodes.forEach((n) => {
+    if (n.nodeType === 1 && blocos.has((n as Element).tagName)) {
+      if (solto.trim()) trechos.push(solto);
+      solto = "";
+      trechos.push((n as Element).outerHTML);
+    } else {
+      solto += n.nodeType === 1 ? (n as Element).outerHTML : (n.textContent || "");
+    }
+  });
+  if (solto.trim()) trechos.push(solto);
+  return trechos.length ? trechos : [html];
+}
 
 interface ContractPageCanvasProps {
   contract: ContratoLocacao;
@@ -112,15 +135,85 @@ export const ContractPageCanvas: React.FC<ContractPageCanvasProps> = ({
     return () => window.removeEventListener("click", handleGlobalClick);
   }, []);
 
+  // Texto de cada cláusula/parágrafo em trechos (parágrafos, listas, tabelas),
+  // para a cláusula poder continuar na página seguinte.
+  const highlightAtivo = highlightVariables || isReadOnly;
+  const trechosPorBloco = useMemo(() => {
+    const mapa: Record<string, string[]> = {};
+    contract.blocks.forEach((b) => {
+      if (b.type !== "clause" && b.type !== "paragraph") return;
+      mapa[b.id] = dividirHtmlEmTrechos(resolveContractText(b.content, variableMap, { highlightVariables: highlightAtivo }));
+    });
+    return mapa;
+    // variableMap é recriado a cada render; o conteúdo dele depende do contrato
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contract, companySettings, highlightAtivo]);
+
+  const medidorRef = useRef<HTMLDivElement>(null);
+  const [measuredParts, setMeasuredParts] = useState<Record<string, BlockPartsMeasure>>({});
+  const measuredPartsRef = useRef<Record<string, BlockPartsMeasure>>({});
+
+  useLayoutEffect(() => {
+    const raiz = medidorRef.current;
+    if (!raiz) return;
+    const novo: Record<string, BlockPartsMeasure> = {};
+    let mudou = false;
+    (Array.from(raiz.querySelectorAll("[data-medir-bloco]")) as HTMLElement[]).forEach((el) => {
+      const id = el.dataset.medirBloco as string;
+      const topoBloco = el.getBoundingClientRect().top;
+      const partes = Array.from(el.querySelectorAll("[data-medir-trecho]")) as HTMLElement[];
+      if (partes.length === 0) return;
+      const rects = partes.map((p) => p.getBoundingClientRect());
+      const escala = 1; // medidor fica fora do zoom
+      // No modo edição cada bloco ocupa +20px na folha (p-2 -m-2 + marginBottom)
+      const header = (rects[0].top - topoBloco) / escala + (isReadOnly ? 0 : 20);
+      const parts = rects.map((r, idx) => ((idx < rects.length - 1 ? rects[idx + 1].top : r.bottom) - r.top) / escala);
+      novo[id] = { header, parts };
+      const ant = measuredPartsRef.current[id];
+      if (!ant || ant.parts.length !== parts.length || Math.abs(ant.header - header) > 2 || parts.some((h, k) => Math.abs(h - ant.parts[k]) > 2)) mudou = true;
+    });
+    if (Object.keys(novo).length !== Object.keys(measuredPartsRef.current).length) mudou = true;
+    if (mudou) {
+      measuredPartsRef.current = novo;
+      setMeasuredParts(novo);
+    }
+  });
+
+  // Altura útil real da folha (A4 menos margens, cabeçalho e rodapé como aparecem na tela)
+  const [alturaUtil, setAlturaUtil] = useState<{ primeira?: number; demais?: number }>({});
+  useLayoutEffect(() => {
+    const medir = (idx: number) => {
+      const folha = document.querySelector(`[data-page-index="${idx}"]`) as HTMLElement | null;
+      if (!folha) return undefined;
+      const externo = (el: Element | null, lado: "top" | "bottom") => {
+        if (!el) return 0;
+        const cs = getComputedStyle(el);
+        return (el as HTMLElement).offsetHeight + parseFloat(lado === "top" ? cs.marginTop : cs.marginBottom);
+      };
+      const cab = folha.querySelector(":scope > header");
+      const rod = folha.querySelector(":scope > footer");
+      const util = 1123 - marginConfig.paddingTop - marginConfig.paddingBottom - externo(cab, "bottom") - externo(rod, "top") - 4;
+      return Math.round(util);
+    };
+    const primeira = medir(0);
+    const demais = medir(1) ?? alturaUtil.demais;
+    if ((primeira && Math.abs((alturaUtil.primeira || 0) - primeira) > 2) || (demais && Math.abs((alturaUtil.demais || 0) - demais) > 2)) {
+      setAlturaUtil({ primeira: primeira ?? alturaUtil.primeira, demais });
+    }
+  });
+
   // Measure rendered DOM block heights and update pagination dynamically
   useLayoutEffect(() => {
     let hasSignificantChange = false;
     const currentHeights = { ...measuredHeightsRef.current };
 
     contract.blocks.forEach((block) => {
+      // Cláusulas e parágrafos são medidos pelo medidor oculto (trechos)
+      if (block.type === "clause" || block.type === "paragraph") return;
       const el = document.getElementById(`block-${block.id}`);
       if (el) {
-        const height = el.offsetHeight + (styles.paragraphSpacingPx || 12);
+        // espaço entre blocos na tela = maior entre o espaçamento e o space-y-4 (16px)
+        const height = el.offsetHeight + (isReadOnly ? 0 : 4) + Math.max(styles.paragraphSpacingPx || 12, 16);
         const prev = currentHeights[block.id] || 0;
         if (Math.abs(prev - height) > 5) {
           currentHeights[block.id] = height;
@@ -137,8 +230,8 @@ export const ContractPageCanvas: React.FC<ContractPageCanvasProps> = ({
 
   // Compute A4 pages layout
   const pages: PageLayout[] = useMemo(() => {
-    return paginateBlocks(contract.blocks, styles, measuredHeights, hasFiador);
-  }, [contract.blocks, styles, measuredHeights, hasFiador]);
+    return paginateBlocks(contract.blocks, styles, measuredHeights, hasFiador, measuredParts, alturaUtil);
+  }, [contract.blocks, styles, measuredHeights, hasFiador, measuredParts, alturaUtil]);
 
   // Touch drag handlers for mobile devices
   const handleTouchStart = (index: number, e: React.TouchEvent) => {
@@ -214,6 +307,41 @@ export const ContractPageCanvas: React.FC<ContractPageCanvasProps> = ({
       ref={scrollContainerRef}
       className="flex-1 overflow-y-auto bg-slate-200/80 p-4 sm:p-6 md:p-10 flex justify-center custom-scrollbar"
     >
+      {/* Medidor oculto: mede o título e cada trecho das cláusulas no tamanho real
+          da página, para a paginação poder continuar a cláusula na página seguinte. */}
+      <div
+        ref={medidorRef}
+        aria-hidden="true"
+        className="fixed top-0 pointer-events-none"
+        style={{
+          left: "-10000px",
+          visibility: "hidden",
+          width: `${794 - marginConfig.paddingLeft - marginConfig.paddingRight}px`,
+          fontFamily: styles.fontFamily,
+          fontSize: `${styles.fontSizePt}pt`,
+          lineHeight: styles.lineSpacing
+        }}
+      >
+        {contract.blocks.map((b) => {
+          const trechos = trechosPorBloco[b.id];
+          if (!trechos) return null;
+          return (
+            <div key={b.id} data-medir-bloco={b.id} style={{ marginBottom: "40px" }}>
+              {b.type === "clause" && (
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="font-bold uppercase tracking-wide shrink-0">CLÁUSULA {b.clauseNumber || 1}ª {b.clauseTitle ? "-" : ""}</span>
+                  <span className="font-bold uppercase tracking-wide">{b.clauseTitle}</span>
+                </div>
+              )}
+              <div className={b.type === "clause" ? "text-justify leading-relaxed clause-html-body" : "text-justify leading-relaxed"}>
+                {trechos.map((t, k) => (
+                  <div key={k} data-medir-trecho="" dangerouslySetInnerHTML={{ __html: t }} />
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
       {/* Zoom and Pages Stack Wrapper */}
       <div 
         style={{ 
@@ -310,21 +438,29 @@ export const ContractPageCanvas: React.FC<ContractPageCanvasProps> = ({
 
                 {/* Middle Section: Document Content Blocks allocated to this page */}
                 <div className="flex-1 flex flex-col justify-start relative z-10 space-y-4">
-                  {page.blocks.map(({ block, globalIndex }) => {
+                  {page.blocks.map(({ block, globalIndex, partStart, partEnd }) => {
                     const isActive = activeBlockId === block.id && !isReadOnly;
+                    const ehFragmento = partStart !== undefined;
+                    const ehContinuacao = (partStart ?? 0) > 0;
+                    const totalTrechos = trechosPorBloco[block.id]?.length ?? 1;
+                    const ehUltimoFragmento = !ehFragmento || (partEnd ?? 0) >= totalTrechos;
+                    // Editando: o bloco aparece inteiro na primeira parte
+                    if (isActive && ehContinuacao) return null;
                     const isClause = block.type === "clause";
                     const isDraggingThis = draggedBlockIndex === globalIndex;
                     const isTargetThis = dragOverBlockIndex === globalIndex && draggedBlockIndex !== null && draggedBlockIndex !== globalIndex;
 
                     // Resolve text with dynamic tags
-                    const resolvedContent = resolveContractText(block.content, variableMap, {
-                      highlightVariables: highlightVariables || isReadOnly
-                    });
+                    const resolvedContent = ehFragmento && !isActive
+                      ? (trechosPorBloco[block.id] || []).slice(partStart, partEnd).map((t) => `<div>${t}</div>`).join("")
+                      : resolveContractText(block.content, variableMap, {
+                          highlightVariables: highlightVariables || isReadOnly
+                        });
 
                     return (
-                      <div key={block.id} className="relative">
+                      <div key={`${block.id}-${partStart ?? "todo"}`} className="relative">
                         {/* Drop Indicator Before Block */}
-                        {isTargetThis && dropPosition === "before" && (
+                        {isTargetThis && dropPosition === "before" && !ehContinuacao && (
                           <div className="py-2 -my-1 transition-all">
                             <div className="h-3 bg-blue-600 rounded-full shadow-lg flex items-center justify-between px-3 text-white text-[10px] font-bold animate-pulse">
                               <span className="flex items-center gap-1.5">
@@ -337,7 +473,7 @@ export const ContractPageCanvas: React.FC<ContractPageCanvasProps> = ({
                         )}
 
                         <div
-                          id={`block-${block.id}`}
+                          id={ehContinuacao ? undefined : `block-${block.id}`}
                           data-canvas-block-index={globalIndex}
                           onClick={() => !isReadOnly && onSelectBlock(block.id)}
                           onDragOver={(e) => {
@@ -656,6 +792,7 @@ export const ContractPageCanvas: React.FC<ContractPageCanvasProps> = ({
                           {block.type === "clause" && (
                             <div>
                               {/* Clause Title & Number */}
+                              {!(ehContinuacao && !isActive) && (
                               <div className="flex items-center gap-2 mb-1.5">
                                 <span 
                                   className="font-bold uppercase tracking-wide shrink-0 select-text"
@@ -685,6 +822,7 @@ export const ContractPageCanvas: React.FC<ContractPageCanvasProps> = ({
                                   </span>
                                 )}
                               </div>
+                              )}
 
                               {/* Clause Body Text */}
                               {isActive ? (
@@ -828,7 +966,7 @@ export const ContractPageCanvas: React.FC<ContractPageCanvasProps> = ({
                         </div>
 
                         {/* Drop Indicator After Block */}
-                        {isTargetThis && dropPosition === "after" && (
+                        {isTargetThis && dropPosition === "after" && ehUltimoFragmento && (
                           <div className="py-2 -my-1 transition-all">
                             <div className="h-3 bg-blue-600 rounded-full shadow-lg flex items-center justify-between px-3 text-white text-[10px] font-bold animate-pulse">
                               <span className="flex items-center gap-1.5">
