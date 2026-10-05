@@ -303,6 +303,23 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
         return;
       }
     }
+    if (!ehVenda) {
+      // A imobiliária é a ADMINISTRADORA (já entra no contrato por conta própria).
+      // O LOCADOR é sempre o proprietário do imóvel.
+      const soDigitos = (v?: string) => (v || "").replace(/\D/g, "");
+      const nomeLocador = novoContratoForm.locadorNome.trim().toLowerCase();
+      const nomeImobiliaria = (companySettings?.name || "").trim().toLowerCase();
+      const docLocador = soDigitos(novoContratoForm.locadorCpf);
+      const docImobiliaria = soDigitos(companySettings?.cnpj);
+      if (!nomeLocador) {
+        toast.error("Informe o locador (proprietário do imóvel). A imobiliária entra no contrato como administradora.");
+        return;
+      }
+      if ((nomeImobiliaria && nomeLocador === nomeImobiliaria) || (docImobiliaria && docLocador === docImobiliaria) || /fidelit/.test(nomeLocador)) {
+        toast.error("O locador é o proprietário do imóvel, não a imobiliária. A imobiliária já entra no contrato como administradora.");
+        return;
+      }
+    }
     
     // Auto-generate number LOC-YYYY-XXXX (VEN- para compra e venda)
     const randomSuffix = Math.floor(1000 + Math.random() * 9000);
@@ -1125,7 +1142,7 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
               <p className="pt-3 border-t border-slate-200 text-[11px] font-bold uppercase tracking-wide text-slate-500">Locador (proprietário)</p>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   <div className="md:col-span-2">
-                    <label htmlFor="nc-locador" className="block text-slate-800 font-bold mb-1">Nome do locador</label>
+                    <label htmlFor="nc-locador" className="block text-slate-800 font-bold mb-1">Nome do locador (proprietário)*</label>
                     <input id="nc-locador" type="text" value={novoContratoForm.locadorNome}
                       onChange={(e) => setNovoContratoForm({ ...novoContratoForm, locadorNome: e.target.value })}
                       placeholder="Nome completo do proprietário" className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
