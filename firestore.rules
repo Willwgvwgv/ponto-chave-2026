@@ -147,6 +147,16 @@ service cloud.firestore {
       allow update, delete: if isSuperAdmin() || (isActiveUser() && isCompanyAdmin(resource.data.companyId));
     }
 
+    // Collection: energia_locacoes — Acompanhamento de Energia, módulo
+    // independente de "comissoes" (CPF e data de nascimento ficam protegidos
+    // pelo mesmo controle de acesso por empresa que os outros dados sensíveis
+    // já usam neste arquivo; sem regra extra de criptografia neste momento).
+    match /energia_locacoes/{id} {
+      allow read: if isSuperAdmin() || (isActiveUser() && belongsToCompany(resource.data.companyId));
+      allow create: if isSuperAdmin() || (isActiveUser() && belongsToCompany(request.resource.data.companyId));
+      allow update, delete: if isSuperAdmin() || (isActiveUser() && isCompanyAdmin(resource.data.companyId));
+    }
+
     // Collection: sales
     match /sales/{id} {
       allow read: if isSuperAdmin() || (isActiveUser() && belongsToCompany(resource.data.companyId));

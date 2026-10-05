@@ -684,3 +684,25 @@ export interface FaturaHidrometro {
   criadoPorUid?: string;
   criadoPorNome?: string;
 }
+
+// Acompanhamento de Energia — módulo independente, sem relação com o módulo
+// de comissões de locação. Controla só o prazo de transferência de energia
+// de um imóvel recém-alugado, não é um cadastro de locação completo.
+export type StatusEnergiaLocacao = "pendente" | "em_processo" | "transferida" | "vencida" | "sem_data";
+
+export interface EnergiaLocacao {
+  id: string;
+  companyId: string;
+  imovel: string;
+  inquilino: string;
+  unidadeConsumidora: string;
+  cpf?: string;
+  dataNascimento?: string; // YYYY-MM-DD
+  dataVencimento?: string; // YYYY-MM-DD — campo principal: o prazo de transferência
+  status: StatusEnergiaLocacao;
+  observacoes?: string;
+  criadoPor: string;
+  criadoPorNome: string;
+  createdAt: any;
+  updatedAt: any;
+}

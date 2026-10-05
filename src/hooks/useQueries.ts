@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { db, collection, getDocs, query, where, orderBy, doc, addDoc, updateDoc, deleteDoc, getDoc, setDoc, limit, handleFirestoreError, OperationType } from "../firebase";
-import { Sale, BrokerSplit, ComissoneUser, Comissao, RateioComissao, PagamentoCorretor, Despejo, PontoRegistro, SolicitacaoAjustePonto, UserProfile } from "../types";
+import { Sale, BrokerSplit, ComissoneUser, Comissao, RateioComissao, PagamentoCorretor, Despejo, PontoRegistro, SolicitacaoAjustePonto, UserProfile, EnergiaLocacao } from "../types";
 import { getExpectedDailyMinutes } from "../utils/jornadaUtils";
 import { toast } from "sonner";
 
@@ -1795,6 +1795,164 @@ export function useResponderAjuste() {
     onError: (err) => {
       console.error(err);
       toast.error("Erro ao responder ao ajuste.");
+    }
+  });
+}
+
+// ======================================================================
+// ACOMPANHAMENTO DE ENERGIA — módulo independente do de comissões de
+// locação. Não compartilha coleção, nem mutations, nem fallback local com
+// "comissoes"/"sales"/"rentals" — propositalmente, para não acoplar os dois
+// módulos (ver diagnóstico aprovado antes desta implementação).
+// ======================================================================
+
+const ENERGIA_LOCAL_KEY = "ponto_chave_energia_locacoes_cache";
+
+function getStoredEnergia(): EnergiaLocacao[] {
+  try {
+    const raw = localStorage.getItem(ENERGIA_LOCAL_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveStoredEnergia(list: EnergiaLocacao[]) {
+  try {
+    localStorage.setItem(ENERGIA_LOCAL_KEY, JSON.stringify(list));
+  } catch (e) {
+    console.warn("Erro ao salvar cache local de energia:", e);
+  }
+}
+
+// O Firestore deste projeto não aceita campos com valor `undefined` (não usa
+// ignoreUndefinedProperties). Campos opcionais vazios do formulário (CPF,
+// nascimento, vencimento, observações) chegam como undefined:
+// - no cadastro, são simplesmente omitidos;
+// - na edição, viram null, para que apagar um campo no formulário realmente
+//   limpe o valor gravado.
+function semUndefined<T extends Record<string, any>>(obj: T, modo: "omitir" | "nulo"): Record<string, any> {
+  const out: Record<string, any> = {};
+  Object.entries(obj).forEach(([k, v]) => {
+    if (v === undefined) {
+      if (modo === "nulo") out[k] = null;
+    } else {
+      out[k] = v;
+    }
+  });
+  return out;
+}
+
+export function useEnergiaLocacoes(companyId: string) {
+  const safeId = companyId || "default_agency";
+
+  return useQuery({
+    queryKey: ["energia_locacoes", safeId],
+    queryFn: async () => {
+      // Modo offline real: usa a última cópia local conhecida (só leitura).
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        return getStoredEnergia()
+          .filter(e => e.companyId === safeId)
+          .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+      }
+
+      try {
+        const q = query(collection(db, "energia_locacoes"), where("companyId", "==", safeId));
+        const snap = await getDocs(q);
+        const list: EnergiaLocacao[] = snap.docs.map(d => ({ id: d.id, ...d.data() } as EnergiaLocacao));
+        // Mantém uma cópia local só como leitura de contingência (não é usada
+        // para fingir sucesso em caso de falha de gravação — ver nota nas
+        // mutations abaixo).
+        const outras = getStoredEnergia().filter(e => e.companyId !== safeId);
+        saveStoredEnergia([...outras, ...list]);
+        return list.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+      } catch (err) {
+        console.error("Erro ao buscar acompanhamentos de energia do Firestore:", err);
+        const isNetworkErr = err instanceof Error && /network|offline|failed to fetch/i.test(err.message);
+        if (isNetworkErr) {
+          return getStoredEnergia()
+            .filter(e => e.companyId === safeId)
+            .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+        }
+        throw err;
+      }
+    }
+  });
+}
+
+export function useCreateEnergiaMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (energia: Omit<EnergiaLocacao, "id" | "createdAt" | "updatedAt"> & { id?: string }) => {
+      const generatedId = energia.id || "energia-" + Math.random().toString(36).substring(2, 9);
+      const now = new Date().toISOString();
+      const docData: EnergiaLocacao = { ...energia, id: generatedId, createdAt: now, updatedAt: now };
+
+      try {
+        await setDoc(doc(db, "energia_locacoes", generatedId), semUndefined(docData, "omitir"));
+      } catch (err) {
+        // Falha real é reportada, não escondida — mesmo cuidado aplicado em
+        // useCreateRentalMutation: um "sucesso" falso é pior que um erro visível.
+        handleFirestoreError(err, OperationType.CREATE, `energia_locacoes/${generatedId}`);
+        throw err;
+      }
+      return generatedId;
+    },
+    onSuccess: (data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["energia_locacoes", variables.companyId || "default_agency"] });
+      toast.success("Acompanhamento de energia cadastrado.");
+    },
+    onError: (err) => {
+      console.error(err);
+      toast.error("Erro ao cadastrar acompanhamento de energia.");
+    }
+  });
+}
+
+export function useUpdateEnergiaMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (energia: EnergiaLocacao) => {
+      const docData = { ...energia, updatedAt: new Date().toISOString() };
+      try {
+        await updateDoc(doc(db, "energia_locacoes", energia.id), semUndefined(docData, "nulo"));
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, `energia_locacoes/${energia.id}`);
+        throw err;
+      }
+    },
+    onSuccess: (data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["energia_locacoes", variables.companyId || "default_agency"] });
+      toast.success("Acompanhamento de energia atualizado.");
+    },
+    onError: (err) => {
+      console.error(err);
+      toast.error("Erro ao atualizar acompanhamento de energia.");
+    }
+  });
+}
+
+export function useDeleteEnergiaMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id }: { id: string; companyId: string }) => {
+      try {
+        await deleteDoc(doc(db, "energia_locacoes", id));
+      } catch (err) {
+        handleFirestoreError(err, OperationType.DELETE, `energia_locacoes/${id}`);
+        throw err;
+      }
+    },
+    onSuccess: (data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["energia_locacoes", variables.companyId || "default_agency"] });
+      toast.success("Acompanhamento de energia removido.");
+    },
+    onError: (err) => {
+      console.error(err);
+      toast.error("Erro ao excluir acompanhamento de energia.");
     }
   });
 }
