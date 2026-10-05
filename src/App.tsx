@@ -6025,6 +6025,9 @@ const ProcessesView = ({
   const ANEXOS_FECHADO = { isOpen: false, instance: null, stepLabel: "", attachments: [] as { name: string, url: string }[] };
   const [salvandoAnexos, setSalvandoAnexos] = useState(false);
   const [desmarcarEtapa, setDesmarcarEtapa] = useState<{ instance: ProcessInstance; stepLabel: string } | null>(null);
+  // Confirmação "checklist 100% → concluir processo?" (C2). Guarda só o id;
+  // na confirmação o processo é lido de novo da lista atual.
+  const [confirmarConclusaoId, setConfirmarConclusaoId] = useState<string | null>(null);
   const [movendoProcessoId, setMovendoProcessoId] = useState<string | null>(null);
 
   // Mensagem para o usuário + registro técnico no console. handleFirestoreError
@@ -6196,58 +6199,98 @@ const ProcessesView = ({
     }
   };
 
+  // C2 — O checklist registra o trabalho feito; o Kanban representa a posição.
+  // toggleStep grava SOMENTE completedSteps, stepHistory e updatedAt.
+  // Não altera kanbanStatus, status nem completedAt (não move para Visita,
+  // não conclui, não reabre, não reativa arquivado).
+  //
+  // A intenção (marcar ou desmarcar) vem do estado que o usuário viu na tela.
+  // A gravação lê a versão atual do processo dentro de uma transação, então
+  // duas pessoas marcando etapas diferentes ao mesmo tempo não se apagam; se a
+  // etapa já estiver no estado desejado, nada é gravado.
   const toggleStep = async (instance: ProcessInstance, stepLabel: string) => {
-    const isCompleted = instance.completedSteps.includes(stepLabel);
-    const newSteps = isCompleted 
-      ? instance.completedSteps.filter(s => s !== stepLabel)
-      : [...instance.completedSteps, stepLabel];
-
     const template = templates.find(t => t.type === instance.type);
     if (!template) return;
-    
-    const isFullyCompleted = newSteps.length === template.steps.length;
 
-    // Update history
-    const historyEntry = { label: stepLabel, completedAt: new Date() };
-    const newHistory = isCompleted 
-      ? (instance.stepHistory || []).filter(h => h.label !== stepLabel)
-      : [...(instance.stepHistory || []), historyEntry];
+    const marcar = !instance.completedSteps.includes(stepLabel);
+    const ref = doc(db, "processes", instance.id);
+
+    let gravou = false;
+    let checklistCompleto = false;
+    let statusAtual: string | undefined;
+    let colunaAtual: string | undefined;
 
     try {
-      const updateData: any = {
-        completedSteps: newSteps,
-        stepHistory: newHistory,
-        status: isFullyCompleted ? "completed" : "active",
-        kanbanStatus: isFullyCompleted ? (kanbanColumns[kanbanColumns.length - 1]?.id || "concluido") : (newSteps.length > 0 ? (kanbanColumns[1]?.id || "visita") : instance.kanbanStatus || (kanbanColumns[0]?.id || "prospeccao")),
-        updatedAt: serverTimestamp(),
-        completedAt: isFullyCompleted ? serverTimestamp() : null
-      };
+      await runTransaction(db, async (transaction: any) => {
+        const snap = await transaction.get(ref);
+        if (!snap.exists()) throw new Error("Processo não encontrado.");
+        const data = snap.data() || {};
+        const etapasAtuais: string[] = Array.isArray(data.completedSteps) ? data.completedSteps : [];
+        const historicoAtual: { label: string; completedAt: any }[] = Array.isArray(data.stepHistory) ? data.stepHistory : [];
+        statusAtual = data.status;
+        colunaAtual = normalizarColuna(data.kanbanStatus);
 
-      // Anexos NÃO são gravados aqui: concluir/desmarcar etapa e salvar
-      // anexos são operações independentes (ver salvarAnexosEtapa).
-
-      await updateDoc(doc(db, "processes", instance.id), updateData);
-      
-      if (isFullyCompleted && !isCompleted) {
-        toast.success("Processo 100% concluído! Parabéns!");
-      } else if (!isCompleted && !isFullyCompleted) {
-        // Find next step suggestion
-        const currentIndex = template.steps.findIndex(s => s.label === stepLabel);
-        const nextStep = template.steps[currentIndex + 1];
-        if (nextStep) {
-          setSuggestionModal({
-            isOpen: true,
-            instance: instance,
-            nextStepLabel: nextStep.label,
-            suggestedDate: format(addDays(new Date(), 2), "yyyy-MM-dd")
-          });
+        const jaMarcada = etapasAtuais.includes(stepLabel);
+        if (marcar === jaMarcada) {
+          // Outra pessoa já fez a mesma alteração — nada a gravar.
+          checklistCompleto = template.steps.length > 0 && template.steps.every(s => etapasAtuais.includes(s.label));
+          return;
         }
-        toast.info("Etapa concluída!");
-      } else {
-        toast.info(isCompleted ? "Etapa desmarcada" : "Etapa concluída!");
-      }
+
+        const novasEtapas = marcar
+          ? [...etapasAtuais, stepLabel]
+          : etapasAtuais.filter(s => s !== stepLabel);
+        // Histórico: mesmo comportamento de antes (marcar adiciona, desmarcar remove).
+        const novoHistorico = marcar
+          ? [...historicoAtual, { label: stepLabel, completedAt: new Date() }]
+          : historicoAtual.filter(h => h.label !== stepLabel);
+
+        // 100% = todas as etapas DO MODELO estão marcadas (comparando pelo nome
+        // da etapa, que é o identificador disponível hoje). Marcações antigas de
+        // etapas que não existem mais no modelo não contam.
+        checklistCompleto = template.steps.length > 0 && template.steps.every(s => novasEtapas.includes(s.label));
+
+        transaction.update(ref, {
+          completedSteps: novasEtapas,
+          stepHistory: novoHistorico,
+          updatedAt: serverTimestamp()
+        });
+        gravou = true;
+      });
     } catch (error) {
       reportarFalha("Erro ao atualizar etapa. Nada foi alterado; tente novamente.", error, OperationType.UPDATE, `processes/${instance.id}`);
+      return;
+    }
+
+    if (!gravou) return;
+
+    if (!marcar) {
+      toast.info("Etapa desmarcada");
+      return;
+    }
+
+    toast.info("Etapa concluída!");
+
+    if (checklistCompleto) {
+      // Pergunta se deve concluir o processo — só quando ele não está
+      // concluído nem arquivado e ainda não está na coluna final.
+      const ultimaColuna = kanbanColumns[kanbanColumns.length - 1]?.id;
+      if (statusAtual !== "completed" && statusAtual !== "archived" && colunaAtual !== ultimaColuna) {
+        setConfirmarConclusaoId(instance.id);
+      }
+      return;
+    }
+
+    // Janela "Próxima etapa": comportamento inalterado.
+    const currentIndex = template.steps.findIndex(s => s.label === stepLabel);
+    const nextStep = template.steps[currentIndex + 1];
+    if (nextStep) {
+      setSuggestionModal({
+        isOpen: true,
+        instance: instance,
+        nextStepLabel: nextStep.label,
+        suggestedDate: format(addDays(new Date(), 2), "yyyy-MM-dd")
+      });
     }
   };
 
@@ -7476,6 +7519,26 @@ const ProcessesView = ({
         )}
       </AnimatePresence>
       
+      {/* C2 — Checklist 100%: concluir o processo só com confirmação, usando a
+          mesma função de movimentação do Kanban (moverProcesso). */}
+      <ConfirmModal
+        isOpen={!!confirmarConclusaoId}
+        title="Checklist concluído"
+        message="Todas as etapas do checklist foram concluídas. Deseja concluir este processo?"
+        confirmText="Concluir processo"
+        cancelText="Continuar trabalhando"
+        confirmColor="green"
+        onConfirm={async () => {
+          const id = confirmarConclusaoId;
+          setConfirmarConclusaoId(null);
+          const proc = processes.find(p => p.id === id);
+          const ultimaColuna = kanbanColumns[kanbanColumns.length - 1];
+          if (!proc || !ultimaColuna) return;
+          await moverProcesso(proc, ultimaColuna.id);
+        }}
+        onCancel={() => setConfirmarConclusaoId(null)}
+      />
+
       {/* Confirmação para desmarcar etapa (a data de conclusão é apagada) */}
       <ConfirmModal
         isOpen={!!desmarcarEtapa}
