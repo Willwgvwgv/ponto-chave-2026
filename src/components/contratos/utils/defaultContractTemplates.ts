@@ -400,6 +400,191 @@ export const VENDA_FINANCIAMENTO_BLOCKS: ContractBlock[] = [
   }
 ];
 
+// Locação residencial no modelo usado pela imobiliária (cláusulas por seção:
+// destinação, prazo, vistoria, preferência, comunicação, valores, reajuste,
+// benfeitorias, garantia, devolução, prorrogação e foro). Muda só a garantia.
+function locacaoModeloImobiliaria(subtitulo: string, garantia: string): ContractBlock[] {
+  return [
+    {
+      id: "block-title",
+      type: "title",
+      content: "CONTRATO DE LOCAÇÃO DE IMÓVEL RESIDENCIAL",
+      isLocked: true
+    },
+    {
+      id: "block-subtitle",
+      type: "subtitle",
+      content: subtitulo,
+      isLocked: true
+    },
+    {
+      id: "block-parties-locacao",
+      type: "parties",
+      clauseTitle: "IDENTIFICAÇÃO DAS PARTES",
+      sectionCategory: "Identificação das partes",
+      content: `<p><strong>LOCADOR(A):</strong> {{qualificacao_completa_locador}}, doravante denominado(a) simplesmente <strong>LOCADOR</strong>.</p>
+<p class="mt-2"><strong>LOCATÁRIO(A):</strong> {{qualificacao_completa_locatario}}, doravante denominado(a) simplesmente <strong>LOCATÁRIO</strong>.</p>
+<p class="mt-2"><strong>ADMINISTRADORA:</strong> <strong>{{nome_imobiliaria}}</strong>, inscrita no CNPJ sob o nº {{cnpj_imobiliaria}}, CRECI {{creci_imobiliaria}}, com sede à {{endereco_imobiliaria}}.</p>`
+    },
+    {
+      id: "block-imovel-locacao",
+      type: "paragraph",
+      clauseTitle: "DO IMÓVEL",
+      sectionCategory: "Identificação do imóvel",
+      content: `<p>As partes acima qualificadas têm, entre si, justo e contratado o presente instrumento particular de locação do imóvel {{tipo_imovel}} situado à <strong>{{endereco_imovel}}</strong>, que se regerá pelas cláusulas e condições seguintes.</p>`
+    },
+    {
+      id: "clause-1",
+      type: "clause",
+      clauseNumber: 1,
+      clauseTitle: "DA DESTINAÇÃO",
+      sectionCategory: "Objeto da locação",
+      content: `<p><strong>1.1.</strong> A finalidade do imóvel é exclusivamente residencial, sendo proibido ao LOCATÁRIO sublocá-lo ou dar qualquer outra finalidade ao mesmo.</p>`
+    },
+    {
+      id: "clause-2",
+      type: "clause",
+      clauseNumber: 2,
+      clauseTitle: "DO PRAZO",
+      sectionCategory: "Prazo contratual",
+      content: `<p><strong>2.1.</strong> A locação terá duração de <strong>{{prazo_meses}}</strong>, com início em <strong>{{data_inicio}}</strong> e término previsto para <strong>{{data_fim}}</strong>.</p>
+<p><strong>2.2.</strong> O contrato poderá ser rescindido sem cobrança de multa a partir de <strong>{{data_aniversario_contrato}}</strong>, desde que haja aviso prévio, por escrito, com 60 (sessenta) dias de antecedência.</p>
+<p><strong>2.3.</strong> Antes dessa data, a parte que rescindir o contrato pagará à outra multa pecuniária correspondente a 1,5 (um e meio) aluguel vigente.</p>`
+    },
+    {
+      id: "clause-3",
+      type: "clause",
+      clauseNumber: 3,
+      clauseTitle: "DA VISTORIA DA LOCAÇÃO",
+      sectionCategory: "Vistoria",
+      content: `<p><strong>3.1.</strong> O imóvel entregue na data da assinatura deste contrato, pelo LOCADOR ao LOCATÁRIO, possui as características contidas no auto de vistoria anexo, que desde já aceitam expressamente.</p>
+<p><strong>3.2.</strong> O imóvel será entregue nas condições descritas no auto de vistoria, ou seja, com instalações elétricas e hidráulicas em perfeito funcionamento, assim como os demais itens descritos no termo de vistoria, devendo o LOCATÁRIO mantê-lo dessa forma. Fica também acordado que o imóvel será devolvido nas mesmas condições previstas no auto de vistoria e, no ato da entrega das chaves, com todos os tributos e despesas pagos.</p>`
+    },
+    {
+      id: "clause-4",
+      type: "clause",
+      clauseNumber: 4,
+      clauseTitle: "DO DIREITO DE PREFERÊNCIA E DAS VISTORIAS ESPORÁDICAS",
+      sectionCategory: "Vistoria",
+      content: `<p><strong>4.1.</strong> Caso o LOCADOR manifeste vontade de vender o imóvel objeto do presente, deverá propor por escrito ao LOCATÁRIO, que se obrigará a emitir resposta em 30 (trinta) dias a partir da comunicação inicial.</p>
+<p><strong>4.2.</strong> Não se manifestando o LOCATÁRIO no prazo estipulado no item anterior, permitirá desde logo ao LOCADOR vistoriar o imóvel com possíveis pretendentes.</p>
+<p><strong>4.3.</strong> O LOCATÁRIO, juntamente com o LOCADOR, declara que a vistoria será feita no ato da entrega das chaves, confirmando suas reais condições. A vistoria inicial será anexada e servirá como base comparativa na vistoria final, que ocorrerá no momento da entrega do imóvel, quando serão identificados possíveis danos e/ou alterações no imóvel.</p>
+<p><strong>4.4.</strong> O LOCATÁRIO permitirá ao LOCADOR realizar vistorias no imóvel em dia e hora a serem combinados, podendo este averiguar o funcionamento de todas as instalações e acessórios. Constatado algum vício que possa afetar a estrutura física do imóvel, ficará o LOCATÁRIO obrigado a realizar o conserto no prazo de 30 (trinta) dias. Não ocorrendo o conserto, o LOCADOR poderá rescindir o contrato, sem prejuízo dos valores previstos neste instrumento.</p>`
+    },
+    {
+      id: "clause-5",
+      type: "clause",
+      clauseNumber: 5,
+      clauseTitle: "DA INFORMAÇÃO ENTRE OS CONTRATANTES",
+      sectionCategory: "Disposições gerais",
+      content: `<p><strong>5.1.</strong> As partes ficam desde já acordadas a se comunicarem somente por escrito, por e-mail ou por qualquer meio admitido em Direito. Na ausência de qualquer das partes, as mesmas se comprometem a deixar nomeados procuradores responsáveis para tal fim.</p>`
+    },
+    {
+      id: "clause-6",
+      type: "clause",
+      clauseNumber: 6,
+      clauseTitle: "DO VENCIMENTO E DO VALOR DA LOCAÇÃO",
+      sectionCategory: "Aluguel e condições de pagamento",
+      content: `<p><strong>6.1.</strong> Fica acordado entre LOCADOR e LOCATÁRIO que o valor da locação será mensal e deverá ser pago via boleto bancário, nas seguintes condições:</p>
+<table style="width:100%;border-collapse:collapse;margin:8px 0;font-size:10pt">
+  <tr>
+    <th style="border:1px solid #cbd5e1;padding:6px;background:#f1f5f9;text-align:center">Valor do aluguel</th>
+    <th style="border:1px solid #cbd5e1;padding:6px;background:#f1f5f9;text-align:center">Vencimento</th>
+    <th style="border:1px solid #cbd5e1;padding:6px;background:#f1f5f9;text-align:center">Seguro incêndio</th>
+  </tr>
+  <tr>
+    <td style="border:1px solid #cbd5e1;padding:6px;text-align:center"><strong>{{valor_aluguel}}</strong><br>({{valor_aluguel_extenso}})</td>
+    <td style="border:1px solid #cbd5e1;padding:6px;text-align:center">Todo dia {{dia_vencimento}}</td>
+    <td style="border:1px solid #cbd5e1;padding:6px;text-align:center">{{seguro_incendio}}</td>
+  </tr>
+</table>
+<p><strong>6.2.</strong> Além do aluguel mensal, incumbirão ao LOCATÁRIO as despesas provenientes de sua utilização, bem como seguro incêndio, IPTU e consumos de água e energia, que serão pagos diretamente às empresas concessionárias dos referidos serviços. O LOCATÁRIO obriga-se a efetuar pontualmente o pagamento dessas despesas e a encaminhar ao LOCADOR os respectivos comprovantes no mesmo dia do pagamento.</p>
+<p><strong>6.3.</strong> Os encargos da locação são de inteira responsabilidade do LOCATÁRIO, que se obriga a pagá-los em seus respectivos vencimentos, devendo comprová-los ao LOCADOR sempre que solicitado e, em especial, no encerramento do contrato.</p>
+<p><strong>6.4.</strong> Fica ao LOCATÁRIO a responsabilidade de zelar pela conservação e limpeza do imóvel, efetuando as reformas necessárias para sua manutenção, cujos gastos correrão por sua conta. O LOCATÁRIO está obrigado a devolver o imóvel em perfeitas condições de limpeza, conservação e pintura quando findo ou rescindido este contrato, conforme o termo de vistoria anexo.</p>
+<p><strong>6.5.</strong> Em caso de cobrança judicial ou extrajudicial dos valores decorrentes deste contrato, o LOCATÁRIO será responsável pelo pagamento dos honorários advocatícios, fixados em até 20% (vinte por cento) sobre o valor total do débito, além das custas judiciais, extrajudiciais e demais encargos legais incidentes.</p>
+<p><strong>6.6.</strong> Não efetuando o pagamento do aluguel até a data estipulada, o LOCATÁRIO fica obrigado a pagar multa de {{multa_atraso}} sobre o valor do aluguel, bem como juros de mora de {{juros_mora}}.</p>
+<p><strong>6.7.</strong> O LOCADOR ou seu procurador fica obrigado a emitir recibo da quantia paga, discriminando todos os valores de juros ou outras despesas, desde que o LOCATÁRIO apresente os comprovantes de todas as despesas do imóvel devidamente quitadas.</p>
+<p><strong>6.8.</strong> Faculta-se ao LOCADOR ou a seu procurador cobrar do LOCATÁRIO os aluguéis, tributos e despesas vencidos oriundos deste contrato, utilizando-se de todos os meios legais admitidos.</p>`
+    },
+    {
+      id: "clause-7",
+      type: "clause",
+      clauseNumber: 7,
+      clauseTitle: "DOS REAJUSTES DO ALUGUEL",
+      sectionCategory: "Reajustes e encargos",
+      content: `<p><strong>7.1.</strong> O valor da locação será reajustado anualmente. O próximo reajuste será aplicado em <strong>{{data_aniversario_contrato}}</strong>, de acordo com a variação acumulada do <strong>{{indice_reajuste}}</strong>. Na ausência desse índice, será adotado outro legalmente previsto, conforme prévia convenção das partes.</p>`
+    },
+    {
+      id: "clause-8",
+      type: "clause",
+      clauseNumber: 8,
+      clauseTitle: "DAS BENFEITORIAS E CONSTRUÇÕES",
+      sectionCategory: "Obrigações do locatário",
+      content: `<p><strong>8.1.</strong> O LOCATÁRIO não poderá realizar obras que alterem ou modifiquem a estrutura do imóvel locado sem prévia autorização por escrito do LOCADOR. Caso este consinta na realização das obras, elas ficarão desde logo incorporadas ao imóvel, sem que assista ao LOCATÁRIO qualquer indenização pelas obras ou direito de retenção por benfeitorias.</p>
+<p><strong>8.2.</strong> As benfeitorias removíveis poderão ser retiradas, desde que não desfigurem o imóvel locado.</p>`
+    },
+    {
+      id: "clause-9",
+      type: "clause",
+      clauseNumber: 9,
+      clauseTitle: "DA GARANTIA LOCATÍCIA",
+      sectionCategory: "Garantia locatícia",
+      content: garantia
+    },
+    {
+      id: "clause-10",
+      type: "clause",
+      clauseNumber: 10,
+      clauseTitle: "DA DEVOLUÇÃO DO IMÓVEL FINDO O PRAZO DA LOCAÇÃO",
+      sectionCategory: "Vistoria",
+      content: `<p><strong>10.1.</strong> O LOCATÁRIO restituirá o imóvel locado nas mesmas condições em que o recebeu, pintado com a mesma tinta e na cor descrita no auto de vistoria, com as instalações elétricas, hidráulicas e acessórios em perfeitas condições de funcionamento, salvo as deteriorações decorrentes do uso normal e habitual do imóvel.</p>
+<p><strong>10.2.</strong> Caso o LOCATÁRIO não realize os serviços necessários ao término do contrato, serão feitos 3 (três) orçamentos e será acatado o de menor valor. O LOCATÁRIO fará o pagamento do valor estabelecido e a imobiliária se responsabilizará pela execução dos serviços.</p>
+<p><strong>10.3.</strong> Os autos de vistoria inicial e final farão parte deste contrato e conterão a assinatura dos contratantes e de duas testemunhas.</p>`
+    },
+    {
+      id: "clause-11",
+      type: "clause",
+      clauseNumber: 11,
+      clauseTitle: "DA PRORROGAÇÃO DO CONTRATO",
+      sectionCategory: "Prazo contratual",
+      content: `<p><strong>11.1.</strong> Ultrapassada a data prevista, tornando-se o contrato por tempo indeterminado, o LOCADOR poderá rescindi-lo a qualquer tempo, mediante notificação por escrito ao LOCATÁRIO, que deverá desocupar o imóvel no prazo de 30 (trinta) dias a contar do recebimento da notificação.</p>
+<p><strong>11.2.</strong> Ocorrendo a prorrogação, LOCATÁRIO e LOCADOR ficarão obrigados por todo o teor deste contrato. Havendo continuidade, fica o LOCATÁRIO obrigado a se apresentar às concessionárias de água e energia e renovar junto a elas os prazos de suas obrigações.</p>`
+    },
+    {
+      id: "clause-12",
+      type: "clause",
+      clauseNumber: 12,
+      clauseTitle: "DO FORO",
+      sectionCategory: "Disposições gerais",
+      content: `<p><strong>12.1.</strong> Fica eleito o foro da <strong>{{cidade_foro}}</strong> para dirimir eventuais controvérsias oriundas deste contrato, com renúncia a qualquer outro, por mais privilegiado que seja.</p>`
+    },
+    {
+      id: "block-signatures",
+      type: "signatures",
+      clauseTitle: "ASSINATURAS E TESTEMUNHAS",
+      sectionCategory: "Assinaturas e testemunhas",
+      content: `<p class="text-center font-medium my-4">E, por estarem assim justas e contratadas, as partes assinam o presente instrumento particular em duas vias de igual teor, na presença de duas testemunhas.</p>
+<p class="text-center italic text-slate-600 mb-8">{{data_atual_extenso}}</p>`
+    }
+  ];
+}
+
+export const LOCACAO_LOCARMAIS_BLOCKS: ContractBlock[] = locacaoModeloImobiliaria(
+  "COM GARANTIA LOCATÍCIA LOCARMAIS",
+  `<p><strong>9.1.</strong> O LOCATÁRIO realizou a contratação da <strong>LOCARMAIS</strong>, LOCAR MAIS SERVIÇOS DE COBRANÇA LTDA, pessoa jurídica de direito privado, inscrita no CNPJ/MF sob o nº 35.045.603/0001-94, com sede na Cidade e Comarca de Maringá, Estado do Paraná, na Avenida Pioneiro Alício Arantes Campolina, nº 2527, Jardim Canadá, CEP 87.083-020, a qual se compromete a efetuar o pagamento de eventuais débitos relativos ao aluguel e demais encargos da presente locação que venham a ser inadimplidos pelo LOCATÁRIO, conforme condições e limitações constantes nos Termos e Condições Gerais dos Serviços LOCARMAIS, que integram o presente contrato como <strong>ANEXO I</strong>.</p>
+<p><strong>9.2.</strong> As partes declaram expressamente que estão cientes de todas as condições e limitações relativas à fiança prestada pela LOCARMAIS, notadamente quanto (a) ao valor máximo de sua responsabilidade, (b) às limitações de sua responsabilidade, (c) ao prazo de sua vigência, (d) às condições para sua renovação e (e) às hipóteses de sua exoneração.</p>
+<p><strong>9.3.</strong> O LOCATÁRIO declara, ainda, estar ciente de que, em caso de exoneração da LOCARMAIS da condição de fiadora, caberá a ele promover, no prazo máximo de 30 (trinta) dias, a substituição da garantia locatícia, sob pena de infração contratual e ajuizamento da competente ação de despejo.</p>
+<p><strong>Nota — ANEXO I:</strong> é o termo firmado entre a LOCARMAIS e o LOCATÁRIO, impresso no acesso restrito da imobiliária e extraído do processo eletrônico de análise do LOCATÁRIO após a LOCARMAIS aprovar o cadastro e o inquilino aceitar os Termos e Condições Gerais.</p>`
+);
+
+export const LOCACAO_LOFT_BLOCKS: ContractBlock[] = locacaoModeloImobiliaria(
+  "COM GARANTIA LOCATÍCIA LOFT (FIANÇA CREDPAGO)",
+  `<p><strong>9.1.</strong> O LOCATÁRIO realizou a contratação da garantia locatícia <strong>LOFT FIANÇA (CredPago)</strong>, ______________________________________________, inscrita no CNPJ/MF sob o nº ______________________, a qual se compromete a efetuar o pagamento de eventuais débitos relativos ao aluguel e demais encargos da presente locação que venham a ser inadimplidos pelo LOCATÁRIO, conforme condições e limitações constantes nos Termos e Condições Gerais da garantia Loft, que integram o presente contrato como <strong>ANEXO I</strong>.</p>
+<p><strong>9.2.</strong> As partes declaram expressamente que estão cientes de todas as condições e limitações relativas à garantia prestada pela LOFT, notadamente quanto (a) ao valor máximo de sua responsabilidade, (b) às limitações de sua responsabilidade, (c) ao prazo de sua vigência, (d) às condições para sua renovação e (e) às hipóteses de sua exoneração.</p>
+<p><strong>9.3.</strong> O LOCATÁRIO declara, ainda, estar ciente de que, em caso de cancelamento ou exoneração da garantia LOFT, caberá a ele promover, no prazo máximo de 30 (trinta) dias, a substituição da garantia locatícia, sob pena de infração contratual e ajuizamento da competente ação de despejo.</p>
+<p><strong>Nota — ANEXO I:</strong> é o termo firmado entre a LOFT e o LOCATÁRIO, emitido na plataforma da Loft após a aprovação do cadastro e o aceite dos Termos e Condições Gerais pelo inquilino.</p>`
+);
+
 export const INITIAL_PREDEFINED_TEMPLATES: ContratoModelo[] = [
   {
     id: "modelo-padrao-caucao",
@@ -440,6 +625,36 @@ export const INITIAL_PREDEFINED_TEMPLATES: ContratoModelo[] = [
     isPadrao: false,
     categoria: "Garantia Digital",
     blocks: CREDPAGO_TEMPLATE_BLOCKS,
+    styleSettings: DEFAULT_STYLE_SETTINGS,
+    criadoPorUid: "system",
+    criadoPorNome: "Ponto Chave",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+  {
+    id: "modelo-locacao-loft",
+    companyId: "global",
+    nome: "Contrato Locação Loft",
+    descricao: "Locação residencial no modelo da imobiliária, com garantia Loft (fiança CredPago), multa de 1,5 aluguel e rescisão sem multa após 12 meses.",
+    tipoLocacao: "residencial",
+    isPadrao: false,
+    categoria: "Garantia Digital",
+    blocks: LOCACAO_LOFT_BLOCKS,
+    styleSettings: DEFAULT_STYLE_SETTINGS,
+    criadoPorUid: "system",
+    criadoPorNome: "Ponto Chave",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+  {
+    id: "modelo-locacao-locarmais",
+    companyId: "global",
+    nome: "Contrato Locação Locarmais",
+    descricao: "Locação residencial no modelo da imobiliária, com garantia Locarmais (Anexo I), multa de 1,5 aluguel e rescisão sem multa após 12 meses.",
+    tipoLocacao: "residencial",
+    isPadrao: false,
+    categoria: "Garantia Digital",
+    blocks: LOCACAO_LOCARMAIS_BLOCKS,
     styleSettings: DEFAULT_STYLE_SETTINGS,
     criadoPorUid: "system",
     criadoPorNome: "Ponto Chave",
