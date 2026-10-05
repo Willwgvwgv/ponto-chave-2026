@@ -107,6 +107,7 @@ const SimuladorView = lazy(() => import('./components/SimuladorView').then(m => 
 const FinanceiroView = lazy(() => import('./components/FinanceiroView').then(m => ({ default: m.FinanceiroView })));
 const PontoView = lazy(() => import('./components/ponto/PontoView').then(m => ({ default: m.PontoView })));
 const HidrometroView = lazy(() => import('./components/hidrometro/HidrometroView').then(m => ({ default: m.HidrometroView })));
+const EnergiaView = lazy(() => import('./components/energia/EnergiaView').then(m => ({ default: m.EnergiaView })));
 const PropostaBellaWhiteView = lazy(() => import('./components/PropostaBellaWhiteView').then(m => ({ default: m.PropostaBellaWhiteView })));
 const ContratosLocacaoView = lazy(() => import('./components/contratos/ContratosLocacaoView').then(m => ({ default: m.ContratosLocacaoView })));
 import { PontoHeaderCapsule } from "./components/ponto/PontoHeaderCapsule";
@@ -3153,7 +3154,7 @@ const getManualDataForTool = (name: string, url: string) => {
 
 function AppContent() {
   const { user, profile, isAdmin, companySettings } = useAuth();
-  const [activeTab, setActiveTab] = useState<"dashboard" | "calendar" | "processes" | "process_config" | "users" | "profile" | "settings" | "contratos" | "vistorias" | "comissoes" | "simulador" | "financeiro" | "ponto" | "hidrometro">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "calendar" | "processes" | "process_config" | "users" | "profile" | "settings" | "contratos" | "vistorias" | "comissoes" | "simulador" | "financeiro" | "ponto" | "hidrometro" | "energia">("dashboard");
   const [contractsSubTab, setContractsSubTab] = useState<"locacao" | "vistorias" | "despejos" | "proposta_bella">("locacao");
   const [isSidebarOpen, setIsSidebarOpen] = useState(() => window.innerWidth > 1024);
   const [viewingManualTool, setViewingManualTool] = useState<Tool | null>(null);
@@ -3889,6 +3890,11 @@ function AppContent() {
     items.push({ id: "simulador" as const, label: "Simulador", icon: Calculator });
 
     items.push({ id: "hidrometro" as const, label: "Hidrômetro", icon: Droplet });
+
+    const permEnergia = isUserAdmin || profile?.permEnergia === true || profile?.perm_energia === true || profile?.permissions?.includes("energia");
+    if (permEnergia) {
+      items.push({ id: "energia" as const, label: "Acompanhamento de Energia", icon: Zap });
+    }
 
     if (permPonto) {
       items.push({ id: "ponto" as const, label: "Ponto", icon: Clock });
@@ -4710,7 +4716,16 @@ function AppContent() {
           </Suspense>
         ) : activeTab === "hidrometro" ? (
           <Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">Carregando rateio de água e hidrômetros...</div>}>
-            <HidrometroView 
+            <HidrometroView
+              isAdmin={isAdmin}
+              user={user}
+              profile={profile}
+              companySettings={companySettings}
+            />
+          </Suspense>
+        ) : activeTab === "energia" ? (
+          <Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">Carregando acompanhamento de energia...</div>}>
+            <EnergiaView
               isAdmin={isAdmin}
               user={user}
               profile={profile}
