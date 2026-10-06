@@ -109,6 +109,8 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
 
   const [filterText, setFilterText] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("TUDO");
+  // Filtro por corretor/usuário do rateio ("" = todos)
+  const [filterCorretorId, setFilterCorretorId] = useState<string>("");
   // Abre na competência do mês atual (horário local); "Todas" continua disponível no filtro.
   const mesAtual = (() => {
     const d = new Date();
@@ -135,6 +137,16 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
     if (!list.includes(mesAtual)) list.push(mesAtual);
     return list.sort((a, b) => b.localeCompare(a));
   }, [convertedModels, mesAtual]);
+
+  // Todos os participantes que aparecem em algum rateio (para o filtro por corretor)
+  const listaCorretores = useMemo(() => {
+    const porId = new Map<string, string>();
+    convertedModels.forEach(r => (r.distribuicao || []).forEach(d => {
+      if (d.corretorId && !porId.has(d.corretorId)) porId.set(d.corretorId, formatPersonName(d.corretorNome || ""));
+    }));
+    return Array.from(porId, ([id, nome]) => ({ id, nome })).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+  }, [convertedModels]);
+  const nomeCorretorFiltro = listaCorretores.find(c => c.id === filterCorretorId)?.nome || "";
 
   const monthlyModels = useMemo(() => {
     if (selectedMonthFilter === "TODOS") return convertedModels;
@@ -163,6 +175,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
         (r.distribuicao || []).some(rt => (rt.corretorNome || "").toLowerCase().includes(searchLower));
 
       if (!matchText) return false;
+      if (filterCorretorId && !(r.distribuicao || []).some(d => d.corretorId === filterCorretorId)) return false;
 
       const st = getRowStatus(r);
       if (filterStatus === "TODOS" || filterStatus === "TUDO") return true;
@@ -171,13 +184,15 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
       if (filterStatus === "ATRASADO" || filterStatus === "ATRASO") return st === "atrasado";
       return true;
     });
-  }, [monthlyModels, filterText, filterStatus]);
+  }, [monthlyModels, filterText, filterStatus, filterCorretorId]);
 
   // Quando a busca combina com o nome de um corretor específico, os valores em dinheiro (pago/a
   // receber) passam a considerar só a parte dele no rateio — não a locação inteira — para que
   // "reginaldo" mostre exatamente o que é do Reginaldo, não o valor total da locação.
   const getRelevantDistribuicoes = (r: any) => {
     const entries = r.distribuicao || [];
+    // Corretor escolhido no filtro: só a parte dele
+    if (filterCorretorId) return entries.filter((d: any) => d.corretorId === filterCorretorId);
     const searchLower = filterText.trim().toLowerCase();
     if (!searchLower) return entries;
     const matched = entries.filter((d: any) => (d.corretorNome || "").toLowerCase().includes(searchLower));
@@ -396,6 +411,118 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
     const nomeArquivoMes = selectedMonthFilter === 'TODOS' ? 'todos_os_meses' : selectedMonthFilter;
     baixarPdf(pdf, `comissoes_locacao_${nomeArquivoMes}_${dataAtual}.pdf`);
     toast.success(`${currentFiltered.length} locação(ões) exportada(s)!`);
+  };
+
+  // Extrato de UM corretor: o que ele tem em cada locação filtrada (devido, pago, saldo)
+  // e a lista de todos os pagamentos registrados para ele.
+  const handleExportExtratoCorretor = () => {
+    if (!filterCorretorId) return;
+    const titulo = 'EXTRATO DE COMISSÕES — LOCAÇÃO';
+    const papelLabel = (p: string) => (p === 'captador' ? 'Captador' : p === 'locacao' ? 'Locador' : 'Auxiliar');
+    const competencia = (r: any) => `${String(r.competencia.mes).padStart(2, '0')}/${r.competencia.ano}`;
+
+    const linhas: string[][] = [];
+    let devido = 0, pago = 0;
+    const pagamentos: { data: string; linha: string[] }[] = [];
+    currentFiltered.forEach(r => {
+      (r.distribuicao || []).filter(d => d.corretorId === filterCorretorId).forEach(d => {
+        const saldo = Math.max(0, Number(d.valor || 0) - Number(d.totalPago || 0));
+        devido += Number(d.valor || 0);
+        pago += Number(d.totalPago || 0);
+        linhas.push([
+          competencia(r),
+          r.imovel || '',
+          papelLabel(d.papel),
+          formatCurrency(d.valor || 0),
+          formatCurrency(d.totalPago || 0),
+          formatCurrency(saldo),
+          saldo <= 0.009 ? 'Pago' : 'Pendente'
+        ]);
+      });
+      (r.repasses || []).filter(p => p.corretorId === filterCorretorId).forEach(p => {
+        pagamentos.push({
+          data: p.data || '',
+          linha: [
+            p.data ? p.data.split('-').reverse().join('/') : '—',
+            r.imovel || '',
+            p.tipo === 'adiantamento' ? 'Adiantamento' : p.tipo === 'desconto' ? 'Desconto de adiant.' : 'Pagamento',
+            `${p.tipo === 'desconto' ? '- ' : ''}${formatCurrency(p.valor || 0)}`,
+            p.observacao || ''
+          ]
+        });
+      });
+    });
+
+    if (linhas.length === 0) {
+      toast.error('Nenhuma comissão deste corretor com os filtros atuais.');
+      return;
+    }
+
+    const pdf = new jsPDF();
+    desenharCabecalhoPdf(pdf, titulo);
+    let y = 34;
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(12);
+    pdf.text(nomeCorretorFiltro || 'Corretor', 14, y);
+    y += 6;
+    const mesLabel = selectedMonthFilter === 'TODOS' ? 'Todas as competências' : formatMesReferencia(selectedMonthFilter);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(9);
+    pdf.setTextColor(100, 116, 139);
+    pdf.text(`Período: ${mesLabel}   ·   ${linhas.length} comissão(ões)   ·   ${pagamentos.length} pagamento(s) registrado(s)`, 14, y);
+    pdf.setTextColor(0, 0, 0);
+    y += 8;
+
+    pdf.setFillColor(239, 246, 255);
+    pdf.roundedRect(14, y - 5, 182, 12, 2, 2, 'F');
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(9);
+    pdf.text(`Total devido: ${formatCurrency(devido)}`, 18, y + 2);
+    pdf.text(`Total pago: ${formatCurrency(pago)}`, 80, y + 2);
+    pdf.text(`Saldo: ${formatCurrency(Math.max(0, devido - pago))}`, 140, y + 2);
+    y += 16;
+
+    pdf.setFontSize(10);
+    pdf.text('Comissões por locação', 14, y);
+    y += 7;
+    y = desenharTabelaPdf(pdf, y, [
+      { label: 'Compet.', width: 18 },
+      { label: 'Imóvel', width: 60 },
+      { label: 'Papel', width: 20 },
+      { label: 'Devido', width: 22 },
+      { label: 'Pago', width: 22 },
+      { label: 'Saldo', width: 22 },
+      { label: 'Status', width: 18 }
+    ], linhas, titulo);
+
+    y += 8;
+    if (y > 260) { pdf.addPage(); desenharCabecalhoPdf(pdf, titulo); y = 34; }
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(10);
+    pdf.text('Pagamentos realizados', 14, y);
+    y += 7;
+    if (pagamentos.length === 0) {
+      pdf.setFont('helvetica', 'italic');
+      pdf.setFontSize(9);
+      pdf.setTextColor(148, 163, 184);
+      pdf.text('Nenhum pagamento registrado no período.', 14, y);
+      pdf.setTextColor(0, 0, 0);
+    } else {
+      pagamentos.sort((a, b) => a.data.localeCompare(b.data));
+      desenharTabelaPdf(pdf, y, [
+        { label: 'Data', width: 22 },
+        { label: 'Imóvel', width: 66 },
+        { label: 'Tipo', width: 34 },
+        { label: 'Valor', width: 26 },
+        { label: 'Observação', width: 34 }
+      ], pagamentos.map(p => p.linha), titulo);
+    }
+
+    const dataAtual = new Date().toISOString().split('T')[0];
+    const nomeArq = (nomeCorretorFiltro || 'corretor').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]+/g, '_');
+    const nomeArquivoMes = selectedMonthFilter === 'TODOS' ? 'todos_os_meses' : selectedMonthFilter;
+    baixarPdf(pdf, `extrato_${nomeArq}_${nomeArquivoMes}_${dataAtual}.pdf`);
+    toast.success(`Extrato de ${nomeCorretorFiltro} exportado!`);
   };
 
   const selectedRental = useMemo(() => {
@@ -734,7 +861,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
       });
     });
     return { pagos, aPagar };
-  }, [currentFiltered, filterText]);
+  }, [currentFiltered, filterText, filterCorretorId]);
 
   // Operações pagas count
   const countOperacoesPagas = useMemo(() => {
@@ -751,7 +878,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
     return currentFiltered
       .filter(r => getRowStatus(r) === "atrasado")
       .reduce((acc, r) => {
-        if (!filterText.trim()) {
+        if (!filterText.trim() && !filterCorretorId) {
           // Só o que está de fato vencido: aluguel do cliente em atraso, ou os repasses vencidos
           return acc + getStatusDetalhado(r.legacyDoc).valorAtrasado;
         }
@@ -761,7 +888,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
         );
         return acc + parteDoCorretor;
       }, 0);
-  }, [currentFiltered, filterText]);
+  }, [currentFiltered, filterText, filterCorretorId]);
 
   // Progresso percentual para os cards de repasse
   const totalDevidoRepasses = card4Data.pagos + card4Data.aPagar;
@@ -1280,12 +1407,14 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
             {/* Exportar (respeita o filtro de competência/status/busca atual) */}
             <button
               type="button"
-              onClick={handleExportAllFilteredPDF}
-              title="Exportar relatório de pagamento do rateio de todas as locações filtradas"
+              onClick={filterCorretorId ? handleExportExtratoCorretor : handleExportAllFilteredPDF}
+              title={filterCorretorId
+                ? `Baixar extrato de comissões e pagamentos de ${nomeCorretorFiltro}`
+                : "Exportar relatório de pagamento do rateio de todas as locações filtradas"}
               className="flex items-center gap-2 px-5 py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-2xl text-xs font-bold tracking-wide cursor-pointer transition-all shrink-0"
             >
               <Download className="w-4 h-4" />
-              <span>Exportar</span>
+              <span>{filterCorretorId ? "Baixar extrato" : "Exportar"}</span>
             </button>
 
             {/* Novo Repasse / Nova Locação button */}
@@ -1894,6 +2023,24 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
               )}
             </div>
 
+            {/* Corretor */}
+            <label className="flex items-center gap-2 shrink-0">
+              <span className="text-[11px] font-black uppercase text-slate-400 tracking-wider">Corretor:</span>
+              <select
+                value={filterCorretorId}
+                onChange={e => setFilterCorretorId(e.target.value)}
+                aria-label="Filtrar por corretor"
+                className={`py-1.5 pl-3 pr-8 rounded-xl text-xs font-bold border cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${
+                  filterCorretorId ? "bg-blue-50 text-blue-800 border-blue-200" : "bg-slate-50 text-slate-700 border-slate-200/80"
+                }`}
+              >
+                <option value="">Todos</option>
+                {listaCorretores.map(c => (
+                  <option key={c.id} value={c.id}>{c.nome}</option>
+                ))}
+              </select>
+            </label>
+
             {/* Status Pills */}
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[11px] font-black uppercase text-slate-400 tracking-wider mr-1">
@@ -1956,12 +2103,13 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
               </button>
 
               {/* Reset filter */}
-              {(filterText || filterStatus !== "TODOS") && (
+              {(filterText || filterStatus !== "TODOS" || filterCorretorId) && (
                 <button
                   type="button"
                   onClick={() => {
                     setFilterText("");
                     setFilterStatus("TODOS");
+                    setFilterCorretorId("");
                   }}
                   title="Limpar filtros"
                   className="p-1.5 text-slate-400 hover:text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200/60 rounded-lg cursor-pointer transition-all ml-1"
