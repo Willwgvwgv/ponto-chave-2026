@@ -144,10 +144,18 @@ export function printContractDocument(
       <meta charset="UTF-8">
       <title>${contract.titulo || "Contrato de Locação"}</title>
       <style>
+        /* Margem da folha feita por nós (cabeçalho/rodapé reservados em toda página).
+           Com margem 0 o navegador também não imprime "about:blank", data e nº da página. */
         @page {
           size: A4 portrait;
-          margin: ${marginMm}mm;
+          margin: 0;
         }
+        .folha-layout { width: 100%; border-collapse: collapse; }
+        .folha-layout > thead > tr > td,
+        .folha-layout > tfoot > tr > td,
+        .folha-layout > tbody > tr > td { padding: 0; }
+        .espaco-topo { height: ${marginMm}mm; }
+        .espaco-rodape { height: ${marginMm + 12}mm; }
         @media print {
           body {
             -webkit-print-color-adjust: exact;
@@ -166,7 +174,7 @@ export function printContractDocument(
           line-height: ${styles.lineSpacing};
           color: #0f172a;
           margin: 0;
-          padding: 0;
+          padding: 0 ${marginMm}mm;
           background: #ffffff;
         }
         .header-container {
@@ -206,9 +214,11 @@ export function printContractDocument(
         }
         .footer-container {
           position: fixed;
-          bottom: 0;
-          left: 0;
-          right: 0;
+          bottom: ${Math.max(6, marginMm / 2)}mm;
+          left: ${marginMm}mm;
+          right: ${marginMm}mm;
+          background: #ffffff;
+          gap: 16px;
           display: flex;
           justify-content: space-between;
           align-items: center;
@@ -241,6 +251,10 @@ export function printContractDocument(
     <body>
       ${styles.showWatermark ? `<div class="watermark">${styles.watermarkText || "MINUTA"}</div>` : ""}
 
+      <table class="folha-layout">
+        <thead><tr><td><div class="espaco-topo"></div></td></tr></thead>
+        <tfoot><tr><td><div class="espaco-rodape"></div></td></tr></tfoot>
+        <tbody><tr><td>
       ${styles.showHeader ? `
         <div class="header-container">
           <div class="header-left">
@@ -260,6 +274,8 @@ export function printContractDocument(
       <div class="contract-content">
         ${bodyHtml}
       </div>
+        </td></tr></tbody>
+      </table>
 
       ${styles.showFooter ? `
         <div class="footer-container">
