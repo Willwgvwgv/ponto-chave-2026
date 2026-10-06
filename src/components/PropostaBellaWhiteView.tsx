@@ -17,7 +17,7 @@ import {
   Download
 } from "lucide-react";
 import { db, collection, getDocs, addDoc, updateDoc, deleteDoc, doc, handleFirestoreError, OperationType } from "../firebase";
-import { InteressadosCidadeJardim, TIPO_INTERESSADO } from "./bellaWhite/InteressadosCidadeJardim";
+import { TIPO_INTERESSADO } from "./bellaWhite/InteressadosCidadeJardim";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -162,31 +162,7 @@ interface PropostaBellaWhiteProps {
   currentUser?: any;
 }
 
-// Tela Bella White: alterna entre as propostas e o cadastro de interessados do Cidade Jardim
-export const PropostaBellaWhiteView: React.FC<PropostaBellaWhiteProps> = (props) => {
-  const [aba, setAba] = useState<"propostas" | "cidade_jardim">(() => {
-    try { return (localStorage.getItem("bw_aba") as any) === "cidade_jardim" ? "cidade_jardim" : "propostas"; } catch { return "propostas"; }
-  });
-  const trocar = (a: "propostas" | "cidade_jardim") => {
-    setAba(a);
-    try { localStorage.setItem("bw_aba", a); } catch { /* sem armazenamento */ }
-  };
-  return (
-    <div className="space-y-4">
-      <div className="inline-flex p-1 bg-zinc-200/70 rounded-xl gap-1" role="tablist" aria-label="Bella White">
-        {([["propostas", "Propostas Bella White"], ["cidade_jardim", "Interessados Cidade Jardim"]] as const).map(([id, label]) => (
-          <button key={id} type="button" role="tab" aria-selected={aba === id} onClick={() => trocar(id)}
-            className={`h-9 px-4 rounded-lg text-sm font-medium transition-colors ${aba === id ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-600 hover:text-zinc-900"}`}>
-            {label}
-          </button>
-        ))}
-      </div>
-      {aba === "propostas" ? <PropostaBellaWhiteEditor {...props} /> : <InteressadosCidadeJardim currentUser={props.currentUser} />}
-    </div>
-  );
-};
-
-const PropostaBellaWhiteEditor: React.FC<PropostaBellaWhiteProps> = ({ companySettings, currentUser }) => {
+export const PropostaBellaWhiteView: React.FC<PropostaBellaWhiteProps> = ({ companySettings, currentUser }) => {
   // Saved proposals state list
   const [proposals, setProposals] = useState<any[]>([]);
   const [selectedProposalId, setSelectedProposalId] = useState<string>("");
@@ -588,6 +564,8 @@ const PropostaBellaWhiteEditor: React.FC<PropostaBellaWhiteProps> = ({ companySe
 
   // Identical 4-page HTML Print Trigger
   const handlePrint = (exportToWord: boolean = false) => {
+    // Logo da Fidelité no cabeçalho de cada página do arquivo
+    const logoFidelite = `${window.location.origin}/logo-fidelite.png`;
     const p1DateFormatted = comprador1.dataNascimento ? formatDateLabel(comprador1.dataNascimento) : "___/___/_____";
     const p2DateFormatted = comprador2.dataNascimento ? formatDateLabel(comprador2.dataNascimento) : "___/___/_____";
     const dataEmissaoCustom = dataProposta ? format(new Date(dataProposta + "T12:00:00"), "dd 'de' MMMM 'de' yyyy", { locale: ptBR }) : "___ de ___________ de 202_";
@@ -667,6 +645,15 @@ const PropostaBellaWhiteEditor: React.FC<PropostaBellaWhiteProps> = ({ companySe
       margin-bottom: 12px;
     }
 
+    .logo-fid {
+      height: 40px;
+      width: auto;
+      margin-right: 16px;
+      flex-shrink: 0;
+    }
+    .header-title {
+      flex: 1;
+    }
     .header-title h1 {
       font-size: 20px;
       font-weight: 800;
@@ -865,6 +852,7 @@ const PropostaBellaWhiteEditor: React.FC<PropostaBellaWhiteProps> = ({ companySe
     <!-- PAGE 1 -->
     <div class="page-break">
       <div class="header-doc">
+        <img src="${logoFidelite}" class="logo-fid" alt="Fidelité Negócios Imobiliários" />
         <div class="header-title">
           <h1>PROPOSTA DE COMPRA</h1>
           <h2>CONDOMÍNIO RESIDENCIAL BELLA WHITE</h2>
@@ -1072,6 +1060,7 @@ const PropostaBellaWhiteEditor: React.FC<PropostaBellaWhiteProps> = ({ companySe
     <!-- PAGE 2 -->
     <div class="page-break">
       <div class="header-doc">
+        <img src="${logoFidelite}" class="logo-fid" alt="Fidelité Negócios Imobiliários" />
         <div class="header-title">
           <h1>PROPOSTA DE COMPRA</h1>
           <h2>CONDOMÍNIO RESIDENCIAL BELLA WHITE</h2>
@@ -1157,6 +1146,7 @@ const PropostaBellaWhiteEditor: React.FC<PropostaBellaWhiteProps> = ({ companySe
     <!-- PAGE 3 -->
     <div class="page-break">
       <div class="header-doc">
+        <img src="${logoFidelite}" class="logo-fid" alt="Fidelité Negócios Imobiliários" />
         <div class="header-title">
           <h1>PROPOSTA DE COMPRA</h1>
           <h2>CONDOMÍNIO RESIDENCIAL BELLA WHITE</h2>
@@ -1279,6 +1269,7 @@ const PropostaBellaWhiteEditor: React.FC<PropostaBellaWhiteProps> = ({ companySe
     <!-- PAGE 4 -->
     <div class="page-break">
       <div class="header-doc">
+        <img src="${logoFidelite}" class="logo-fid" alt="Fidelité Negócios Imobiliários" />
         <div class="header-title">
           <h1>PROPOSTA DE COMPRA</h1>
           <h2>CONDOMÍNIO RESIDENCIAL BELLA WHITE</h2>

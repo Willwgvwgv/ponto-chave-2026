@@ -110,6 +110,7 @@ const PontoView = lazy(() => import('./components/ponto/PontoView').then(m => ({
 const HidrometroView = lazy(() => import('./components/hidrometro/HidrometroView').then(m => ({ default: m.HidrometroView })));
 const EnergiaView = lazy(() => import('./components/energia/EnergiaView').then(m => ({ default: m.EnergiaView })));
 const PropostaBellaWhiteView = lazy(() => import('./components/PropostaBellaWhiteView').then(m => ({ default: m.PropostaBellaWhiteView })));
+const InteressadosCidadeJardim = lazy(() => import('./components/bellaWhite/InteressadosCidadeJardim').then(m => ({ default: m.InteressadosCidadeJardim })));
 const ContratosLocacaoView = lazy(() => import('./components/contratos/ContratosLocacaoView').then(m => ({ default: m.ContratosLocacaoView })));
 import { PontoHeaderCapsule } from "./components/ponto/PontoHeaderCapsule";
 import { ConfirmModal } from './components/ui/ConfirmModal';
@@ -3162,7 +3163,7 @@ const getManualDataForTool = (name: string, url: string) => {
 function AppContent() {
   const { user, profile, isAdmin, companySettings } = useAuth();
   const [activeTab, setActiveTab] = useState<"dashboard" | "calendar" | "processes" | "process_config" | "users" | "profile" | "settings" | "contratos" | "vistorias" | "comissoes" | "simulador" | "financeiro" | "ponto" | "hidrometro" | "energia">("dashboard");
-  const [contractsSubTab, setContractsSubTab] = useState<"locacao" | "vistorias" | "despejos" | "proposta_bella">("locacao");
+  const [contractsSubTab, setContractsSubTab] = useState<"locacao" | "vistorias" | "despejos" | "proposta_bella" | "cidade_jardim">("locacao");
   const [isSidebarOpen, setIsSidebarOpen] = useState(() => window.innerWidth > 1024);
   const [viewingManualTool, setViewingManualTool] = useState<Tool | null>(null);
   const [activeManualTab, setActiveManualTab] = useState<"overview" | "tutorial" | "dicas" | "faq">("overview");
@@ -4678,6 +4679,17 @@ function AppContent() {
               >
                 Proposta Bella White
               </button>
+              <button
+                onClick={() => setContractsSubTab("cidade_jardim")}
+                className={cn(
+                  "py-3 px-5 text-[11px] font-black uppercase tracking-wider border-b-2 transition-all cursor-pointer",
+                  contractsSubTab === "cidade_jardim"
+                    ? "border-indigo-600 text-indigo-700"
+                    : "border-transparent text-slate-450 hover:text-slate-700"
+                )}
+              >
+                Interessados Cidade Jardim
+              </button>
             </div>
 
             {/* Sub-tab view renderer */}
@@ -4688,6 +4700,10 @@ function AppContent() {
             ) : contractsSubTab === "vistorias" ? (
               <Suspense fallback={<div className="flex items-center justify-center h-64 text-gray-400">Carregando vistorias...</div>}>
                 <VistoriaView isAdmin={isAdmin} user={user} profile={profile} companySettings={companySettings} />
+              </Suspense>
+            ) : contractsSubTab === "cidade_jardim" ? (
+              <Suspense fallback={<div className="flex items-center justify-center h-64 text-gray-400">Carregando cadastros...</div>}>
+                <InteressadosCidadeJardim currentUser={profile} />
               </Suspense>
             ) : contractsSubTab === "proposta_bella" ? (
               <Suspense fallback={<div className="flex items-center justify-center h-64 text-gray-400">Carregando proposta...</div>}>
