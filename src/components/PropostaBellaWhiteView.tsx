@@ -17,6 +17,7 @@ import {
   Download
 } from "lucide-react";
 import { db, collection, getDocs, addDoc, updateDoc, deleteDoc, doc, handleFirestoreError, OperationType } from "../firebase";
+import { InteressadosCidadeJardim, TIPO_INTERESSADO } from "./bellaWhite/InteressadosCidadeJardim";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -161,7 +162,31 @@ interface PropostaBellaWhiteProps {
   currentUser?: any;
 }
 
-export const PropostaBellaWhiteView: React.FC<PropostaBellaWhiteProps> = ({ companySettings, currentUser }) => {
+// Tela Bella White: alterna entre as propostas e o cadastro de interessados do Cidade Jardim
+export const PropostaBellaWhiteView: React.FC<PropostaBellaWhiteProps> = (props) => {
+  const [aba, setAba] = useState<"propostas" | "cidade_jardim">(() => {
+    try { return (localStorage.getItem("bw_aba") as any) === "cidade_jardim" ? "cidade_jardim" : "propostas"; } catch { return "propostas"; }
+  });
+  const trocar = (a: "propostas" | "cidade_jardim") => {
+    setAba(a);
+    try { localStorage.setItem("bw_aba", a); } catch { /* sem armazenamento */ }
+  };
+  return (
+    <div className="space-y-4">
+      <div className="inline-flex p-1 bg-zinc-200/70 rounded-xl gap-1" role="tablist" aria-label="Bella White">
+        {([["propostas", "Propostas Bella White"], ["cidade_jardim", "Interessados Cidade Jardim"]] as const).map(([id, label]) => (
+          <button key={id} type="button" role="tab" aria-selected={aba === id} onClick={() => trocar(id)}
+            className={`h-9 px-4 rounded-lg text-sm font-medium transition-colors ${aba === id ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-600 hover:text-zinc-900"}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {aba === "propostas" ? <PropostaBellaWhiteEditor {...props} /> : <InteressadosCidadeJardim currentUser={props.currentUser} />}
+    </div>
+  );
+};
+
+const PropostaBellaWhiteEditor: React.FC<PropostaBellaWhiteProps> = ({ companySettings, currentUser }) => {
   // Saved proposals state list
   const [proposals, setProposals] = useState<any[]>([]);
   const [selectedProposalId, setSelectedProposalId] = useState<string>("");
@@ -305,7 +330,10 @@ export const PropostaBellaWhiteView: React.FC<PropostaBellaWhiteProps> = ({ comp
       const proposalSnapshot = await getDocs(proposalsCollection);
       const list: any[] = [];
       proposalSnapshot.forEach((docSnap: any) => {
-        list.push({ id: docSnap.id, ...docSnap.data() });
+        const dados = docSnap.data();
+        // Fichas de interessados do Cidade Jardim ficam na mesma coleção; não são propostas
+        if (dados?.tipo === TIPO_INTERESSADO) return;
+        list.push({ id: docSnap.id, ...dados });
       });
       // Sort newest first
       list.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
