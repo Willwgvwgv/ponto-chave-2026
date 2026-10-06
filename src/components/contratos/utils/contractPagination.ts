@@ -223,6 +223,21 @@ export function paginateBlocks(
       continue;
     }
 
+    // "Começar em nova página" marcado no bloco
+    if (block.pageBreakBefore && currentPageBlocks.length > 0) {
+      pages.push({
+        pageIndex: currentPageIndex,
+        pageNumber: currentPageIndex + 1,
+        blocks: currentPageBlocks,
+        estimatedHeight: currentHeight,
+        maxAvailableHeight: getPageMax(currentPageIndex)
+      });
+      currentPageIndex++;
+      currentPageBlocks = [];
+      alturasItens = [];
+      currentHeight = 0;
+    }
+
     // Cláusulas e parágrafos longos podem continuar na página seguinte,
     // para não deixar espaço em branco no fim da página.
     const medida = measuredParts?.[block.id];

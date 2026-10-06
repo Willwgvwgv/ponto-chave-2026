@@ -9,7 +9,10 @@ import {
   Sparkles, 
   Building2,
   FileText,
-  ArrowUpDown
+  ArrowUpDown,
+  SlidersHorizontal,
+  Minus,
+  X
 } from "lucide-react";
 import { ContratoLocacao, ContractBlock } from "../types/contractTypes";
 import { CompanySettings } from "../../../types";
@@ -23,6 +26,7 @@ import {
   BlockPartsMeasure
 } from "../utils/contractPagination";
 import { RichHtmlBlockEditor } from "./RichHtmlBlockEditor";
+import { assinaturasDoBloco, assinaturasPadrao, ConfigAssinaturas } from "../utils/contractSignatures";
 
 // Divide o HTML em trechos de nível superior (parágrafo, lista, tabela...).
 // Texto solto entre eles vira um trecho próprio.
@@ -53,6 +57,7 @@ interface ContractPageCanvasProps {
   onSelectBlock: (blockId: string) => void;
   onUpdateBlockContent: (blockId: string, newContent: string) => void;
   onUpdateBlockTitle: (blockId: string, newTitle: string) => void;
+  onUpdateBlock?: (blockId: string, alteracoes: Partial<ContractBlock>) => void;
   onMoveBlock: (index: number, direction: "up" | "down") => void;
   onReorderBlocks?: (sourceIndex: number, destinationIndex: number) => void;
   onDuplicateBlock: (blockId: string) => void;
@@ -70,6 +75,7 @@ export const ContractPageCanvas: React.FC<ContractPageCanvasProps> = ({
   onSelectBlock,
   onUpdateBlockContent,
   onUpdateBlockTitle,
+  onUpdateBlock,
   onMoveBlock,
   onReorderBlocks,
   onDuplicateBlock,
@@ -96,6 +102,7 @@ export const ContractPageCanvas: React.FC<ContractPageCanvasProps> = ({
 
   // Drag and drop state
   const [draggedBlockIndex, setDraggedBlockIndex] = useState<number | null>(null);
+  const [ajusteBlockId, setAjusteBlockId] = useState<string | null>(null);
   const [dragOverBlockIndex, setDragOverBlockIndex] = useState<number | null>(null);
   const [dropPosition, setDropPosition] = useState<"before" | "after" | null>(null);
   const [moveMenuBlockId, setMoveMenuBlockId] = useState<string | null>(null);
@@ -213,7 +220,7 @@ export const ContractPageCanvas: React.FC<ContractPageCanvasProps> = ({
       const el = document.getElementById(`block-${block.id}`);
       if (el) {
         // espaço entre blocos na tela = maior entre o espaçamento e o space-y-4 (16px)
-        const height = el.offsetHeight + (isReadOnly ? 0 : 4) + Math.max(styles.paragraphSpacingPx || 12, 16);
+        const height = el.offsetHeight + (isReadOnly ? 0 : 4) + Math.max(styles.paragraphSpacingPx || 12, 16) + (block.espacoAcimaPx || 0);
         const prev = currentHeights[block.id] || 0;
         if (Math.abs(prev - height) > 5) {
           currentHeights[block.id] = height;
@@ -326,7 +333,15 @@ export const ContractPageCanvas: React.FC<ContractPageCanvasProps> = ({
           const trechos = trechosPorBloco[b.id];
           if (!trechos) return null;
           return (
-            <div key={b.id} data-medir-bloco={b.id} style={{ marginBottom: "40px" }}>
+            <div
+              key={b.id}
+              data-medir-bloco={b.id}
+              style={{
+                marginBottom: "40px",
+                paddingTop: b.espacoAcimaPx ? `${b.espacoAcimaPx}px` : undefined,
+                fontSize: b.escalaFonte && b.escalaFonte !== 1 ? `${styles.fontSizePt * b.escalaFonte}pt` : undefined
+              }}
+            >
               {b.type === "clause" && (
                 <div className="flex items-center gap-2 mb-1.5">
                   <span className="font-bold uppercase tracking-wide shrink-0">CLÁUSULA {b.clauseNumber || 1}ª {b.clauseTitle ? "-" : ""}</span>
@@ -521,7 +536,11 @@ export const ContractPageCanvas: React.FC<ContractPageCanvasProps> = ({
                           } ${
                             isDraggingThis ? "opacity-35 ring-2 ring-blue-400 ring-dashed bg-blue-50/50 scale-[0.99]" : ""
                           }`}
-                          style={{ marginBottom: `${styles.paragraphSpacingPx}px` }}
+                          style={{
+                            marginBottom: `${styles.paragraphSpacingPx}px`,
+                            ...(block.espacoAcimaPx && !ehContinuacao ? { marginTop: `${(isReadOnly ? 0 : -8) + block.espacoAcimaPx}px` } : {}),
+                            ...(block.escalaFonte && block.escalaFonte !== 1 ? { fontSize: `${styles.fontSizePt * block.escalaFonte}pt` } : {})
+                          }}
                         >
                           {/* Left Margin Drag Gutter Handle (touch + mouse) */}
                           {!isReadOnly && (
@@ -699,6 +718,90 @@ export const ContractPageCanvas: React.FC<ContractPageCanvasProps> = ({
                                   </div>
                                 )}
                               </div>
+
+                              {/* Ajustar: espaço acima, nova página, tamanho do texto */}
+                              {onUpdateBlock && (
+                                <div className="relative">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setAjusteBlockId(ajusteBlockId === block.id ? null : block.id);
+                                    }}
+                                    className={`px-1.5 py-0.5 rounded cursor-pointer flex items-center gap-1 text-[10px] font-bold ${
+                                      ajusteBlockId === block.id ? "bg-blue-100 text-blue-700" : "text-slate-600 hover:text-blue-700 hover:bg-slate-100"
+                                    }`}
+                                    title="Ajustar espaço, página e tamanho do texto"
+                                  >
+                                    <SlidersHorizontal className="w-3 h-3" />
+                                    <span className="text-[10px]">Ajustar</span>
+                                  </button>
+                                  {ajusteBlockId === block.id && (
+                                    <div
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="absolute right-0 top-full mt-1.5 w-64 bg-white border border-slate-200 rounded-xl shadow-2xl z-50 p-3 text-xs text-left space-y-3"
+                                    >
+                                      <div className="flex items-center justify-between font-bold text-slate-800 text-[11px]">
+                                        <span>Ajustar bloco</span>
+                                        <button type="button" onClick={() => setAjusteBlockId(null)} className="text-slate-400 hover:text-slate-700" aria-label="Fechar">
+                                          <X className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
+
+                                      <div>
+                                        <p className="text-slate-600 mb-1">Espaço acima</p>
+                                        <div className="flex items-center gap-2">
+                                          <button type="button" aria-label="Diminuir espaço acima"
+                                            onClick={() => onUpdateBlock(block.id, { espacoAcimaPx: Math.max(0, (block.espacoAcimaPx || 0) - 24) || undefined })}
+                                            disabled={!block.espacoAcimaPx}
+                                            className="w-8 h-8 border border-slate-300 rounded-lg flex items-center justify-center hover:bg-slate-50 disabled:opacity-40">
+                                            <Minus className="w-3.5 h-3.5" />
+                                          </button>
+                                          <span className="flex-1 text-center tabular-nums text-slate-900">{block.espacoAcimaPx || 0} px</span>
+                                          <button type="button" aria-label="Aumentar espaço acima"
+                                            onClick={() => onUpdateBlock(block.id, { espacoAcimaPx: Math.min(600, (block.espacoAcimaPx || 0) + 24) })}
+                                            className="w-8 h-8 border border-slate-300 rounded-lg flex items-center justify-center hover:bg-slate-50">
+                                            <Plus className="w-3.5 h-3.5" />
+                                          </button>
+                                        </div>
+                                      </div>
+
+                                      <label className="flex items-center gap-2 cursor-pointer text-slate-800">
+                                        <input type="checkbox" checked={!!block.pageBreakBefore}
+                                          onChange={(e) => onUpdateBlock(block.id, { pageBreakBefore: e.target.checked || undefined })}
+                                          className="w-4 h-4" />
+                                        Começar em nova página
+                                      </label>
+
+                                      <div>
+                                        <p className="text-slate-600 mb-1">Tamanho do texto</p>
+                                        <div className="flex items-center gap-2">
+                                          <button type="button" aria-label="Diminuir texto"
+                                            onClick={() => { const v = Math.round(((block.escalaFonte || 1) - 0.05) * 100) / 100; onUpdateBlock(block.id, { escalaFonte: v === 1 ? undefined : Math.max(0.7, v) }); }}
+                                            disabled={(block.escalaFonte || 1) <= 0.7}
+                                            className="w-8 h-8 border border-slate-300 rounded-lg flex items-center justify-center hover:bg-slate-50 disabled:opacity-40 font-bold text-[11px]">
+                                            A−
+                                          </button>
+                                          <span className="flex-1 text-center tabular-nums text-slate-900">{Math.round((block.escalaFonte || 1) * 100)}%</span>
+                                          <button type="button" aria-label="Aumentar texto"
+                                            onClick={() => { const v = Math.round(((block.escalaFonte || 1) + 0.05) * 100) / 100; onUpdateBlock(block.id, { escalaFonte: v === 1 ? undefined : Math.min(1.5, v) }); }}
+                                            disabled={(block.escalaFonte || 1) >= 1.5}
+                                            className="w-8 h-8 border border-slate-300 rounded-lg flex items-center justify-center hover:bg-slate-50 disabled:opacity-40 font-bold text-sm">
+                                            A+
+                                          </button>
+                                        </div>
+                                      </div>
+
+                                      {(block.espacoAcimaPx || block.pageBreakBefore || (block.escalaFonte && block.escalaFonte !== 1)) ? (
+                                        <button type="button"
+                                          onClick={() => onUpdateBlock(block.id, { espacoAcimaPx: undefined, pageBreakBefore: undefined, escalaFonte: undefined })}
+                                          className="w-full h-8 rounded-lg text-slate-700 hover:bg-slate-100 border border-slate-200">
+                                          Voltar ao normal
+                                        </button>
+                                      ) : null}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
 
                               {/* Duplicate */}
                               <button
@@ -888,57 +991,109 @@ export const ContractPageCanvas: React.FC<ContractPageCanvasProps> = ({
                             </div>
                           )}
 
-                          {block.type === "signatures" && (
+                          {block.type === "signatures" && (() => {
+                            const assin = assinaturasDoBloco(block, contract, variableMap);
+                            const salvarAssin = (nova: ConfigAssinaturas) =>
+                              onUpdateBlock?.(block.id, { metadata: { ...(block.metadata || {}), assinaturas: nova } });
+                            const alterarLinha = (idx: number, campo: "nome" | "papel" | "doc", valor: string) =>
+                              salvarAssin({ ...assin, linhas: assin.linhas.map((l, k) => (k === idx ? { ...l, [campo]: valor } : l)) });
+                            const impar = assin.linhas.length % 2 === 1;
+                            return (
                             <div className="pt-2">
-                              <div 
-                                className="text-center text-xs text-slate-600 mb-4"
-                                dangerouslySetInnerHTML={{ __html: resolvedContent }}
-                              />
-
-                              <div className="grid grid-cols-2 gap-8 mt-4">
-                                {/* Locador */}
-                                <div className="text-center">
-                                  <div className="border-t-2 border-slate-900 w-4/5 mx-auto mb-1"></div>
-                                  <div className="text-xs font-bold text-slate-900">{variableMap.nome_locador || "LOCADOR"}</div>
-                                  <div className="text-[10px] text-slate-500 uppercase font-semibold">LOCADOR(A)</div>
-                                  <div className="text-[10px] text-slate-400">CPF: {variableMap.cpf_locador}</div>
+                              {isActive ? (
+                                <div className="mb-4" onClick={(e) => e.stopPropagation()}>
+                                  {alternarModoEdicao}
+                                  <RichHtmlBlockEditor
+                                    blockId={block.id}
+                                    initialHtml={htmlParaEditar(block.content)}
+                                    onChange={(newHtml) => onUpdateBlockContent(block.id, newHtml)}
+                                    primaryColor={primaryColor}
+                                    placeholder="Texto de encerramento, cidade e data..."
+                                    readOnly={isReadOnly}
+                                    minHeight="45px"
+                                  />
                                 </div>
+                              ) : (
+                                <div 
+                                  className="text-center text-xs text-slate-600 mb-4"
+                                  dangerouslySetInnerHTML={{ __html: resolvedContent }}
+                                />
+                              )}
 
-                                {/* Locatário */}
-                                <div className="text-center">
-                                  <div className="border-t-2 border-slate-900 w-4/5 mx-auto mb-1"></div>
-                                  <div className="text-xs font-bold text-slate-900">{variableMap.nome_locatario || "LOCATÁRIO"}</div>
-                                  <div className="text-[10px] text-slate-500 uppercase font-semibold">LOCATÁRIO(A)</div>
-                                  <div className="text-[10px] text-slate-400">CPF: {variableMap.cpf_locatario}</div>
-                                </div>
-
-                                {/* Fiador se aplicável */}
-                                {contract.condicoes.modalidadeGarantia === "fiador" && (
-                                  <div className="col-span-2 text-center max-w-sm mx-auto mt-4">
-                                    <div className="border-t-2 border-slate-900 w-full mb-1"></div>
-                                    <div className="text-xs font-bold text-slate-900">{variableMap.nome_fiador || "FIADOR SOLIDÁRIO"}</div>
-                                    <div className="text-[10px] text-slate-500 uppercase font-semibold">FIADOR(A) E PRINCIPAL PAGADOR(A)</div>
-                                    <div className="text-[10px] text-slate-400">CPF: {variableMap.cpf_fiador}</div>
+                              <div className="grid grid-cols-2 gap-x-8 gap-y-6 mt-4">
+                                {assin.linhas.map((l, idx) => (
+                                  <div key={`ass-${idx}`} className={`text-center ${impar && idx === assin.linhas.length - 1 ? "col-span-2 max-w-sm w-full mx-auto" : ""}`}>
+                                    <div className="border-t-2 border-slate-900 w-4/5 mx-auto mb-1"></div>
+                                    <div className="text-xs font-bold text-slate-900">{l.nome}</div>
+                                    {l.papel && <div className="text-[10px] text-slate-500 uppercase font-semibold">{l.papel}</div>}
+                                    {l.doc && <div className="text-[10px] text-slate-400">{l.doc}</div>}
                                   </div>
-                                )}
-
-                                {/* Testemunhas */}
-                                <div className="text-center mt-4">
-                                  <div className="border-t border-dashed border-slate-400 w-4/5 mx-auto mb-1"></div>
-                                  <div className="text-[11px] font-semibold text-slate-700">1ª Testemunha</div>
-                                  <div className="text-[10px] text-slate-400">Nome: ___________________________</div>
-                                  <div className="text-[10px] text-slate-400">CPF: ____________________________</div>
-                                </div>
-
-                                <div className="text-center mt-4">
-                                  <div className="border-t border-dashed border-slate-400 w-4/5 mx-auto mb-1"></div>
-                                  <div className="text-[11px] font-semibold text-slate-700">2ª Testemunha</div>
-                                  <div className="text-[10px] text-slate-400">Nome: ___________________________</div>
-                                  <div className="text-[10px] text-slate-400">CPF: ____________________________</div>
-                                </div>
+                                ))}
+                                {Array.from({ length: assin.testemunhas }).map((_, idx) => (
+                                  <div key={`test-${idx}`} className="text-center mt-4">
+                                    <div className="border-t border-dashed border-slate-400 w-4/5 mx-auto mb-1"></div>
+                                    <div className="text-[11px] font-semibold text-slate-700">{idx + 1}ª Testemunha</div>
+                                    <div className="text-[10px] text-slate-400">Nome: ___________________________</div>
+                                    <div className="text-[10px] text-slate-400">CPF: ____________________________</div>
+                                  </div>
+                                ))}
                               </div>
+
+                              {isActive && onUpdateBlock && (
+                                <div className="mt-6 p-3 border border-slate-200 rounded-lg bg-slate-50 text-xs space-y-2" onClick={(e) => e.stopPropagation()}>
+                                  <p className="font-bold text-slate-800">Quem assina</p>
+                                  {assin.linhas.map((l, idx) => (
+                                    <div key={`ed-${idx}`} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 items-end">
+                                      <label className="block">
+                                        <span className="block text-[10px] text-slate-600 mb-0.5">Nome</span>
+                                        <input value={l.nome} onChange={(e) => alterarLinha(idx, "nome", e.target.value)}
+                                          className="w-full h-8 px-2 border border-slate-300 rounded-md bg-white" />
+                                      </label>
+                                      <label className="block">
+                                        <span className="block text-[10px] text-slate-600 mb-0.5">Qualidade</span>
+                                        <input value={l.papel} onChange={(e) => alterarLinha(idx, "papel", e.target.value)}
+                                          placeholder="LOCADOR(A)" className="w-full h-8 px-2 border border-slate-300 rounded-md bg-white" />
+                                      </label>
+                                      <label className="block">
+                                        <span className="block text-[10px] text-slate-600 mb-0.5">Documento</span>
+                                        <input value={l.doc} onChange={(e) => alterarLinha(idx, "doc", e.target.value)}
+                                          placeholder="CPF: 000.000.000-00" className="w-full h-8 px-2 border border-slate-300 rounded-md bg-white" />
+                                      </label>
+                                      <button type="button" title="Remover assinante" aria-label={`Remover ${l.nome || "assinante"}`}
+                                        onClick={() => salvarAssin({ ...assin, linhas: assin.linhas.filter((_, k) => k !== idx) })}
+                                        className="w-8 h-8 rounded-md text-red-600 hover:bg-red-50 flex items-center justify-center">
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  ))}
+                                  <div className="flex flex-wrap items-center gap-3 pt-1">
+                                    <button type="button"
+                                      onClick={() => salvarAssin({ ...assin, linhas: [...assin.linhas, { nome: "", papel: "", doc: "" }] })}
+                                      className="h-8 px-3 rounded-md border border-slate-300 bg-white hover:bg-slate-50 font-semibold text-slate-700 flex items-center gap-1">
+                                      <Plus className="w-3.5 h-3.5" /> Adicionar assinante
+                                    </button>
+                                    <label className="flex items-center gap-2 text-slate-700">
+                                      Testemunhas
+                                      <select value={assin.testemunhas}
+                                        onChange={(e) => salvarAssin({ ...assin, testemunhas: parseInt(e.target.value) || 0 })}
+                                        className="h-8 px-2 border border-slate-300 rounded-md bg-white">
+                                        {[0, 1, 2, 3, 4].map((n) => <option key={n} value={n}>{n}</option>)}
+                                      </select>
+                                    </label>
+                                    {block.metadata?.assinaturas && (
+                                      <button type="button"
+                                        onClick={() => onUpdateBlock(block.id, { metadata: { ...(block.metadata || {}), assinaturas: undefined } })}
+                                        className="h-8 px-3 rounded-md text-slate-600 hover:bg-slate-100"
+                                        title={`Volta para: ${assinaturasPadrao(contract, variableMap).linhas.map((x) => x.papel).join(", ")}`}>
+                                        Restaurar padrão
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
                             </div>
-                          )}
+                            );
+                          })()}
 
                           {block.type === "paragraph" && (
                             <div>

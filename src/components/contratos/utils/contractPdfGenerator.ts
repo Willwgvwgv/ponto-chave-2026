@@ -1,6 +1,9 @@
 import { ContratoLocacao } from "../types/contractTypes";
 import { CompanySettings } from "../../../types";
 import { buildVariableMap, resolveContractText } from "./contractVariableResolver";
+import { assinaturasDoBloco } from "./contractSignatures";
+
+const escaparHtml = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 /**
  * Triggers native high-fidelity vector printing for the contract.
@@ -36,6 +39,11 @@ export function printContractDocument(
 
   contract.blocks.forEach((block) => {
     const resolvedContent = resolveContractText(block.content, variableMap);
+    // Ajustes manuais do bloco: nova página, espaço acima e tamanho do texto
+    if (block.pageBreakBefore) {
+      bodyHtml += `<div style="page-break-before: always; break-before: page; height: 0;"></div>`;
+    }
+    const inicioBloco = bodyHtml.length;
 
     if (block.type === "title") {
       bodyHtml += `
@@ -87,42 +95,25 @@ export function printContractDocument(
           </div>
 
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 32px 24px; margin-top: 36px;">
-            <div style="text-align: center;">
-              <div style="border-top: 1.5px solid #0f172a; width: 85%; margin: 0 auto 6px auto;"></div>
-              <p style="font-weight: 700; font-size: 10pt; margin: 0;">${variableMap.nome_locador || "LOCADOR"}</p>
-              <p style="font-size: 8.5pt; color: #64748b; margin: 2px 0 0 0;">LOCADOR(A)</p>
-              <p style="font-size: 8pt; color: #94a3b8; margin: 0;">CPF: ${variableMap.cpf_locador || ""}</p>
-            </div>
-
-            <div style="text-align: center;">
-              <div style="border-top: 1.5px solid #0f172a; width: 85%; margin: 0 auto 6px auto;"></div>
-              <p style="font-weight: 700; font-size: 10pt; margin: 0;">${variableMap.nome_locatario || "LOCATÁRIO"}</p>
-              <p style="font-size: 8.5pt; color: #64748b; margin: 2px 0 0 0;">LOCATÁRIO(A)</p>
-              <p style="font-size: 8pt; color: #94a3b8; margin: 0;">CPF: ${variableMap.cpf_locatario || ""}</p>
-            </div>
-
-            ${contract.condicoes.modalidadeGarantia === "fiador" ? `
-              <div style="text-align: center; grid-column: span 2; max-width: 60%; margin: 12px auto 0 auto;">
-                <div style="border-top: 1.5px solid #0f172a; width: 100%; margin: 0 auto 6px auto;"></div>
-                <p style="font-weight: 700; font-size: 10pt; margin: 0;">${variableMap.nome_fiador || "FIADOR SOLIDÁRIO"}</p>
-                <p style="font-size: 8.5pt; color: #64748b; margin: 2px 0 0 0;">FIADOR(A) E PRINCIPAL PAGADOR(A)</p>
-                <p style="font-size: 8pt; color: #94a3b8; margin: 0;">CPF: ${variableMap.cpf_fiador || ""}</p>
-              </div>
-            ` : ""}
-
-            <div style="text-align: center; margin-top: 20px;">
-              <div style="border-top: 1px dashed #94a3b8; width: 85%; margin: 0 auto 6px auto;"></div>
-              <p style="font-size: 9pt; font-weight: 600; margin: 0;">1ª TESTEMUNHA</p>
-              <p style="font-size: 8pt; color: #64748b; margin: 0;">Nome: ___________________________</p>
-              <p style="font-size: 8pt; color: #64748b; margin: 0;">CPF: ____________________________</p>
-            </div>
-
-            <div style="text-align: center; margin-top: 20px;">
-              <div style="border-top: 1px dashed #94a3b8; width: 85%; margin: 0 auto 6px auto;"></div>
-              <p style="font-size: 9pt; font-weight: 600; margin: 0;">2ª TESTEMUNHA</p>
-              <p style="font-size: 8pt; color: #64748b; margin: 0;">Nome: ___________________________</p>
-              <p style="font-size: 8pt; color: #64748b; margin: 0;">CPF: ____________________________</p>
-            </div>
+            ${(() => {
+              const assin = assinaturasDoBloco(block, contract, variableMap);
+              const impar = assin.linhas.length % 2 === 1;
+              const linhas = assin.linhas.map((l, idx) => `
+                <div style="text-align: center;${impar && idx === assin.linhas.length - 1 ? " grid-column: span 2; max-width: 60%; margin: 0 auto; width: 100%;" : ""}">
+                  <div style="border-top: 1.5px solid #0f172a; width: 85%; margin: 0 auto 6px auto;"></div>
+                  <p style="font-weight: 700; font-size: 10pt; margin: 0;">${escaparHtml(l.nome || "")}</p>
+                  ${l.papel ? `<p style="font-size: 8.5pt; color: #64748b; margin: 2px 0 0 0;">${escaparHtml(l.papel)}</p>` : ""}
+                  ${l.doc ? `<p style="font-size: 8pt; color: #94a3b8; margin: 0;">${escaparHtml(l.doc)}</p>` : ""}
+                </div>`).join("");
+              const testemunhas = Array.from({ length: assin.testemunhas }).map((_, idx) => `
+                <div style="text-align: center; margin-top: 20px;">
+                  <div style="border-top: 1px dashed #94a3b8; width: 85%; margin: 0 auto 6px auto;"></div>
+                  <p style="font-size: 9pt; font-weight: 600; margin: 0;">${idx + 1}ª TESTEMUNHA</p>
+                  <p style="font-size: 8pt; color: #64748b; margin: 0;">Nome: ___________________________</p>
+                  <p style="font-size: 8pt; color: #64748b; margin: 0;">CPF: ____________________________</p>
+                </div>`).join("");
+              return linhas + testemunhas;
+            })()}
           </div>
         </div>
       `;
@@ -136,6 +127,13 @@ export function printContractDocument(
           ${resolvedContent}
         </div>
       `;
+    }
+    if (block.espacoAcimaPx || (block.escalaFonte && block.escalaFonte !== 1)) {
+      const estilo = [
+        block.espacoAcimaPx ? `margin-top: ${block.espacoAcimaPx}px;` : "",
+        block.escalaFonte && block.escalaFonte !== 1 ? `font-size: ${styles.fontSizePt * block.escalaFonte}pt;` : ""
+      ].join(" ");
+      bodyHtml = bodyHtml.slice(0, inicioBloco) + `<div style="${estilo}">` + bodyHtml.slice(inicioBloco) + `</div>`;
     }
   });
 
