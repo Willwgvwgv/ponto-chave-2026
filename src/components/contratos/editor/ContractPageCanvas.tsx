@@ -192,7 +192,7 @@ export const ContractPageCanvas: React.FC<ContractPageCanvasProps> = ({
       };
       const cab = folha.querySelector(":scope > header");
       const rod = folha.querySelector(":scope > footer");
-      const util = 1123 - marginConfig.paddingTop - marginConfig.paddingBottom - externo(cab, "bottom") - externo(rod, "top") - 4;
+      const util = 1123 - marginConfig.paddingTop - marginConfig.paddingBottom - externo(cab, "bottom") - externo(rod, "top") - 12;
       return Math.round(util);
     };
     const primeira = medir(0);
@@ -889,9 +889,9 @@ export const ContractPageCanvas: React.FC<ContractPageCanvasProps> = ({
                           )}
 
                           {block.type === "signatures" && (
-                            <div className="mt-8 pt-4">
+                            <div className="pt-2">
                               <div 
-                                className="text-center text-xs text-slate-600 mb-6"
+                                className="text-center text-xs text-slate-600 mb-4"
                                 dangerouslySetInnerHTML={{ __html: resolvedContent }}
                               />
 
