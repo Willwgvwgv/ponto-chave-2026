@@ -41,7 +41,13 @@ export const VisualContractEditor: React.FC<VisualContractEditorProps> = ({
         metadata: b.metadata ? JSON.parse(JSON.stringify(b.metadata)) : undefined
       };
       if (cloned.type === "clause") {
+        const anterior = cloned.clauseNumber;
         cloned.clauseNumber = currentClauseNum++;
+        // Subitens no formato "<strong>6.2.</strong>" acompanham o novo número da cláusula
+        if (anterior && anterior !== cloned.clauseNumber && typeof cloned.content === "string") {
+          const re = new RegExp(`<strong>${anterior}\\.(\\d+)\\.</strong>`, "g");
+          cloned.content = cloned.content.replace(re, `<strong>${cloned.clauseNumber}.$1.</strong>`);
+        }
       }
       return cloned;
     });
@@ -395,6 +401,29 @@ export const VisualContractEditor: React.FC<VisualContractEditorProps> = ({
     toast.success("Ordem das cláusulas atualizada com sucesso!");
   };
 
+  // Arrastar e soltar: muda a posição e, se soltou no topo de uma folha,
+  // marca o bloco para começar naquela folha.
+  const handleDropBlock = (sourceIndex: number, destinationIndex: number, iniciarPagina: boolean) => {
+    applyContractChange((prev) => {
+      const nextBlocks = prev.blocks.map((b) => ({ ...b }));
+      if (sourceIndex < 0 || sourceIndex >= nextBlocks.length) return prev;
+      const destino = Math.max(0, Math.min(destinationIndex, nextBlocks.length - 1));
+      if (sourceIndex === destino && !!nextBlocks[sourceIndex].pageBreakBefore === iniciarPagina) return prev;
+      const [movido] = nextBlocks.splice(sourceIndex, 1);
+      nextBlocks.splice(destino, 0, movido);
+      if (iniciarPagina) {
+        movido.pageBreakBefore = true;
+        // quem abria essa folha agora vem logo depois: não precisa mais da quebra
+        const seguinte = nextBlocks[destino + 1];
+        if (seguinte?.pageBreakBefore) delete seguinte.pageBreakBefore;
+      } else {
+        delete movido.pageBreakBefore;
+      }
+      return { ...prev, blocks: reindexClauses(nextBlocks) };
+    });
+    toast.success(iniciarPagina ? "Bloco movido para o início da folha." : "Bloco movido.");
+  };
+
   const handleDuplicateBlock = (blockId: string) => {
     applyContractChange((prev) => {
       const index = prev.blocks.findIndex((b) => b.id === blockId);
@@ -617,6 +646,7 @@ export const VisualContractEditor: React.FC<VisualContractEditorProps> = ({
           onUpdateBlock={handleUpdateBlock}
           onMoveBlock={handleMoveBlock}
           onReorderBlocks={handleReorderBlocks}
+          onDropBlock={handleDropBlock}
           onDuplicateBlock={handleDuplicateBlock}
           onDeleteBlock={handleDeleteBlock}
           onAddBlockBelow={handleAddBlockBelow}

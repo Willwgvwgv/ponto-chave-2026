@@ -60,6 +60,7 @@ interface ContractPageCanvasProps {
   onUpdateBlock?: (blockId: string, alteracoes: Partial<ContractBlock>) => void;
   onMoveBlock: (index: number, direction: "up" | "down") => void;
   onReorderBlocks?: (sourceIndex: number, destinationIndex: number) => void;
+  onDropBlock?: (sourceIndex: number, destinationIndex: number, iniciarPagina: boolean) => void;
   onDuplicateBlock: (blockId: string) => void;
   onDeleteBlock: (blockId: string) => void;
   onAddBlockBelow: (index: number) => void;
@@ -78,6 +79,7 @@ export const ContractPageCanvas: React.FC<ContractPageCanvasProps> = ({
   onUpdateBlock,
   onMoveBlock,
   onReorderBlocks,
+  onDropBlock,
   onDuplicateBlock,
   onDeleteBlock,
   onAddBlockBelow,
@@ -103,6 +105,22 @@ export const ContractPageCanvas: React.FC<ContractPageCanvasProps> = ({
   // Drag and drop state
   const [draggedBlockIndex, setDraggedBlockIndex] = useState<number | null>(null);
   const [ajusteBlockId, setAjusteBlockId] = useState<string | null>(null);
+  // Onde o bloco arrastado vai cair: folha e se é o primeiro bloco dela
+  const alvoSoltarRef = useRef<{ pagina: number; primeiro: boolean }>({ pagina: 0, primeiro: false });
+  const arrastandoIdxRef = useRef<number | null>(null);
+
+  // Solta o bloco arrastado antes/depois de outro. Soltar acima do primeiro bloco
+  // de uma folha faz o bloco começar naquela folha.
+  const soltarBloco = (origem: number, alvo: number, posicao: "before" | "after") => {
+    let destino: number;
+    if (posicao === "before") destino = origem < alvo ? alvo - 1 : alvo;
+    else destino = origem < alvo ? alvo : alvo + 1;
+    const { pagina, primeiro } = alvoSoltarRef.current;
+    const iniciarPagina = posicao === "before" && primeiro && pagina > 0;
+    if (origem === alvo && !iniciarPagina) return; // soltou em cima dele mesmo
+    if (onDropBlock) onDropBlock(origem, destino, iniciarPagina);
+    else if (origem !== destino) onReorderBlocks?.(origem, destino);
+  };
   const [dragOverBlockIndex, setDragOverBlockIndex] = useState<number | null>(null);
   const [dropPosition, setDropPosition] = useState<"before" | "after" | null>(null);
   const [moveMenuBlockId, setMoveMenuBlockId] = useState<string | null>(null);
@@ -247,6 +265,7 @@ export const ContractPageCanvas: React.FC<ContractPageCanvasProps> = ({
     isDraggingViaHandleRef.current = true;
     touchDragStartIndexRef.current = index;
     setDraggedBlockIndex(index);
+    arrastandoIdxRef.current = index;
     onSelectBlock(contract.blocks[index].id);
     if (navigator.vibrate) {
       try { navigator.vibrate(30); } catch (_) {}
@@ -290,14 +309,8 @@ export const ContractPageCanvas: React.FC<ContractPageCanvasProps> = ({
 
   const handleTouchEnd = () => {
     const fromIdx = touchDragStartIndexRef.current;
-    if (fromIdx !== null && dragOverBlockIndex !== null && fromIdx !== dragOverBlockIndex && onReorderBlocks) {
-      let targetIndex: number;
-      if (dropPosition === "before") {
-        targetIndex = fromIdx < dragOverBlockIndex ? dragOverBlockIndex - 1 : dragOverBlockIndex;
-      } else {
-        targetIndex = fromIdx < dragOverBlockIndex ? dragOverBlockIndex : dragOverBlockIndex + 1;
-      }
-      onReorderBlocks(fromIdx, targetIndex);
+    if (fromIdx !== null && dragOverBlockIndex !== null && dropPosition && (fromIdx !== dragOverBlockIndex || alvoSoltarRef.current.primeiro)) {
+      soltarBloco(fromIdx, dragOverBlockIndex, dropPosition);
       if (navigator.vibrate) {
         try { navigator.vibrate([25, 30, 25]); } catch (_) {}
       }
@@ -452,8 +465,37 @@ export const ContractPageCanvas: React.FC<ContractPageCanvasProps> = ({
                 )}
 
                 {/* Middle Section: Document Content Blocks allocated to this page */}
-                <div className="flex-1 flex flex-col justify-start relative z-10 space-y-4">
-                  {page.blocks.map(({ block, globalIndex, partStart, partEnd }) => {
+                <div
+                  className="flex-1 flex flex-col justify-start relative z-10 space-y-4"
+                  onDragOver={(e) => {
+                    if (isReadOnly || (draggedBlockIndex === null && arrastandoIdxRef.current === null) || !isDraggingViaHandleRef.current) return;
+                    const ultimo = page.blocks[page.blocks.length - 1];
+                    if (!ultimo) return;
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "move";
+                    alvoSoltarRef.current = { pagina: page.pageIndex, primeiro: false };
+                    if (dragOverBlockIndex !== ultimo.globalIndex || dropPosition !== "after") {
+                      setDragOverBlockIndex(ultimo.globalIndex);
+                      setDropPosition("after");
+                    }
+                  }}
+                  onDrop={(e) => {
+                    const origem = draggedBlockIndex ?? arrastandoIdxRef.current;
+                    if (isReadOnly || origem === null || !isDraggingViaHandleRef.current) return;
+                    const ultimo = page.blocks[page.blocks.length - 1];
+                    if (!ultimo) return;
+                    e.preventDefault();
+                    alvoSoltarRef.current = { pagina: page.pageIndex, primeiro: false };
+                    if (origem !== ultimo.globalIndex) soltarBloco(origem, ultimo.globalIndex, "after");
+                    arrastandoIdxRef.current = null;
+                    isDraggingViaHandleRef.current = false;
+                    setDraggedBlockIndex(null);
+                    setDragOverBlockIndex(null);
+                    setDropPosition(null);
+                  }}
+                >
+                  {page.blocks.map(({ block, globalIndex, partStart, partEnd }, idxNaFolha) => {
+                    const primeiroDaFolha = idxNaFolha === 0;
                     const isActive = activeBlockId === block.id && !isReadOnly;
                     const ehFragmento = partStart !== undefined;
                     const ehContinuacao = (partStart ?? 0) > 0;
@@ -463,7 +505,10 @@ export const ContractPageCanvas: React.FC<ContractPageCanvasProps> = ({
                     if (isActive && ehContinuacao) return null;
                     const isClause = block.type === "clause";
                     const isDraggingThis = draggedBlockIndex === globalIndex;
-                    const isTargetThis = dragOverBlockIndex === globalIndex && draggedBlockIndex !== null && draggedBlockIndex !== globalIndex;
+                    // soltar no próprio bloco só faz sentido para levá-lo ao topo da folha
+                    const isTargetThis = dragOverBlockIndex === globalIndex && draggedBlockIndex !== null &&
+                      (draggedBlockIndex !== globalIndex || (primeiroDaFolha && page.pageIndex > 0 && dropPosition === "before")) &&
+                      (alvoSoltarRef.current.pagina === page.pageIndex);
 
                     // Resolve text with dynamic tags
                     const resolvedContent = ehFragmento && !isActive
@@ -476,11 +521,13 @@ export const ContractPageCanvas: React.FC<ContractPageCanvasProps> = ({
                       <div key={`${block.id}-${partStart ?? "todo"}`} className="relative">
                         {/* Drop Indicator Before Block */}
                         {isTargetThis && dropPosition === "before" && !ehContinuacao && (
-                          <div className="py-2 -my-1 transition-all">
+                          <div className="absolute left-0 right-0 -top-4 z-40 pointer-events-none">
                             <div className="h-3 bg-blue-600 rounded-full shadow-lg flex items-center justify-between px-3 text-white text-[10px] font-bold animate-pulse">
                               <span className="flex items-center gap-1.5">
                                 <ChevronUp className="w-3.5 h-3.5" />
-                                Soltar AQUI (acima da {isClause ? `Cláusula ${block.clauseNumber || globalIndex + 1}ª` : block.clauseTitle || "seção"})
+                                {primeiroDaFolha && page.pageIndex > 0
+                                  ? `Soltar AQUI (início da página ${page.pageNumber})`
+                                  : `Soltar AQUI (acima da ${isClause ? `Cláusula ${block.clauseNumber || globalIndex + 1}ª` : block.clauseTitle || "seção"})`}
                               </span>
                               <span className="bg-blue-800/80 px-2 py-0.5 rounded text-[9px]">Solte o mouse ou o dedo para mover</span>
                             </div>
@@ -492,13 +539,15 @@ export const ContractPageCanvas: React.FC<ContractPageCanvasProps> = ({
                           data-canvas-block-index={globalIndex}
                           onClick={() => !isReadOnly && onSelectBlock(block.id)}
                           onDragOver={(e) => {
-                            if (isReadOnly || draggedBlockIndex === null || !isDraggingViaHandleRef.current) return;
+                            if (isReadOnly || (draggedBlockIndex === null && arrastandoIdxRef.current === null) || !isDraggingViaHandleRef.current) return;
                             e.preventDefault();
                             e.stopPropagation();
                             e.dataTransfer.dropEffect = "move";
                             const rect = e.currentTarget.getBoundingClientRect();
                             const offset = e.clientY - rect.top;
-                            const isAfter = offset > rect.height / 2;
+                            // trecho que continua uma cláusula: só dá para soltar depois dela
+                            const isAfter = ehContinuacao || offset > rect.height / 2;
+                            alvoSoltarRef.current = { pagina: page.pageIndex, primeiro: primeiroDaFolha && !ehContinuacao };
                             setDragOverBlockIndex(globalIndex);
                             setDropPosition(isAfter ? "after" : "before");
                           }}
@@ -512,18 +561,16 @@ export const ContractPageCanvas: React.FC<ContractPageCanvasProps> = ({
                             }
                           }}
                           onDrop={(e) => {
-                            if (isReadOnly || draggedBlockIndex === null || !isDraggingViaHandleRef.current) return;
+                            const origem = draggedBlockIndex ?? arrastandoIdxRef.current;
+                            if (isReadOnly || origem === null || !isDraggingViaHandleRef.current) return;
                             e.preventDefault();
                             e.stopPropagation();
-                            if (draggedBlockIndex !== globalIndex && onReorderBlocks) {
-                              let targetIndex: number;
-                              if (dropPosition === "before") {
-                                targetIndex = draggedBlockIndex < globalIndex ? globalIndex - 1 : globalIndex;
-                              } else {
-                                targetIndex = draggedBlockIndex < globalIndex ? globalIndex : globalIndex + 1;
-                              }
-                              onReorderBlocks(draggedBlockIndex, targetIndex);
-                            }
+                            // posição calculada no momento de soltar (não depende do último dragover)
+                            const r = e.currentTarget.getBoundingClientRect();
+                            const pos = ehContinuacao || e.clientY - r.top > r.height / 2 ? "after" : "before";
+                            alvoSoltarRef.current = { pagina: page.pageIndex, primeiro: primeiroDaFolha && !ehContinuacao };
+                            soltarBloco(origem, globalIndex, pos);
+                            arrastandoIdxRef.current = null;
                             isDraggingViaHandleRef.current = false;
                             setDraggedBlockIndex(null);
                             setDragOverBlockIndex(null);
@@ -552,6 +599,7 @@ export const ContractPageCanvas: React.FC<ContractPageCanvasProps> = ({
                                 e.dataTransfer.setData("application/x-contract-block", globalIndex.toString());
                                 e.dataTransfer.setData("text/plain", globalIndex.toString());
                                 setDraggedBlockIndex(globalIndex);
+                                arrastandoIdxRef.current = globalIndex;
                                 onSelectBlock(block.id);
                               }}
                               onDragEnd={() => {
@@ -565,7 +613,7 @@ export const ContractPageCanvas: React.FC<ContractPageCanvasProps> = ({
                               onTouchEnd={handleTouchEnd}
                               onTouchCancel={handleTouchEnd}
                               style={{ touchAction: "none" }}
-                              className={`absolute -left-9 top-2 ${isActive ? "opacity-100" : "opacity-0 md:group-hover:opacity-100"} transition-all p-1 text-slate-400 hover:text-blue-700 bg-white hover:bg-blue-50 border border-slate-300 rounded shadow-xs cursor-grab active:cursor-grabbing z-20 flex items-center justify-center hover:scale-110 touch-none`}
+                              className={`absolute -left-9 top-2 ${isActive ? "opacity-100" : "opacity-50 group-hover:opacity-100"} transition-all p-1 text-slate-400 hover:text-blue-700 bg-white hover:bg-blue-50 border border-slate-300 rounded shadow-xs cursor-grab active:cursor-grabbing z-20 flex items-center justify-center hover:scale-110 touch-none`}
                               title="Segure e arraste para reposicionar (mouse ou toque no celular)"
                             >
                               <GripVertical className="w-4 h-4" />
@@ -610,6 +658,7 @@ export const ContractPageCanvas: React.FC<ContractPageCanvasProps> = ({
                                   e.dataTransfer.setData("application/x-contract-block", globalIndex.toString());
                                   e.dataTransfer.setData("text/plain", globalIndex.toString());
                                   setDraggedBlockIndex(globalIndex);
+                                arrastandoIdxRef.current = globalIndex;
                                   onSelectBlock(block.id);
                                 }}
                                 onDragEnd={() => {
@@ -1122,7 +1171,7 @@ export const ContractPageCanvas: React.FC<ContractPageCanvasProps> = ({
 
                         {/* Drop Indicator After Block */}
                         {isTargetThis && dropPosition === "after" && ehUltimoFragmento && (
-                          <div className="py-2 -my-1 transition-all">
+                          <div className="absolute left-0 right-0 -bottom-4 z-40 pointer-events-none">
                             <div className="h-3 bg-blue-600 rounded-full shadow-lg flex items-center justify-between px-3 text-white text-[10px] font-bold animate-pulse">
                               <span className="flex items-center gap-1.5">
                                 <ChevronDown className="w-3.5 h-3.5" />
