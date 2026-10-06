@@ -296,6 +296,29 @@ export const VisualContractEditor: React.FC<VisualContractEditorProps> = ({
   }, [handleUndo, handleRedo]);
 
   // Block Manipulation Handlers
+  // Ajustes de layout do bloco (espaço, nova página, tamanho do texto, assinaturas)
+  const handleUpdateBlock = (blockId: string, alteracoes: Partial<ContractBlock>) => {
+    setContract((prev) => {
+      const next = {
+        ...prev,
+        blocks: prev.blocks.map((b) => {
+          if (b.id !== blockId) return b;
+          const novo: any = { ...b, ...alteracoes };
+          // Firestore não aceita undefined: remove o campo em vez de gravar undefined
+          Object.keys(novo).forEach((k) => novo[k] === undefined && delete novo[k]);
+          if (novo.metadata) {
+            Object.keys(novo.metadata).forEach((k) => novo.metadata[k] === undefined && delete novo.metadata[k]);
+            if (Object.keys(novo.metadata).length === 0) delete novo.metadata;
+          }
+          return novo as ContractBlock;
+        })
+      };
+      setSaveStatus("pendente");
+      pushHistorySnapshot(next);
+      return next;
+    });
+  };
+
   const handleUpdateBlockContent = (blockId: string, newContent: string) => {
     setContract((prev) => {
       const next = {
@@ -591,6 +614,7 @@ export const VisualContractEditor: React.FC<VisualContractEditorProps> = ({
           onSelectBlock={setActiveBlockId}
           onUpdateBlockContent={handleUpdateBlockContent}
           onUpdateBlockTitle={handleUpdateBlockTitle}
+          onUpdateBlock={handleUpdateBlock}
           onMoveBlock={handleMoveBlock}
           onReorderBlocks={handleReorderBlocks}
           onDuplicateBlock={handleDuplicateBlock}

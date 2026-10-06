@@ -110,8 +110,14 @@ export interface ContractBlock {
   content: string; // Conteúdo HTML ou texto formatado com tags {{variavel}}
   isCustomized?: boolean; // Se o usuário modificou manualmente
   isLocked?: boolean; // Se não pode ser deletado acidentalmente
-  pageBreakBefore?: boolean;
+  pageBreakBefore?: boolean; // começar este bloco em uma nova página
+  espacoAcimaPx?: number; // espaço extra acima do bloco (ajuste manual)
+  escalaFonte?: number; // 1 = tamanho normal; 0.85 menor, 1.15 maior
   metadata?: {
+    assinaturas?: {
+      linhas: { nome: string; papel: string; doc: string }[];
+      testemunhas: number;
+    };
     tableData?: { headers: string[]; rows: string[][] };
     calloutType?: "info" | "warning" | "highlight";
     signaturesList?: {
