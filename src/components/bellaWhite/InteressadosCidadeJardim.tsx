@@ -89,6 +89,23 @@ const brl = (v: number) => (v || 0).toLocaleString("pt-BR", { style: "currency",
 const dataBr = (iso: string) => (iso ? new Date(iso).toLocaleDateString("pt-BR") : "");
 const statusDe = (id: StatusInteressado) => STATUS.find((s) => s.id === id) || STATUS[0];
 
+// Logo da Fidelité em base64 para os PDFs (carregada uma vez)
+let logoCache: Promise<string | null> | null = null;
+const carregarLogo = (): Promise<string | null> => {
+  if (!logoCache) {
+    logoCache = fetch("/logo-fidelite.png")
+      .then((r) => (r.ok ? r.blob() : null))
+      .then((b) => b ? new Promise<string | null>((res) => {
+        const fr = new FileReader();
+        fr.onload = () => res(fr.result as string);
+        fr.onerror = () => res(null);
+        fr.readAsDataURL(b);
+      }) : null)
+      .catch(() => null);
+  }
+  return logoCache;
+};
+
 // Fora do componente para não recriar os campos a cada tecla (perderia o foco)
 const Campo: React.FC<{ id: string; label: string; children: React.ReactNode; className?: string }> = ({ id, label, children, className }) => (
   <div className={className}>
@@ -232,30 +249,41 @@ export const InteressadosCidadeJardim: React.FC<Props> = ({ currentUser }) => {
     toast.success(`${filtrados.length} cadastro(s) exportado(s).`);
   };
 
-  const cabecalhoPdf = (pdf: jsPDF, titulo: string) => {
-    pdf.setFillColor(15, 39, 74);
-    pdf.rect(0, 0, 210, 22, "F");
-    pdf.setTextColor(255, 255, 255);
-    pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(13);
-    pdf.text("FIDELITÉ", 14, 13);
-    pdf.setFontSize(8);
-    pdf.setFont("helvetica", "normal");
-    pdf.text("NEGÓCIOS IMOBILIÁRIOS", 14, 18);
+  // Cabeçalho dos PDFs com a logo da Fidelité (public/logo-fidelite.png)
+  const cabecalhoPdf = (pdf: jsPDF, titulo: string, logo: string | null) => {
+    if (logo) {
+      pdf.addImage(logo, "PNG", 14, 6, 36, 13.3);
+    } else {
+      pdf.setTextColor(0, 51, 141);
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(16);
+      pdf.text("Fidelité", 14, 14);
+      pdf.setTextColor(220, 38, 38);
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(8);
+      pdf.text("negócios imobiliários", 14, 19);
+    }
+    pdf.setTextColor(0, 51, 141);
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(11);
-    pdf.text(titulo, 196, 13, { align: "right" });
+    pdf.text(titulo, 196, 12, { align: "right" });
+    pdf.setTextColor(100, 116, 139);
     pdf.setFont("helvetica", "normal");
     pdf.setFontSize(8);
-    pdf.text(`${EMPREENDIMENTO} · gerado em ${new Date().toLocaleDateString("pt-BR")}`, 196, 18, { align: "right" });
+    pdf.text(`${EMPREENDIMENTO} · gerado em ${new Date().toLocaleDateString("pt-BR")}`, 196, 17, { align: "right" });
+    pdf.setDrawColor(0, 51, 141);
+    pdf.setLineWidth(0.6);
+    pdf.line(14, 23, 196, 23);
+    pdf.setLineWidth(0.2);
     pdf.setTextColor(0, 0, 0);
   };
 
-  const baixarListaPdf = () => {
+  const baixarListaPdf = async () => {
     if (filtrados.length === 0) return toast.error("Nenhum cadastro para exportar.");
+    const logo = await carregarLogo();
     const pdf = new jsPDF();
     const titulo = "INTERESSADOS — PRÉ-LANÇAMENTO";
-    cabecalhoPdf(pdf, titulo);
+    cabecalhoPdf(pdf, titulo, logo);
     const cols = [
       { l: "Cadastro", w: 20 }, { l: "Nome", w: 50 }, { l: "Telefone", w: 30 }, { l: "Cidade", w: 28 },
       { l: "Lotes", w: 12 }, { l: "Pagamento", w: 26 }, { l: "Situação", w: 16 }
@@ -276,7 +304,7 @@ export const InteressadosCidadeJardim: React.FC<Props> = ({ currentUser }) => {
     cab();
     pdf.setFont("helvetica", "normal");
     filtrados.forEach((i, idx) => {
-      if (y > 280) { pdf.addPage(); cabecalhoPdf(pdf, titulo); y = 32; cab(); pdf.setFont("helvetica", "normal"); }
+      if (y > 280) { pdf.addPage(); cabecalhoPdf(pdf, titulo, logo); y = 32; cab(); pdf.setFont("helvetica", "normal"); }
       if (idx % 2 === 1) { pdf.setFillColor(248, 250, 252); pdf.rect(14, y - 5, 182, 7, "F"); }
       pdf.setFontSize(7.5);
       const valores = [dataBr(i.createdAt), i.nome, i.telefone, i.cidade, String(i.quantidadeLotes || ""),
@@ -289,9 +317,10 @@ export const InteressadosCidadeJardim: React.FC<Props> = ({ currentUser }) => {
     pdf.save(`interessados_cidade_jardim_${new Date().toISOString().slice(0, 10)}.pdf`);
   };
 
-  const imprimirFicha = (i: Interessado) => {
+  const imprimirFicha = async (i: Interessado) => {
+    const logo = await carregarLogo();
     const pdf = new jsPDF();
-    cabecalhoPdf(pdf, "FICHA DE INTERESSE");
+    cabecalhoPdf(pdf, "FICHA DE INTERESSE", logo);
     let y = 34;
     const secao = (t: string) => {
       y += 2;
