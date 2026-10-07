@@ -403,12 +403,19 @@ export const VENDA_FINANCIAMENTO_BLOCKS: ContractBlock[] = [
 // Locação residencial no modelo usado pela imobiliária (cláusulas por seção:
 // destinação, prazo, vistoria, preferência, comunicação, valores, reajuste,
 // benfeitorias, garantia, devolução, prorrogação e foro). Muda só a garantia.
-function locacaoModeloImobiliaria(subtitulo: string, garantia: string): ContractBlock[] {
+// Destinação comercial (não residencial): ramo de atividade, alvarás e adaptações
+const DESTINACAO_COMERCIAL = `<p><strong>1.1.</strong> O imóvel destina-se exclusivamente a fins não residenciais (comerciais), para o exercício, pelo LOCATÁRIO, da atividade de ____________________________________________, sendo proibido sublocá-lo, cedê-lo, emprestá-lo ou dar-lhe outra destinação sem autorização prévia e por escrito do LOCADOR.</p>
+<p><strong>1.2.</strong> Cabe ao LOCATÁRIO obter e manter válidos, às suas expensas, o alvará de funcionamento e as licenças sanitárias, ambientais, do Corpo de Bombeiros e demais exigências dos órgãos públicos para a sua atividade, respondendo por multas, interdições e demais penalidades delas decorrentes. A falta ou demora na obtenção dessas licenças não suspende nem reduz o pagamento do aluguel e dos encargos.</p>
+<p><strong>1.3.</strong> Letreiros, alterações de fachada e adaptações das instalações para a atividade dependem de autorização prévia e por escrito do LOCADOR e seguem o disposto na cláusula de benfeitorias e construções.</p>`;
+
+function locacaoModeloImobiliaria(subtitulo: string, garantia: string, finalidade: "residencial" | "comercial" = "residencial"): ContractBlock[] {
   return [
     {
       id: "block-title",
       type: "title",
-      content: "CONTRATO DE LOCAÇÃO DE IMÓVEL RESIDENCIAL",
+      content: finalidade === "comercial"
+        ? "CONTRATO DE LOCAÇÃO DE IMÓVEL NÃO RESIDENCIAL (COMERCIAL)"
+        : "CONTRATO DE LOCAÇÃO DE IMÓVEL RESIDENCIAL",
       isLocked: true
     },
     {
@@ -438,7 +445,9 @@ function locacaoModeloImobiliaria(subtitulo: string, garantia: string): Contract
       clauseNumber: 1,
       clauseTitle: "DA DESTINAÇÃO",
       sectionCategory: "Objeto da locação",
-      content: `<p><strong>1.1.</strong> A finalidade do imóvel é exclusivamente residencial, sendo proibido ao LOCATÁRIO sublocá-lo ou dar qualquer outra finalidade ao mesmo.</p>`
+      content: finalidade === "comercial"
+        ? DESTINACAO_COMERCIAL
+        : `<p><strong>1.1.</strong> A finalidade do imóvel é exclusivamente residencial, sendo proibido ao LOCATÁRIO sublocá-lo ou dar qualquer outra finalidade ao mesmo.</p>`
     },
     {
       id: "clause-2",
@@ -576,12 +585,32 @@ export const LOCACAO_LOCARMAIS_BLOCKS: ContractBlock[] = locacaoModeloImobiliari
 <p><strong>Nota — ANEXO I:</strong> é o termo firmado entre a LOCARMAIS e o LOCATÁRIO, impresso no acesso restrito da imobiliária e extraído do processo eletrônico de análise do LOCATÁRIO após a LOCARMAIS aprovar o cadastro e o inquilino aceitar os Termos e Condições Gerais.</p>`
 );
 
+// Cláusula 9 — texto padrão oficial da Loft (Fiança Aluguel)
+const GARANTIA_LOFT = `<p><strong>9.1.</strong> O LOCATÁRIO realizou a contratação da <strong>LOFT SOLUÇÕES FINANCEIRAS S/A.</strong>, pessoa jurídica de direito privado, inscrita no CNPJ sob o n.º 25.027.928/0001-90 ("LOFT"), à qual se compromete, quando solicitado pelo LOCADOR, por meio da IMOBILIÁRIA (na qualidade de seu representante), a efetuar o pagamento de eventuais débitos relativos ao aluguel e demais encargos da presente locação que venham a ser inadimplidos pelo LOCATÁRIO até o limite do valor máximo afiançado, conforme condições constantes nos Termos e Condições Gerais da FIANÇA ALUGUEL ("T&amp;C") firmado pelo LOCATÁRIO, constantes no <strong>ANEXO I</strong> deste instrumento, com o que o LOCADOR anui expressamente.</p>
+<p><strong>9.2.</strong> O LOCADOR e o LOCATÁRIO declaram estar cientes e de acordo com todas as condições e limitações relativas à fiança prestada pela LOFT, notadamente, no tocante a: (i) o valor máximo afiançado; (ii) as limitações da responsabilidade da LOFT; (iii) o prazo de vigência da fiança contratada; (iv) as condições para sua renovação; (v) a possibilidade da LOFT substituir a fiança prestada por outra Modalidade de Garantia, especialmente, por seguro garantia financeiro; (vi) as hipóteses de término da FIANÇA ALUGUEL, que ocorrerá pelo primeiro dos seguintes eventos: (a) a entrega das chaves do imóvel ao LOCADOR; (b) a certidão de despejo emitida por Oficial de Justiça em ação de despejo; ou (c) a desocupação e disponibilização do imóvel ao LOCADOR; (vii) a inaplicabilidade, em relação à LOFT, de eventuais cláusulas deste instrumento que contrariem os T&amp;C; e (viii) <strong>a rescisão imediata da FIANÇA ALUGUEL, com a consequente liberação da LOFT do pagamento de qualquer nova indenização, em caso de inadimplemento da contraprestação devida à LOFT pela prestação da fiança ("Taxa LOFT")</strong>.</p>
+<p><strong>9.3.</strong> O LOCATÁRIO e o LOCADOR reconhecem que o Contrato de Locação será considerado automaticamente rescindido e, por consequência, também será rescindida a garantia LOFT FIANÇA ALUGUEL em qualquer das hipóteses de término previstas anteriormente, ficando a LOFT imediatamente liberada do pagamento de qualquer indenização.</p>
+<p><strong>9.4.</strong> O LOCADOR declara-se ciente e concorda que os pagamentos dos valores afiançados serão realizados pela LOFT mediante depósito à IMOBILIÁRIA, na qualidade de representante legal do LOCADOR, e que a LOFT se sub-rogará com relação aos valores desembolsados, operando-se, de forma automática, a cessão não onerosa de todos os direitos do LOCADOR em relação ao pagamento efetuado, inclusive, mas não se limitando, a eventuais multas penais ou moratórias devidas pelo LOCATÁRIO. Nesta hipótese, o LOCADOR reconhece e aceita expressamente que, uma vez realizados os pagamentos à IMOBILIÁRIA, a LOFT se exime de qualquer responsabilidade perante o LOCADOR caso a IMOBILIÁRIA não realize o repasse dos valores ao LOCADOR.</p>
+<p><strong>9.5.</strong> O LOCATÁRIO concorda expressamente que, em caso de exoneração da LOFT como fiadora por qualquer motivo detalhado nos T&amp;C, especialmente decorrente do inadimplemento do LOCATÁRIO, caberá a ele promover, no prazo máximo de 30 (trinta) dias, a substituição da garantia locatícia prestada, o que só ocorrerá mediante expresso aceite da nova modalidade pelo LOCADOR, sob pena de infração contratual e ajuizamento da competente ação de despejo.</p>
+<p><strong>9.6.</strong> O e-mail indicado pelo LOCATÁRIO para a LOFT quando da contratação da FIANÇA ALUGUEL será considerado apto para recebimento de qualquer comunicação (inclusive judiciais) acerca do Contrato de Locação e decorrentes dos T&amp;C, independentemente de confirmação de recebimento. Desta forma, o LOCATÁRIO tem ciência que deverá manter seus dados cadastrais atualizados junto à LOFT.</p>
+<p><strong>9.7.</strong> Para fins de cumprimento das obrigações previstas neste Contrato de Locação e nos T&amp;C a ele vinculados, o LOCADOR, por meio deste instrumento, <strong>outorga poderes específicos</strong> à LOFT, na qualidade de fiadora do contrato de locação, de forma expressa, irrevogável e irretratável, <strong>mandato específico</strong> para representá-lo nas seguintes situações:</p>
+<p><strong><em>(a)</em></strong> Na hipótese de rescisão motivada dos Termos e Condições firmados entre a LOFT e a IMOBILIÁRIA, em razão do descumprimento, pela IMOBILIÁRIA, das obrigações relativas à FIANÇA ALUGUEL, quais sejam: (i) a falta de repasse da Taxa LOFT na modalidade de Pagamento Via Imobiliária (PVI); (ii) a existência de indícios de participação em fraude; (iii) a cessão dos Termos e Condições da IMOBILIÁRIA a terceiros em desacordo com o disposto no referido instrumento; e (iv) o descumprimento das Políticas da LOFT publicadas em seu site oficial. Nestas hipóteses, o LOCADOR, desde já, autoriza que a LOFT, de forma transitória, exerça os poderes anteriormente outorgados pelo LOCADOR à IMOBILIÁRIA exclusivamente no que se refere à FIANÇA ALUGUEL, sub-rogando-se, na medida do necessário, nos direitos e obrigações decorrentes dos referidos Termos e Condições, respeitado o direito de decisão do LOCADOR sobre a administração do imóvel;</p>
+<p><strong><em>(b)</em></strong> Notificar o LOCATÁRIO, em nome do LOCADOR, em especial para que apresente nova modalidade de garantia locatícia no prazo de até 30 (trinta) dias, conforme previsto no artigo 40, §2º da Lei nº 8.245/1991 (Lei do Inquilinato), sob pena de rescisão contratual e adoção das medidas legais cabíveis;</p>
+<p><strong><em>(c)</em></strong> Na hipótese de adesão a solução de Gestão de Despejos prestada pela LOFT, contratar advogado(s) e outorgar-lhes poderes, para promover, em nome do LOCADOR, o ajuizamento, condução e acompanhamento de <strong>ação de despejo</strong>, bem como outras ações judiciais ou procedimentos arbitrais relacionados à presente locação, incluindo, mas não se limitando a ações possessórias, medidas cautelares e ações de cobrança, perante qualquer juízo, instância, tribunal ou câmara arbitral (procuração ad judicia);</p>
+<p><strong><em>(d)</em></strong> Ainda na hipótese de adesão a solução de Gestão de Despejos, os advogados contratados poderão receber poderes especiais para, em nome do LOCADOR, <strong>transigir, desistir, receber e dar quitação, firmar compromissos, renunciar a direitos, desistir de recursos e/ou reconhecer a procedência de pedidos</strong>, desde que tais atos estejam relacionados à defesa dos interesses do LOCADOR no âmbito da locação ora contratada.</p>
+<p><strong>Parágrafo Primeiro.</strong> Os poderes permanecerão válidos enquanto vigente o presente contrato ou até que sejam expressamente revogados por instrumento escrito e registrado, sem prejuízo da validade dos atos já praticados.</p>
+<p><strong>Parágrafo Segundo.</strong> O exercício dos poderes previstos nos itens (c) e (d) deste instrumento está condicionado à adesão do LOCADOR, por meio da IMOBILIÁRIA, à solução de Gestão de Despejos prestada pela LOFT, conforme regras aplicáveis nos Termos e Condições da Fiança Aluguel.</p>
+<p><strong>Nota — ANEXO I:</strong> é o termo firmado entre a LOFT e o LOCATÁRIO, emitido na plataforma da Loft após a aprovação do cadastro e o aceite dos Termos e Condições Gerais pelo inquilino.</p>`;
+
 export const LOCACAO_LOFT_BLOCKS: ContractBlock[] = locacaoModeloImobiliaria(
-  "COM GARANTIA LOCATÍCIA LOFT (FIANÇA CREDPAGO)",
-  `<p><strong>9.1.</strong> O LOCATÁRIO realizou a contratação da garantia locatícia <strong>LOFT FIANÇA (CredPago)</strong>, ______________________________________________, inscrita no CNPJ/MF sob o nº ______________________, a qual se compromete a efetuar o pagamento de eventuais débitos relativos ao aluguel e demais encargos da presente locação que venham a ser inadimplidos pelo LOCATÁRIO, conforme condições e limitações constantes nos Termos e Condições Gerais da garantia Loft, que integram o presente contrato como <strong>ANEXO I</strong>.</p>
-<p><strong>9.2.</strong> As partes declaram expressamente que estão cientes de todas as condições e limitações relativas à garantia prestada pela LOFT, notadamente quanto (a) ao valor máximo de sua responsabilidade, (b) às limitações de sua responsabilidade, (c) ao prazo de sua vigência, (d) às condições para sua renovação e (e) às hipóteses de sua exoneração.</p>
-<p><strong>9.3.</strong> O LOCATÁRIO declara, ainda, estar ciente de que, em caso de cancelamento ou exoneração da garantia LOFT, caberá a ele promover, no prazo máximo de 30 (trinta) dias, a substituição da garantia locatícia, sob pena de infração contratual e ajuizamento da competente ação de despejo.</p>
-<p><strong>Nota — ANEXO I:</strong> é o termo firmado entre a LOFT e o LOCATÁRIO, emitido na plataforma da Loft após a aprovação do cadastro e o aceite dos Termos e Condições Gerais pelo inquilino.</p>`
+  "COM GARANTIA LOCATÍCIA LOFT (FIANÇA ALUGUEL)",
+  GARANTIA_LOFT
+);
+
+// Locação comercial / não residencial no mesmo modelo da imobiliária, com garantia Loft
+export const LOCACAO_COMERCIAL_LOFT_BLOCKS: ContractBlock[] = locacaoModeloImobiliaria(
+  "COM GARANTIA LOCATÍCIA LOFT (FIANÇA ALUGUEL)",
+  GARANTIA_LOFT,
+  "comercial"
 );
 
 export const INITIAL_PREDEFINED_TEMPLATES: ContratoModelo[] = [
@@ -634,7 +663,7 @@ export const INITIAL_PREDEFINED_TEMPLATES: ContratoModelo[] = [
     id: "modelo-locacao-loft",
     companyId: "global",
     nome: "Contrato Locação Loft",
-    descricao: "Locação residencial no modelo da imobiliária, com garantia Loft (fiança CredPago), multa de 1,5 aluguel e rescisão sem multa após 12 meses.",
+    descricao: "Locação residencial no modelo da imobiliária, com garantia Loft (Fiança Aluguel), multa de 1,5 aluguel e rescisão sem multa após 12 meses.",
     tipoLocacao: "residencial",
     isPadrao: false,
     categoria: "Garantia Digital",
@@ -654,6 +683,21 @@ export const INITIAL_PREDEFINED_TEMPLATES: ContratoModelo[] = [
     isPadrao: false,
     categoria: "Garantia Digital",
     blocks: LOCACAO_LOCARMAIS_BLOCKS,
+    styleSettings: DEFAULT_STYLE_SETTINGS,
+    criadoPorUid: "system",
+    criadoPorNome: "Ponto Chave",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+  {
+    id: "modelo-locacao-comercial-loft",
+    companyId: "global",
+    nome: "Locação Comercial / Não Residencial com Loft",
+    descricao: "Locação comercial no modelo da imobiliária (ramo de atividade, alvarás e adaptações), com garantia Loft (Fiança Aluguel), multa de 1,5 aluguel e rescisão sem multa após 12 meses.",
+    tipoLocacao: "comercial",
+    isPadrao: false,
+    categoria: "Comercial",
+    blocks: LOCACAO_COMERCIAL_LOFT_BLOCKS,
     styleSettings: DEFAULT_STYLE_SETTINGS,
     criadoPorUid: "system",
     criadoPorNome: "Ponto Chave",
