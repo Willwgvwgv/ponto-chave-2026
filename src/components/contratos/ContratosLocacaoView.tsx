@@ -314,7 +314,7 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
       companyId,
       numeroContrato: contractNumber,
       titulo: novoContratoForm.titulo || (ehVenda ? `Compra e Venda - ${novoContratoForm.locatarioNome || "Novo Comprador"}` : `Locação - ${novoContratoForm.locatarioNome || "Novo Inquilino"}`),
-      tipoLocacao: novoContratoForm.tipoLocacao,
+      tipoLocacao: chosenTemplate?.tipoLocacao || novoContratoForm.tipoLocacao,
       tipoDocumento: ehVenda ? "venda" : "locacao",
       status: "rascunho",
       modeloOrigemId: chosenTemplate.id,
@@ -355,7 +355,7 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
         tipoImovel: ehVenda
           ? (novoContratoForm.tipoLocacao === "comercial" ? "Sala Comercial" : "Apartamento Residencial")
           : (novoContratoForm.imovelTipo.trim() || "Casa"),
-        destinacao: novoContratoForm.tipoLocacao === "comercial" ? "comercial" : "residencial"
+        destinacao: (chosenTemplate?.tipoLocacao || novoContratoForm.tipoLocacao) === "comercial" ? "comercial" : "residencial"
       },
       condicoes: {
         valorAluguel: novoContratoForm.valorAluguel,
