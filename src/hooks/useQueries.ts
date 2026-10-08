@@ -1952,6 +1952,40 @@ export function useUpdateEnergiaMutation() {
   });
 }
 
+// Importa várias locações de uma vez (ex.: a partir das comissões e contratos).
+// Um único aviso no fim, com quantas foram criadas e quantas falharam.
+export function useImportEnergiaMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ registros }: { registros: Omit<EnergiaLocacao, "id" | "createdAt" | "updatedAt">[]; companyId: string }) => {
+      let criadas = 0;
+      let falhas = 0;
+      for (const r of registros) {
+        const id = "energia-" + Math.random().toString(36).substring(2, 9) + Date.now().toString(36).slice(-3);
+        const now = new Date().toISOString();
+        try {
+          await setDoc(doc(db, "energia_locacoes", id), semUndefined({ ...r, id, createdAt: now, updatedAt: now }, "omitir"));
+          criadas++;
+        } catch (err) {
+          console.error("Falha ao importar locação para energia:", err);
+          falhas++;
+        }
+      }
+      return { criadas, falhas };
+    },
+    onSuccess: ({ criadas, falhas }, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["energia_locacoes", variables.companyId || "default_agency"] });
+      if (falhas > 0) toast.error(`${criadas} locação(ões) importada(s); ${falhas} não puderam ser salvas.`);
+      else toast.success(`${criadas} locação(ões) importada(s).`);
+    },
+    onError: (err) => {
+      console.error(err);
+      toast.error("Erro ao importar locações.");
+    }
+  });
+}
+
 export function useDeleteEnergiaMutation() {
   const queryClient = useQueryClient();
 

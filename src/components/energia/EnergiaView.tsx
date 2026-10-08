@@ -19,12 +19,64 @@ import {
   useEnergiaLocacoes,
   useCreateEnergiaMutation,
   useUpdateEnergiaMutation,
-  useDeleteEnergiaMutation
+  useDeleteEnergiaMutation,
+  useImportEnergiaMutation
 } from "../../hooks/useQueries";
-import { formatPersonName, maskCPF } from "../../lib/utils";
+import { formatPersonName, maskDoc } from "../../lib/utils";
 import { toast } from "sonner";
 import { EnergiaFormModal } from "./EnergiaFormModal";
 import { ConfirmModal } from "../ui/ConfirmModal";
+import { db, collection, getDocs, query, where } from "../../firebase";
+
+// Locação encontrada nas comissões/contratos que ainda não está na energia
+interface CandidatoImportacao {
+  chave: string;
+  imovel: string;
+  inquilino: string;
+  cpf?: string;
+  unidadeConsumidora?: string;
+  origem: string;
+  codigoContrato?: string;
+  telefone?: string;
+  observacao?: string;
+}
+
+// Lê CSV (vírgula ou ponto e vírgula, com aspas) e devolve linhas como objetos pelo cabeçalho
+const lerCsv = (texto: string): Record<string, string>[] => {
+  const t = texto.replace(/^\uFEFF/, "");
+  const primeira = t.split(/\r?\n/, 1)[0] || "";
+  const sep = (primeira.match(/;/g) || []).length > (primeira.match(/,/g) || []).length ? ";" : ",";
+  const linhas: string[][] = [];
+  let campo = "", linha: string[] = [], aspas = false;
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (aspas) {
+      if (c === '"' && t[i + 1] === '"') { campo += '"'; i++; }
+      else if (c === '"') aspas = false;
+      else campo += c;
+    } else if (c === '"') aspas = true;
+    else if (c === sep) { linha.push(campo); campo = ""; }
+    else if (c === "\n" || c === "\r") {
+      if (c === "\r" && t[i + 1] === "\n") i++;
+      linha.push(campo); campo = "";
+      if (linha.some(v => v.trim())) linhas.push(linha);
+      linha = [];
+    } else campo += c;
+  }
+  linha.push(campo);
+  if (linha.some(v => v.trim())) linhas.push(linha);
+  const [cab, ...resto] = linhas;
+  if (!cab) return [];
+  const chaves = cab.map(h => h.trim().toLowerCase());
+  return resto.map(l => Object.fromEntries(chaves.map((k, i) => [k, (l[i] || "").trim()])));
+};
+
+// Número do imóvel que não é número de verdade ("0", "00", "S/N")
+const numeroValido = (n: string) => !!n && !/^(0+|s\/?n)$/i.test(n.trim());
+
+const normalizar = (v?: string) =>
+  (v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+const NOMES_GENERICOS = new Set(["", "locatario", "inquilino", "novoinquilino", "naoinformado"]);
 
 interface EnergiaViewProps {
   isAdmin: boolean;
@@ -93,6 +145,147 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
   const createMutation = useCreateEnergiaMutation();
   const updateMutation = useUpdateEnergiaMutation();
   const deleteMutation = useDeleteEnergiaMutation();
+  const importMutation = useImportEnergiaMutation();
+  const [buscandoLocacoes, setBuscandoLocacoes] = useState(false);
+  const [candidatos, setCandidatos] = useState<CandidatoImportacao[] | null>(null);
+  const [marcados, setMarcados] = useState<Set<string>>(new Set());
+
+  // Junta as locações dos contratos e das comissões de locação que ainda não estão aqui.
+  // Contratos vêm primeiro (trazem CPF e, às vezes, a unidade consumidora).
+  const buscarLocacoes = async () => {
+    setBuscandoLocacoes(true);
+    try {
+      const [snapContratos, snapComissoes] = await Promise.all([
+        getDocs(query(collection(db, "contratos_locacao"), where("companyId", "==", companyId))).catch(() => null),
+        getDocs(query(collection(db, "comissoes"), where("companyId", "==", companyId))).catch(() => null)
+      ]);
+      const imoveisVistos = new Set(energias.map(e => normalizar(e.imovel)).filter(Boolean));
+      const inquilinosVistos = new Set(energias.map(e => normalizar(e.inquilino)).filter(Boolean));
+      const lista: CandidatoImportacao[] = [];
+      const adicionar = (c: CandidatoImportacao) => {
+        const ni = normalizar(c.imovel);
+        const nq = normalizar(c.inquilino);
+        if (!ni || NOMES_GENERICOS.has(nq)) return;
+        if (imoveisVistos.has(ni) || inquilinosVistos.has(nq)) return;
+        imoveisVistos.add(ni);
+        inquilinosVistos.add(nq);
+        lista.push({ ...c, chave: `${ni}|${nq}` });
+      };
+
+      const contratos: any[] = [];
+      snapContratos?.forEach((d: any) => contratos.push({ id: d.id, ...d.data() }));
+      contratos
+        .filter(c => c.tipoDocumento !== "venda" && !["cancelado", "finalizado"].includes(c.status))
+        .forEach(c => {
+          const im = c.imovel || {};
+          const loc = (c.locatarios || [])[0] || {};
+          const doc = String(loc.cpfCnpj || "").replace(/\D/g, "");
+          adicionar({
+            chave: "",
+            imovel: [im.endereco, im.numero ? `nº ${im.numero}` : "", im.complemento, im.bairro].filter(Boolean).join(", "),
+            inquilino: loc.nome || "",
+            cpf: doc.length === 11 ? doc : undefined,
+            unidadeConsumidora: im.energiaMedidor || undefined,
+            origem: "Contrato"
+          });
+        });
+
+      const comissoes: any[] = [];
+      snapComissoes?.forEach((d: any) => comissoes.push({ id: d.id, ...d.data() }));
+      comissoes
+        .sort((a, b) => String(b.mesReferencia || "").localeCompare(String(a.mesReferencia || "")))
+        .forEach(c => adicionar({ chave: "", imovel: c.imovel || "", inquilino: c.inquilino || "", origem: "Comissão de locação" }));
+
+      if (!snapContratos && !snapComissoes) {
+        toast.error("Não foi possível ler as locações. Verifique a conexão e tente de novo.");
+        return;
+      }
+      if (lista.length === 0) {
+        toast.success("Todas as locações já estão no acompanhamento de energia.");
+        return;
+      }
+      setCandidatos(lista);
+      setMarcados(new Set(lista.map(c => c.chave)));
+    } finally {
+      setBuscandoLocacoes(false);
+    }
+  };
+
+  // Importação pela planilha de locações exportada do sistema de administração
+  const inputCsvRef = React.useRef<HTMLInputElement>(null);
+  const importarPlanilha = async (arquivo: File) => {
+    try {
+      const linhas = lerCsv(await arquivo.text());
+      if (linhas.length === 0 || !("inquilino_nome" in linhas[0])) {
+        toast.error("Planilha não reconhecida. Use a exportação de Locações (com a coluna inquilino_nome).");
+        return;
+      }
+      const codigosVistos = new Set(energias.map(e => e.codigoContrato).filter(Boolean) as string[]);
+      const paresVistos = new Set(energias.map(e => `${normalizar(e.imovel)}|${normalizar(e.inquilino)}`));
+      const lista: CandidatoImportacao[] = [];
+      let ignoradas = 0;
+      linhas.forEach(l => {
+        if (l.status && !/^ativ/i.test(l.status)) { ignoradas++; return; }
+        const inquilino = l.inquilino_nome || "";
+        if (NOMES_GENERICOS.has(normalizar(inquilino))) return;
+        const partes = [
+          `${l.endereco_imovel || ""}${numeroValido(l.numero_imovel || "") ? `, nº ${l.numero_imovel}` : ""}`,
+          numeroValido(l.complemento_imovel || "") ? l.complemento_imovel : "",
+          l.bairro_imovel,
+          l.cidade_imovel
+        ].map(p => (p || "").trim()).filter(Boolean);
+        const imovel = partes.join(", ") || l.nome_imovel || "";
+        const codigo = l.codigo || l.id || "";
+        const par = `${normalizar(imovel)}|${normalizar(inquilino)}`;
+        if ((codigo && codigosVistos.has(codigo)) || paresVistos.has(par)) return;
+        if (codigo) codigosVistos.add(codigo);
+        paresVistos.add(par);
+        const doc = (l.cpf_cnpj_inquilino || "").replace(/\D/g, "");
+        lista.push({
+          chave: `csv-${codigo || par}`,
+          imovel,
+          inquilino,
+          cpf: doc.length === 11 || doc.length === 14 ? doc : undefined,
+          origem: `Planilha · contrato ${codigo}`,
+          codigoContrato: codigo || undefined,
+          telefone: (l.celular_inquilino || "").replace(/\D/g, "") || undefined,
+          observacao: [l.nome_imovel ? `Imóvel: ${l.nome_imovel}` : "", l.tipo ? `Tipo: ${l.tipo}` : "", l.data_inicio_contrato ? `Início: ${l.data_inicio_contrato}` : ""].filter(Boolean).join(" · ")
+        });
+      });
+      if (lista.length === 0) {
+        toast.success(ignoradas ? `Nada novo para importar (${ignoradas} locação(ões) não ativa(s) ignorada(s)).` : "Todas as locações da planilha já estão aqui.");
+        return;
+      }
+      setCandidatos(lista);
+      setMarcados(new Set(lista.map(c => c.chave)));
+    } catch (err) {
+      console.error(err);
+      toast.error("Não foi possível ler a planilha.");
+    } finally {
+      if (inputCsvRef.current) inputCsvRef.current.value = "";
+    }
+  };
+
+  const importarMarcadas = () => {
+    if (!candidatos || !profile?.uid) return;
+    const registros = candidatos
+      .filter(c => marcados.has(c.chave))
+      .map(c => ({
+        companyId,
+        imovel: c.imovel,
+        inquilino: c.inquilino,
+        unidadeConsumidora: c.unidadeConsumidora || "",
+        cpf: c.cpf,
+        codigoContrato: c.codigoContrato,
+        telefone: c.telefone,
+        status: "transferida" as const,
+        observacoes: [`Importado de: ${c.origem}`, c.observacao].filter(Boolean).join(" · "),
+        criadoPor: profile.uid,
+        criadoPorNome: profile.displayName || "Usuário"
+      }));
+    if (registros.length === 0) return;
+    importMutation.mutate({ registros, companyId }, { onSuccess: () => setCandidatos(null) });
+  };
 
   const [mes, setMes] = useState(() => chaveMes(new Date()));
   const [searchTerm, setSearchTerm] = useState("");
@@ -212,6 +405,34 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
           >
             <ExternalLink className="w-4 h-4" /> Abrir Equatorial
           </a>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={buscarLocacoes}
+              disabled={buscandoLocacoes}
+              className="h-10 px-3 rounded-lg border border-zinc-300 bg-white text-sm font-medium text-zinc-800 hover:bg-zinc-50 disabled:opacity-60"
+            >
+              {buscandoLocacoes ? "Buscando…" : "Importar locações"}
+            </button>
+          )}
+          {isAdmin && (
+            <>
+              <input
+                ref={inputCsvRef}
+                type="file"
+                accept=".csv,text/csv"
+                className="hidden"
+                onChange={ev => { const f = ev.target.files?.[0]; if (f) importarPlanilha(f); }}
+              />
+              <button
+                type="button"
+                onClick={() => inputCsvRef.current?.click()}
+                className="h-10 px-3 rounded-lg border border-zinc-300 bg-white text-sm font-medium text-zinc-800 hover:bg-zinc-50"
+              >
+                Importar planilha
+              </button>
+            </>
+          )}
           <button
             type="button"
             onClick={() => { setEditingEnergia(null); setIsFormOpen(true); }}
@@ -289,7 +510,7 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
               const atrasoSemConferir = venceuSemConferir(e, mes);
               const dadosEquatorial = [
                 e.unidadeConsumidora ? `UC: ${e.unidadeConsumidora}` : "",
-                e.cpf ? `CPF: ${maskCPF(e.cpf)}` : "",
+                e.cpf ? `CPF: ${maskDoc(e.cpf)}` : "",
                 e.dataNascimento ? `Nascimento: ${formatDateBR(e.dataNascimento)}` : ""
               ].filter(Boolean).join(" · ");
               return (
@@ -306,7 +527,7 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
                       )}
                       {e.cpf && (
                         <button type="button" onClick={() => copiar(e.cpf!, "CPF")} className="inline-flex items-center gap-1 hover:text-zinc-900" title="Copiar CPF">
-                          CPF <span className="font-mono text-zinc-900">{maskCPF(e.cpf)}</span> <Copy className="w-3 h-3" />
+                          CPF <span className="font-mono text-zinc-900">{maskDoc(e.cpf)}</span> <Copy className="w-3 h-3" />
                         </button>
                       )}
                       {e.dataNascimento && (
@@ -318,6 +539,11 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
                         <button type="button" onClick={() => copiar(dadosEquatorial, "Dados para a Equatorial")} className="inline-flex items-center gap-1 text-blue-700 hover:underline">
                           Copiar tudo
                         </button>
+                      )}
+                      {e.telefone && (
+                        <a href={`https://wa.me/${e.telefone.startsWith("55") ? e.telefone : "55" + e.telefone}`} target="_blank" rel="noopener noreferrer" className="text-emerald-700 hover:underline">
+                          WhatsApp
+                        </a>
                       )}
                       {e.diaVencimentoConta && <span>Conta vence dia {e.diaVencimentoConta}</span>}
                     </div>
@@ -407,6 +633,64 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
           onSave={handleSave}
           onClose={() => { setIsFormOpen(false); setEditingEnergia(null); }}
         />
+      )}
+
+      {candidatos && (
+        <div className="fixed inset-0 z-[9999] bg-zinc-900/40 flex items-center justify-center p-4">
+          <div role="dialog" aria-modal="true" aria-labelledby="titulo-importar" className="bg-white w-full max-w-2xl rounded-xl shadow-xl flex flex-col max-h-[85vh]">
+            <div className="px-5 py-4 border-b border-zinc-200">
+              <h2 id="titulo-importar" className="text-lg font-semibold text-zinc-900">Importar locações</h2>
+              <p className="text-sm text-zinc-600">
+                {candidatos.length} locação(ões) ainda não estão aqui. Entram como "Transferida"; dia de vencimento e unidade consumidora você completa depois.
+              </p>
+            </div>
+            <div className="px-5 py-2 border-b border-zinc-100 flex items-center justify-between text-sm">
+              <label className="flex items-center gap-2 text-zinc-800">
+                <input
+                  type="checkbox"
+                  className="w-4 h-4"
+                  checked={marcados.size === candidatos.length}
+                  onChange={ev => setMarcados(ev.target.checked ? new Set(candidatos.map(c => c.chave)) : new Set())}
+                />
+                Marcar todas
+              </label>
+              <span className="text-zinc-600 tabular-nums">{marcados.size} marcada(s)</span>
+            </div>
+            <ul className="flex-1 overflow-y-auto divide-y divide-zinc-100">
+              {candidatos.map(c => (
+                <li key={c.chave}>
+                  <label className="flex items-start gap-3 px-5 py-2.5 cursor-pointer hover:bg-zinc-50">
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4 mt-0.5"
+                      checked={marcados.has(c.chave)}
+                      onChange={ev => setMarcados(prev => {
+                        const n = new Set(prev);
+                        ev.target.checked ? n.add(c.chave) : n.delete(c.chave);
+                        return n;
+                      })}
+                    />
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium text-zinc-900">{formatPersonName(c.inquilino)}</span>
+                      <span className="block text-xs text-zinc-600 truncate">{c.imovel} · {c.origem}{c.cpf ? (c.cpf.length === 14 ? " · com CNPJ" : " · com CPF") : ""}</span>
+                    </span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+            <div className="px-5 py-4 border-t border-zinc-200 flex justify-end gap-2">
+              <button type="button" onClick={() => setCandidatos(null)} className="h-10 px-4 rounded-lg text-sm font-medium text-zinc-700 hover:bg-zinc-100">Cancelar</button>
+              <button
+                type="button"
+                onClick={importarMarcadas}
+                disabled={marcados.size === 0 || importMutation.isPending}
+                className="h-10 px-5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold disabled:opacity-60"
+              >
+                {importMutation.isPending ? "Importando…" : `Importar ${marcados.size} locação(ões)`}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       <ConfirmModal
