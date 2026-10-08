@@ -692,6 +692,14 @@ export interface FaturaHidrometro {
 // de um imóvel recém-alugado, não é um cadastro de locação completo.
 export type StatusEnergiaLocacao = "pendente" | "em_processo" | "transferida" | "vencida" | "sem_data";
 
+export type StatusPagamentoEnergia = "pago" | "em_aberto" | "atrasado";
+
+export interface PagamentoEnergiaMes {
+  status: StatusPagamentoEnergia;
+  verificadoEm: string; // ISO
+  verificadoPorNome: string;
+}
+
 export interface EnergiaLocacao {
   id: string;
   companyId: string;
@@ -700,8 +708,11 @@ export interface EnergiaLocacao {
   unidadeConsumidora: string;
   cpf?: string;
   dataNascimento?: string; // YYYY-MM-DD
-  dataVencimento?: string; // YYYY-MM-DD — campo principal: o prazo de transferência
-  status: StatusEnergiaLocacao;
+  dataVencimento?: string; // YYYY-MM-DD — prazo para transferir a conta para o inquilino
+  status: StatusEnergiaLocacao; // situação da transferência
+  diaVencimentoConta?: number; // dia do mês em que vence a conta de energia
+  // Conferência mensal do pagamento da conta (chave = "YYYY-MM")
+  pagamentos?: Record<string, PagamentoEnergiaMes>;
   observacoes?: string;
   criadoPor: string;
   criadoPorNome: string;

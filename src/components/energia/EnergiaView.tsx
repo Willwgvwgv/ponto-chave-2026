@@ -6,19 +6,22 @@ import {
   AlertTriangle,
   Clock,
   CheckCircle2,
-  CalendarX,
   Edit,
   Trash2,
-  SlidersHorizontal
+  ChevronLeft,
+  ChevronRight,
+  Copy,
+  ExternalLink,
+  HelpCircle
 } from "lucide-react";
-import { EnergiaLocacao, StatusEnergiaLocacao } from "../../types";
+import { EnergiaLocacao, PagamentoEnergiaMes, StatusPagamentoEnergia } from "../../types";
 import {
   useEnergiaLocacoes,
   useCreateEnergiaMutation,
   useUpdateEnergiaMutation,
   useDeleteEnergiaMutation
 } from "../../hooks/useQueries";
-import { formatPersonName } from "../../lib/utils";
+import { formatPersonName, maskCPF } from "../../lib/utils";
 import { toast } from "sonner";
 import { EnergiaFormModal } from "./EnergiaFormModal";
 import { ConfirmModal } from "../ui/ConfirmModal";
@@ -30,27 +33,25 @@ interface EnergiaViewProps {
   companySettings: any;
 }
 
-// Quantos dias faltam para o vencimento (negativo = já venceu). Mesmo cálculo
-// usado em DespejoView.getDaysRemaining, para manter o padrão já existente
-// no sistema de "prazo que não pode passar".
-const getDiasRestantes = (dataVencimento: string): number => {
-  if (!dataVencimento) return NaN;
-  const limite = new Date(dataVencimento + "T23:59:59");
-  const hoje = new Date();
-  hoje.setHours(0, 0, 0, 0);
-  const diffMs = limite.getTime() - hoje.getTime();
-  return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-};
+// Site onde a conta é conferida (CPF + data de nascimento + unidade consumidora)
+const SITE_EQUATORIAL = "https://www.equatorialgoias.com.br/";
 
-// Texto automático de prazo pedido pelo usuário: "Vence em X dias" / "Vence
-// hoje" / "Vence amanhã" / "Vencida há X dias".
-const formatPrazoLabel = (dataVencimento: string): string => {
-  if (!dataVencimento) return "Sem data";
-  const dias = getDiasRestantes(dataVencimento);
-  if (dias < 0) return `Vencida há ${Math.abs(dias)} dia${Math.abs(dias) === 1 ? "" : "s"}`;
-  if (dias === 0) return "Vence hoje";
-  if (dias === 1) return "Vence amanhã";
-  return `Vence em ${dias} dias`;
+const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+const MESES_CURTOS = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+
+const chaveMes = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+const somarMeses = (chave: string, n: number) => {
+  const [a, m] = chave.split("-").map(Number);
+  return chaveMes(new Date(a, m - 1 + n, 1));
+};
+const rotuloMes = (chave: string) => {
+  const [a, m] = chave.split("-").map(Number);
+  const nome = MESES[m - 1];
+  return `${nome.charAt(0).toUpperCase()}${nome.slice(1)} de ${a}`;
+};
+const rotuloMesCurto = (chave: string) => {
+  const [a, m] = chave.split("-").map(Number);
+  return `${MESES_CURTOS[m - 1]}/${String(a).slice(2)}`;
 };
 
 const formatDateBR = (val?: string) => {
@@ -60,20 +61,30 @@ const formatDateBR = (val?: string) => {
   return `${dia}/${mes}/${ano}`;
 };
 
-// Status "efetivo" para exibição/filtro: TRANSFERIDA sempre prevalece sobre o
-// cálculo de data (regra explícita pedida — uma energia já transferida nunca
-// aparece como vencida, mesmo que a data cadastrada já tenha passado).
-type StatusEfetivo = "transferida" | "vencida" | "sem_data" | "em_dia";
+// Situação do mês: o que foi conferido na Equatorial, ou "a verificar"
+type SituacaoMes = StatusPagamentoEnergia | "a_verificar";
 
-const getStatusEfetivo = (e: EnergiaLocacao): StatusEfetivo => {
-  if (e.status === "transferida") return "transferida";
-  if (!e.dataVencimento) return "sem_data";
-  const dias = getDiasRestantes(e.dataVencimento);
-  if (dias < 0) return "vencida";
-  return "em_dia";
+const situacaoDoMes = (e: EnergiaLocacao, mes: string): SituacaoMes =>
+  e.pagamentos?.[mes]?.status || "a_verificar";
+
+// A conta do mês já venceu e ninguém conferiu ainda?
+const venceuSemConferir = (e: EnergiaLocacao, mes: string): boolean => {
+  if (situacaoDoMes(e, mes) !== "a_verificar") return false;
+  const hoje = new Date();
+  const atual = chaveMes(hoje);
+  if (mes < atual) return true;
+  if (mes > atual) return false;
+  return !!e.diaVencimentoConta && hoje.getDate() > e.diaVencimentoConta;
 };
 
-type FiltroEnergia = "TODAS" | "VENCIDAS" | "HOJE" | "7_DIAS" | "30_DIAS" | "TRANSFERIDAS" | "SEM_DATA";
+const ESTILO_SITUACAO: Record<SituacaoMes, { label: string; classe: string; ponto: string }> = {
+  pago: { label: "Pago", classe: "bg-emerald-50 text-emerald-800 border-emerald-200", ponto: "bg-emerald-500" },
+  em_aberto: { label: "Em aberto", classe: "bg-amber-50 text-amber-800 border-amber-200", ponto: "bg-amber-400" },
+  atrasado: { label: "Atrasado", classe: "bg-rose-50 text-rose-800 border-rose-200", ponto: "bg-rose-500" },
+  a_verificar: { label: "A verificar", classe: "bg-zinc-100 text-zinc-700 border-zinc-200", ponto: "bg-zinc-300" }
+};
+
+type Filtro = "TODAS" | "pago" | "em_aberto" | "atrasado" | "a_verificar" | "NAO_TRANSFERIDAS";
 
 export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, companySettings }) => {
   const companyId = profile?.companyId || companySettings?.id || "default_agency";
@@ -83,86 +94,58 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
   const updateMutation = useUpdateEnergiaMutation();
   const deleteMutation = useDeleteEnergiaMutation();
 
+  const [mes, setMes] = useState(() => chaveMes(new Date()));
   const [searchTerm, setSearchTerm] = useState("");
-  const [filtro, setFiltro] = useState<FiltroEnergia>("TODAS");
+  const [filtro, setFiltro] = useState<Filtro>("TODAS");
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingEnergia, setEditingEnergia] = useState<EnergiaLocacao | null>(null);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [salvandoId, setSalvandoId] = useState<string | null>(null);
 
-  // Indicadores do topo — pedidos explicitamente: Vencidas / até 7 dias / até
-  // 30 dias / Transferidas. "Até 7 dias" e "até 30 dias" contam só quem ainda
-  // não venceu e não foi transferido (senão uma locação vencida apareceria
-  // duplicada nos dois cards).
-  const indicadores = useMemo(() => {
-    let vencidas = 0;
-    let ate7 = 0;
-    let ate30 = 0;
-    let transferidas = 0;
+  const mesAtual = chaveMes(new Date());
+  const transferidas = useMemo(() => energias.filter(e => e.status === "transferida"), [energias]);
+  const naoTransferidas = useMemo(() => energias.filter(e => e.status !== "transferida"), [energias]);
 
-    energias.forEach(e => {
-      const statusEfetivo = getStatusEfetivo(e);
-      if (statusEfetivo === "transferida") {
-        transferidas++;
-        return;
-      }
-      if (statusEfetivo === "vencida") {
-        vencidas++;
-        return;
-      }
-      if (statusEfetivo === "em_dia") {
-        const dias = getDiasRestantes(e.dataVencimento!);
-        if (dias <= 7) ate7++;
-        if (dias <= 30) ate30++;
-      }
-    });
+  const contagem = useMemo(() => {
+    const c = { pago: 0, em_aberto: 0, atrasado: 0, a_verificar: 0 };
+    transferidas.forEach(e => { c[situacaoDoMes(e, mes)]++; });
+    return c;
+  }, [transferidas, mes]);
 
-    return { vencidas, ate7, ate30, transferidas };
-  }, [energias]);
-
-  const filteredEnergias = useMemo(() => {
+  const lista = useMemo(() => {
     const termo = searchTerm.trim().toLowerCase();
+    const base = filtro === "NAO_TRANSFERIDAS" ? naoTransferidas : transferidas;
+    return base
+      .filter(e => {
+        if (termo && ![e.imovel, e.inquilino, e.unidadeConsumidora, e.cpf].some(v => (v || "").toLowerCase().includes(termo))) return false;
+        if (filtro === "TODAS" || filtro === "NAO_TRANSFERIDAS") return true;
+        return situacaoDoMes(e, mes) === filtro;
+      })
+      .sort((a, b) => (a.inquilino || "").localeCompare(b.inquilino || "", "pt-BR"));
+  }, [transferidas, naoTransferidas, searchTerm, filtro, mes]);
 
-    return energias.filter(e => {
-      const matchBusca =
-        !termo ||
-        (e.imovel || "").toLowerCase().includes(termo) ||
-        (e.inquilino || "").toLowerCase().includes(termo) ||
-        (e.unidadeConsumidora || "").toLowerCase().includes(termo);
-
-      if (!matchBusca) return false;
-
-      const statusEfetivo = getStatusEfetivo(e);
-      const dias = e.dataVencimento ? getDiasRestantes(e.dataVencimento) : NaN;
-
-      switch (filtro) {
-        case "TODAS":
-          return true;
-        case "VENCIDAS":
-          return statusEfetivo === "vencida";
-        case "HOJE":
-          return statusEfetivo === "em_dia" && dias === 0;
-        case "7_DIAS":
-          return statusEfetivo === "em_dia" && dias <= 7;
-        case "30_DIAS":
-          return statusEfetivo === "em_dia" && dias <= 30;
-        case "TRANSFERIDAS":
-          return statusEfetivo === "transferida";
-        case "SEM_DATA":
-          return statusEfetivo === "sem_data";
-        default:
-          return true;
-      }
-    });
-  }, [energias, searchTerm, filtro]);
-
-  const handleOpenNew = () => {
-    setEditingEnergia(null);
-    setIsFormOpen(true);
+  const registrar = (e: EnergiaLocacao, status: StatusPagamentoEnergia | null) => {
+    const pagamentos: Record<string, PagamentoEnergiaMes> = { ...(e.pagamentos || {}) };
+    if (status) {
+      pagamentos[mes] = {
+        status,
+        verificadoEm: new Date().toISOString(),
+        verificadoPorNome: profile?.displayName || "Usuário"
+      };
+    } else {
+      delete pagamentos[mes];
+    }
+    setSalvandoId(e.id);
+    updateMutation.mutate({ ...e, pagamentos }, { onSettled: () => setSalvandoId(null) });
   };
 
-  const handleOpenEdit = (e: EnergiaLocacao) => {
-    setEditingEnergia(e);
-    setIsFormOpen(true);
+  const copiar = async (texto: string, rotulo: string) => {
+    try {
+      await navigator.clipboard.writeText(texto);
+      toast.success(`${rotulo} copiado.`);
+    } catch {
+      toast.error("Não foi possível copiar. Selecione e copie manualmente.");
+    }
   };
 
   const handleSave = (data: Omit<EnergiaLocacao, "id" | "createdAt" | "updatedAt" | "companyId" | "criadoPor" | "criadoPorNome">) => {
@@ -191,249 +174,231 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
   };
 
   const deleteTarget = deleteTargetId ? energias.find(e => e.id === deleteTargetId) : null;
+  const ultimosMeses = [5, 4, 3, 2, 1, 0].map(n => somarMeses(mes, -n));
 
-  const statusBadge = (e: EnergiaLocacao) => {
-    const statusEfetivo = getStatusEfetivo(e);
-    if (statusEfetivo === "transferida") {
-      return (
-        <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-          <CheckCircle2 className="w-3 h-3" /> Transferida
-        </span>
-      );
-    }
-    if (statusEfetivo === "vencida") {
-      return (
-        <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200">
-          <AlertTriangle className="w-3 h-3" /> Vencida
-        </span>
-      );
-    }
-    if (statusEfetivo === "sem_data") {
-      return (
-        <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-500 border border-slate-200">
-          <CalendarX className="w-3 h-3" /> Sem data
-        </span>
-      );
-    }
-    const dias = getDiasRestantes(e.dataVencimento!);
-    const urgente = dias <= 7;
-    return (
-      <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold border ${urgente ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-blue-50 text-blue-700 border-blue-200"}`}>
-        <Clock className="w-3 h-3" /> Em dia
-      </span>
-    );
-  };
+  const Card = ({ id, label, valor, icone, cor }: { id: Filtro; label: string; valor: number; icone: React.ReactNode; cor: string }) => (
+    <button
+      type="button"
+      onClick={() => setFiltro(filtro === id ? "TODAS" : id)}
+      aria-pressed={filtro === id}
+      className={`text-left bg-white border rounded-xl p-4 transition-colors ${filtro === id ? "border-zinc-900 ring-1 ring-zinc-900" : "border-zinc-200 hover:border-zinc-300"}`}
+    >
+      <div className="flex items-center justify-between text-sm text-zinc-700">
+        <span>{label}</span>
+        <span className={cor}>{icone}</span>
+      </div>
+      <p className={`text-2xl font-semibold mt-2 tabular-nums ${cor}`}>{valor}</p>
+    </button>
+  );
 
   return (
-    <div className="space-y-6">
-      {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 select-none pt-1">
-        <div className="flex items-center gap-3">
-          <div className="w-3 h-8 bg-amber-500 rounded-full" />
-          <h1 className="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight font-sans">
-            Acompanhamento de Energia
+    <div className="space-y-4">
+      {/* Cabeçalho */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold text-zinc-900 flex items-center gap-2">
+            <Zap className="w-6 h-6 text-amber-500" /> Energia das locações
           </h1>
+          <p className="text-sm text-zinc-600 mt-1">
+            Conferência mensal do pagamento da conta de energia nas locações transferidas para o inquilino.
+          </p>
         </div>
-
-        <button
-          type="button"
-          onClick={handleOpenNew}
-          className="flex items-center gap-2 px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-2xl text-xs font-bold tracking-wide shadow-md shadow-amber-500/20 cursor-pointer transition-all shrink-0"
-        >
-          <Plus className="w-4 h-4" />
-          NOVA ENERGIA
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <a
+            href={SITE_EQUATORIAL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="h-10 px-3 rounded-lg border border-zinc-300 bg-white text-sm font-medium text-zinc-800 hover:bg-zinc-50 flex items-center gap-2"
+          >
+            <ExternalLink className="w-4 h-4" /> Abrir Equatorial
+          </a>
+          <button
+            type="button"
+            onClick={() => { setEditingEnergia(null); setIsFormOpen(true); }}
+            className="h-10 px-4 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold flex items-center gap-2"
+          >
+            <Plus className="w-4 h-4" /> Nova locação
+          </button>
+        </div>
       </div>
 
-      {/* Indicadores */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <button
-          type="button"
-          onClick={() => setFiltro(filtro === "VENCIDAS" ? "TODAS" : "VENCIDAS")}
-          className={`text-left bg-white border rounded-2xl p-5 shadow-xs transition-all cursor-pointer ${filtro === "VENCIDAS" ? "border-rose-300 ring-2 ring-rose-100" : "border-slate-200/80 hover:border-rose-200"}`}
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-600">Vencidas</span>
-            <div className="w-6 h-6 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center border border-rose-200">
-              <AlertTriangle className="w-3.5 h-3.5" />
-            </div>
-          </div>
-          <p className="text-2xl font-black text-rose-600 mt-3">{indicadores.vencidas}</p>
+      {/* Mês */}
+      <div className="flex items-center gap-2">
+        <button type="button" onClick={() => setMes(somarMeses(mes, -1))} aria-label="Mês anterior" className="w-10 h-10 rounded-lg border border-zinc-300 bg-white flex items-center justify-center hover:bg-zinc-50">
+          <ChevronLeft className="w-4 h-4" />
         </button>
-
-        <button
-          type="button"
-          onClick={() => setFiltro(filtro === "7_DIAS" ? "TODAS" : "7_DIAS")}
-          className={`text-left bg-white border rounded-2xl p-5 shadow-xs transition-all cursor-pointer ${filtro === "7_DIAS" ? "border-amber-300 ring-2 ring-amber-100" : "border-slate-200/80 hover:border-amber-200"}`}
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-600">Vence em até 7 dias</span>
-            <div className="w-6 h-6 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-200">
-              <Clock className="w-3.5 h-3.5" />
-            </div>
-          </div>
-          <p className="text-2xl font-black text-amber-600 mt-3">{indicadores.ate7}</p>
+        <div className="h-10 px-4 rounded-lg border border-zinc-300 bg-white flex items-center text-sm font-semibold text-zinc-900 min-w-[200px] justify-center">
+          {rotuloMes(mes)}
+        </div>
+        <button type="button" onClick={() => setMes(somarMeses(mes, 1))} aria-label="Próximo mês" className="w-10 h-10 rounded-lg border border-zinc-300 bg-white flex items-center justify-center hover:bg-zinc-50">
+          <ChevronRight className="w-4 h-4" />
         </button>
-
-        <button
-          type="button"
-          onClick={() => setFiltro(filtro === "30_DIAS" ? "TODAS" : "30_DIAS")}
-          className={`text-left bg-white border rounded-2xl p-5 shadow-xs transition-all cursor-pointer ${filtro === "30_DIAS" ? "border-blue-300 ring-2 ring-blue-100" : "border-slate-200/80 hover:border-blue-200"}`}
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-600">Vence em até 30 dias</span>
-            <div className="w-6 h-6 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-200">
-              <Clock className="w-3.5 h-3.5" />
-            </div>
-          </div>
-          <p className="text-2xl font-black text-blue-600 mt-3">{indicadores.ate30}</p>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setFiltro(filtro === "TRANSFERIDAS" ? "TODAS" : "TRANSFERIDAS")}
-          className={`text-left bg-white border rounded-2xl p-5 shadow-xs transition-all cursor-pointer ${filtro === "TRANSFERIDAS" ? "border-emerald-300 ring-2 ring-emerald-100" : "border-slate-200/80 hover:border-emerald-200"}`}
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-600">Transferidas</span>
-            <div className="w-6 h-6 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-200">
-              <CheckCircle2 className="w-3.5 h-3.5" />
-            </div>
-          </div>
-          <p className="text-2xl font-black text-emerald-600 mt-3">{indicadores.transferidas}</p>
-        </button>
+        {mes !== mesAtual && (
+          <button type="button" onClick={() => setMes(mesAtual)} className="h-10 px-3 rounded-lg text-sm font-medium text-blue-700 hover:bg-blue-50">
+            Voltar para o mês atual
+          </button>
+        )}
       </div>
 
-      {/* Filtros + busca */}
-      <div className="bg-white border border-slate-200/80 rounded-2xl p-3 md:p-4 shadow-xs flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4">
+      {/* Indicadores do mês */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <Card id="pago" label="Pagas" valor={contagem.pago} icone={<CheckCircle2 className="w-4 h-4" />} cor="text-emerald-700" />
+        <Card id="em_aberto" label="Em aberto" valor={contagem.em_aberto} icone={<Clock className="w-4 h-4" />} cor="text-amber-700" />
+        <Card id="atrasado" label="Atrasadas" valor={contagem.atrasado} icone={<AlertTriangle className="w-4 h-4" />} cor="text-rose-700" />
+        <Card id="a_verificar" label="A verificar" valor={contagem.a_verificar} icone={<HelpCircle className="w-4 h-4" />} cor="text-zinc-700" />
+      </div>
+
+      {/* Busca e filtro */}
+      <div className="bg-white border border-zinc-200 rounded-xl p-3 flex flex-col lg:flex-row lg:items-center gap-3">
         <div className="relative flex-1 max-w-md">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+          <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
-            placeholder="Buscar por imóvel, inquilino ou unidade consumidora..."
-            className="w-full pl-10 pr-4 py-2 bg-slate-50/80 border border-slate-200/80 rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all"
+            placeholder="Buscar por inquilino, imóvel, unidade consumidora ou CPF"
+            aria-label="Buscar"
+            className="w-full h-10 pl-9 pr-3 border border-zinc-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600"
           />
         </div>
-
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[11px] font-black uppercase text-slate-400 tracking-wider mr-1">
-            <SlidersHorizontal className="w-3 h-3 inline -mt-0.5 mr-1" />
-            FILTRAR:
-          </span>
-          {([
-            ["TODAS", "Todas"],
-            ["VENCIDAS", "Vencidas"],
-            ["HOJE", "Vence hoje"],
-            ["7_DIAS", "Próximos 7 dias"],
-            ["30_DIAS", "Próximos 30 dias"],
-            ["TRANSFERIDAS", "Transferidas"],
-            ["SEM_DATA", "Sem data"]
-          ] as [FiltroEnergia, string][]).map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setFiltro(value)}
-              className={`px-3.5 py-1.5 rounded-full text-xs font-bold cursor-pointer transition-all ${
-                filtro === value
-                  ? "bg-amber-100 text-amber-800 border border-amber-200 shadow-xs"
-                  : "bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200/60"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
+        <div className="flex flex-wrap gap-1.5">
+          <button type="button" onClick={() => setFiltro("TODAS")}
+            className={`h-8 px-3 rounded-full text-[13px] font-medium border ${filtro === "TODAS" ? "bg-zinc-900 text-white border-zinc-900" : "bg-white text-zinc-700 border-zinc-300 hover:bg-zinc-50"}`}>
+            Transferidas <span className="opacity-70 tabular-nums">{transferidas.length}</span>
+          </button>
+          <button type="button" onClick={() => setFiltro("NAO_TRANSFERIDAS")}
+            className={`h-8 px-3 rounded-full text-[13px] font-medium border ${filtro === "NAO_TRANSFERIDAS" ? "bg-zinc-900 text-white border-zinc-900" : "bg-white text-zinc-700 border-zinc-300 hover:bg-zinc-50"}`}>
+            Ainda não transferidas <span className="opacity-70 tabular-nums">{naoTransferidas.length}</span>
+          </button>
         </div>
       </div>
 
       {/* Lista */}
-      <div className="bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px] text-left border-collapse">
-            <thead>
-              <tr className="border-b border-slate-100 bg-slate-50/50">
-                <th className="py-3.5 pl-6 pr-4 text-[11px] font-black text-slate-400 uppercase tracking-widest">Imóvel</th>
-                <th className="py-3.5 px-4 text-[11px] font-black text-slate-400 uppercase tracking-widest">Locatário</th>
-                <th className="py-3.5 px-4 text-[11px] font-black text-slate-400 uppercase tracking-widest">Unidade Consumidora</th>
-                <th className="py-3.5 px-4 text-center text-[11px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Vencimento</th>
-                <th className="py-3.5 px-4 text-center text-[11px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Status</th>
-                <th className="py-3.5 pr-6 pl-4 text-right text-[11px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap w-[100px] sticky right-0 z-10 bg-slate-50 border-l border-slate-100">Ações</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {isLoading ? (
-                <tr>
-                  <td colSpan={6} className="py-12 text-center text-xs text-slate-400">Carregando...</td>
-                </tr>
-              ) : filteredEnergias.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="py-12 text-center text-xs text-slate-400 italic">
-                    Nenhum acompanhamento de energia encontrado para os filtros selecionados.
-                  </td>
-                </tr>
-              ) : (
-                filteredEnergias.map(e => (
-                  <tr key={e.id} className="hover:bg-slate-50/70 transition-colors group">
-                    <td className="py-4 pl-6 pr-4">
-                      <p className="text-sm font-bold text-slate-900 truncate max-w-[240px]">{e.imovel}</p>
-                    </td>
-                    <td className="py-4 px-4">
-                      <p className="text-xs font-medium text-slate-700 truncate max-w-[200px]">
-                        {e.inquilino ? formatPersonName(e.inquilino) : "Não informado"}
-                      </p>
-                    </td>
-                    <td className="py-4 px-4">
-                      <p className="text-xs font-mono text-slate-600">{e.unidadeConsumidora || "-"}</p>
-                    </td>
-                    <td className="py-4 px-4 text-center whitespace-nowrap">
-                      <p className="text-xs font-bold text-slate-700">{formatDateBR(e.dataVencimento)}</p>
-                      {e.status !== "transferida" && e.dataVencimento && (
-                        <p className={`text-[10px] font-bold mt-0.5 ${getDiasRestantes(e.dataVencimento) < 0 ? "text-rose-600" : getDiasRestantes(e.dataVencimento) <= 7 ? "text-amber-600" : "text-slate-400"}`}>
-                          {formatPrazoLabel(e.dataVencimento)}
-                        </p>
+      <div className="bg-white border border-zinc-200 rounded-xl overflow-hidden">
+        {isLoading ? (
+          <p className="p-6 text-sm text-zinc-600">Carregando…</p>
+        ) : lista.length === 0 ? (
+          <p className="p-6 text-sm text-zinc-600">
+            {energias.length === 0 ? "Nenhuma locação cadastrada. Use \"Nova locação\" para começar." : "Nenhuma locação com esse filtro."}
+          </p>
+        ) : (
+          <ul className="divide-y divide-zinc-100">
+            {lista.map(e => {
+              const situacao = situacaoDoMes(e, mes);
+              const registro = e.pagamentos?.[mes];
+              const atrasoSemConferir = venceuSemConferir(e, mes);
+              const dadosEquatorial = [
+                e.unidadeConsumidora ? `UC: ${e.unidadeConsumidora}` : "",
+                e.cpf ? `CPF: ${maskCPF(e.cpf)}` : "",
+                e.dataNascimento ? `Nascimento: ${formatDateBR(e.dataNascimento)}` : ""
+              ].filter(Boolean).join(" · ");
+              return (
+                <li key={e.id} className="p-4 flex flex-col xl:flex-row xl:items-center gap-4">
+                  {/* Quem e onde */}
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-zinc-900">{e.inquilino ? formatPersonName(e.inquilino) : "Locatário não informado"}</p>
+                    <p className="text-sm text-zinc-600 truncate">{e.imovel}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-600">
+                      {e.unidadeConsumidora && (
+                        <button type="button" onClick={() => copiar(e.unidadeConsumidora, "Unidade consumidora")} className="inline-flex items-center gap-1 hover:text-zinc-900" title="Copiar unidade consumidora">
+                          UC <span className="font-mono text-zinc-900">{e.unidadeConsumidora}</span> <Copy className="w-3 h-3" />
+                        </button>
                       )}
-                    </td>
-                    <td className="py-4 px-4 text-center whitespace-nowrap">
-                      {statusBadge(e)}
-                    </td>
-                    <td className="py-4 pr-6 pl-4 text-right whitespace-nowrap sticky right-0 z-10 bg-white group-hover:bg-slate-50 border-l border-slate-100">
-                      <div className="flex items-center justify-end gap-0.5">
-                        {/* Editar e excluir exigem admin da empresa — mesma regra aplicada
-                            em firestore.rules (allow update, delete: ... isCompanyAdmin(...)).
-                            Mostrar o botão para quem não é admin resultaria em erro de
-                            permissão do Firestore ao tentar salvar/excluir. */}
-                        {isAdmin && (
-                          <button
-                            type="button"
-                            onClick={() => handleOpenEdit(e)}
-                            title="Editar"
-                            className="p-2 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-xl cursor-pointer transition-all"
-                          >
-                            <Edit className="w-4 h-4" />
-                          </button>
+                      {e.cpf && (
+                        <button type="button" onClick={() => copiar(e.cpf!, "CPF")} className="inline-flex items-center gap-1 hover:text-zinc-900" title="Copiar CPF">
+                          CPF <span className="font-mono text-zinc-900">{maskCPF(e.cpf)}</span> <Copy className="w-3 h-3" />
+                        </button>
+                      )}
+                      {e.dataNascimento && (
+                        <button type="button" onClick={() => copiar(formatDateBR(e.dataNascimento), "Data de nascimento")} className="inline-flex items-center gap-1 hover:text-zinc-900" title="Copiar data de nascimento">
+                          Nasc. <span className="font-mono text-zinc-900">{formatDateBR(e.dataNascimento)}</span> <Copy className="w-3 h-3" />
+                        </button>
+                      )}
+                      {dadosEquatorial && (
+                        <button type="button" onClick={() => copiar(dadosEquatorial, "Dados para a Equatorial")} className="inline-flex items-center gap-1 text-blue-700 hover:underline">
+                          Copiar tudo
+                        </button>
+                      )}
+                      {e.diaVencimentoConta && <span>Conta vence dia {e.diaVencimentoConta}</span>}
+                    </div>
+                    {e.status !== "transferida" && (
+                      <p className="mt-1 text-xs text-amber-800">
+                        Transferência {e.status === "em_processo" ? "em processo" : "pendente"}
+                        {e.dataVencimento ? ` · prazo ${formatDateBR(e.dataVencimento)}` : ""}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Histórico dos últimos 6 meses */}
+                  {e.status === "transferida" && (
+                    <div className="flex items-end gap-1.5" aria-label="Últimos 6 meses">
+                      {ultimosMeses.map(m => {
+                        const s = situacaoDoMes(e, m);
+                        return (
+                          <div key={m} className="flex flex-col items-center gap-1" title={`${rotuloMes(m)}: ${ESTILO_SITUACAO[s].label}`}>
+                            <span className={`w-3 h-3 rounded-full ${ESTILO_SITUACAO[s].ponto} ${m === mes ? "ring-2 ring-offset-1 ring-zinc-900" : ""}`} />
+                            <span className="text-[10px] text-zinc-500">{rotuloMesCurto(m)}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Situação do mês */}
+                  {e.status === "transferida" && (
+                    <div className="xl:w-[340px] flex flex-col gap-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className={`h-7 px-2.5 rounded-full border text-xs font-medium inline-flex items-center ${ESTILO_SITUACAO[situacao].classe}`}>
+                          {ESTILO_SITUACAO[situacao].label}
+                        </span>
+                        {atrasoSemConferir && (
+                          <span className="text-xs text-rose-700">Conta já venceu — conferir</span>
                         )}
-                        {isAdmin && (
-                          <button
-                            type="button"
-                            onClick={() => setDeleteTargetId(e.id)}
-                            title="Excluir"
-                            className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl cursor-pointer transition-all"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
-                        {!isAdmin && (
-                          <span className="text-[11px] text-slate-300 italic px-2">—</span>
+                        {registro && (
+                          <span className="text-xs text-zinc-500 truncate">
+                            conferido em {new Date(registro.verificadoEm).toLocaleDateString("pt-BR")} por {registro.verificadoPorNome}
+                          </span>
                         )}
                       </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                      {isAdmin && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {(["pago", "em_aberto", "atrasado"] as StatusPagamentoEnergia[]).map(s => (
+                            <button
+                              key={s}
+                              type="button"
+                              disabled={salvandoId === e.id}
+                              onClick={() => registrar(e, situacao === s ? null : s)}
+                              aria-pressed={situacao === s}
+                              className={`h-8 px-3 rounded-lg border text-[13px] font-medium transition-colors disabled:opacity-50 ${
+                                situacao === s ? ESTILO_SITUACAO[s].classe : "bg-white text-zinc-700 border-zinc-300 hover:bg-zinc-50"
+                              }`}
+                            >
+                              {ESTILO_SITUACAO[s].label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Ações */}
+                  {isAdmin && (
+                    <div className="flex items-center gap-1 xl:self-center">
+                      <button type="button" onClick={() => { setEditingEnergia(e); setIsFormOpen(true); }} title="Editar" aria-label={`Editar ${e.imovel}`}
+                        className="w-9 h-9 rounded-lg text-zinc-600 hover:bg-zinc-100 flex items-center justify-center">
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button type="button" onClick={() => setDeleteTargetId(e.id)} title="Excluir" aria-label={`Excluir ${e.imovel}`}
+                        className="w-9 h-9 rounded-lg text-red-600 hover:bg-red-50 flex items-center justify-center">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </div>
 
       {isFormOpen && (
@@ -446,8 +411,10 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
 
       <ConfirmModal
         isOpen={!!deleteTargetId}
-        title="Excluir acompanhamento de energia?"
-        message={`Deseja realmente excluir o acompanhamento de energia de "${deleteTarget?.imovel || "este imóvel"}"? Esta ação não pode ser desfeita.`}
+        title="Excluir locação do acompanhamento?"
+        message={`Excluir "${deleteTarget?.imovel || "este imóvel"}" e todo o histórico de conferência da energia? Essa ação não pode ser desfeita.`}
+        confirmText="Excluir"
+        cancelText="Manter"
         confirmColor="red"
         onConfirm={handleConfirmDelete}
         onCancel={() => setDeleteTargetId(null)}
