@@ -25,6 +25,7 @@ import {
 import { formatPersonName, maskDoc } from "../../lib/utils";
 import { toast } from "sonner";
 import { EnergiaFormModal } from "./EnergiaFormModal";
+import { ScazaIntegracaoModal } from "./ScazaIntegracaoModal";
 import { ConfirmModal } from "../ui/ConfirmModal";
 import { db, collection, getDocs, query, where } from "../../firebase";
 
@@ -294,6 +295,7 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
   const [editingEnergia, setEditingEnergia] = useState<EnergiaLocacao | null>(null);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [salvandoId, setSalvandoId] = useState<string | null>(null);
+  const [scazaAberto, setScazaAberto] = useState(false);
 
   const mesAtual = chaveMes(new Date());
   const transferidas = useMemo(() => energias.filter(e => e.status === "transferida"), [energias]);
@@ -405,6 +407,15 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
           >
             <ExternalLink className="w-4 h-4" /> Abrir Equatorial
           </a>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => setScazaAberto(true)}
+              className="h-10 px-3 rounded-lg border border-zinc-300 bg-white text-sm font-medium text-zinc-800 hover:bg-zinc-50"
+            >
+              Integração Scaza
+            </button>
+          )}
           {/* Importação pelos contratos/comissões desativada: a planilha é a fonte completa
               e importar pelos dois caminhos duplicaria locações (endereços escritos diferente). */}
           {false && isAdmin && (
@@ -621,6 +632,8 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
           </ul>
         )}
       </div>
+
+      {scazaAberto && <ScazaIntegracaoModal onClose={() => setScazaAberto(false)} />}
 
       {isFormOpen && (
         <EnergiaFormModal
