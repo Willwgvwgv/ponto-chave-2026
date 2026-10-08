@@ -644,7 +644,7 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
         )}
       </div>
 
-      {scazaAberto && <ScazaIntegracaoModal onClose={() => setScazaAberto(false)} />}
+      {scazaAberto && <ScazaIntegracaoModal companyId={companyId} onClose={() => setScazaAberto(false)} />}
 
       {isFormOpen && (
         <EnergiaFormModal
