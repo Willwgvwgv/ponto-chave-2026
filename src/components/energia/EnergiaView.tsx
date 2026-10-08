@@ -22,7 +22,7 @@ import {
   useDeleteEnergiaMutation,
   useImportEnergiaMutation
 } from "../../hooks/useQueries";
-import { formatPersonName, maskCPF } from "../../lib/utils";
+import { formatPersonName, maskDoc } from "../../lib/utils";
 import { toast } from "sonner";
 import { EnergiaFormModal } from "./EnergiaFormModal";
 import { ConfirmModal } from "../ui/ConfirmModal";
@@ -36,7 +36,43 @@ interface CandidatoImportacao {
   cpf?: string;
   unidadeConsumidora?: string;
   origem: string;
+  codigoContrato?: string;
+  telefone?: string;
+  observacao?: string;
 }
+
+// Lê CSV (vírgula ou ponto e vírgula, com aspas) e devolve linhas como objetos pelo cabeçalho
+const lerCsv = (texto: string): Record<string, string>[] => {
+  const t = texto.replace(/^\uFEFF/, "");
+  const primeira = t.split(/\r?\n/, 1)[0] || "";
+  const sep = (primeira.match(/;/g) || []).length > (primeira.match(/,/g) || []).length ? ";" : ",";
+  const linhas: string[][] = [];
+  let campo = "", linha: string[] = [], aspas = false;
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (aspas) {
+      if (c === '"' && t[i + 1] === '"') { campo += '"'; i++; }
+      else if (c === '"') aspas = false;
+      else campo += c;
+    } else if (c === '"') aspas = true;
+    else if (c === sep) { linha.push(campo); campo = ""; }
+    else if (c === "\n" || c === "\r") {
+      if (c === "\r" && t[i + 1] === "\n") i++;
+      linha.push(campo); campo = "";
+      if (linha.some(v => v.trim())) linhas.push(linha);
+      linha = [];
+    } else campo += c;
+  }
+  linha.push(campo);
+  if (linha.some(v => v.trim())) linhas.push(linha);
+  const [cab, ...resto] = linhas;
+  if (!cab) return [];
+  const chaves = cab.map(h => h.trim().toLowerCase());
+  return resto.map(l => Object.fromEntries(chaves.map((k, i) => [k, (l[i] || "").trim()])));
+};
+
+// Número do imóvel que não é número de verdade ("0", "00", "S/N")
+const numeroValido = (n: string) => !!n && !/^(0+|s\/?n)$/i.test(n.trim());
 
 const normalizar = (v?: string) =>
   (v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -175,6 +211,61 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
     }
   };
 
+  // Importação pela planilha de locações exportada do sistema de administração
+  const inputCsvRef = React.useRef<HTMLInputElement>(null);
+  const importarPlanilha = async (arquivo: File) => {
+    try {
+      const linhas = lerCsv(await arquivo.text());
+      if (linhas.length === 0 || !("inquilino_nome" in linhas[0])) {
+        toast.error("Planilha não reconhecida. Use a exportação de Locações (com a coluna inquilino_nome).");
+        return;
+      }
+      const codigosVistos = new Set(energias.map(e => e.codigoContrato).filter(Boolean) as string[]);
+      const paresVistos = new Set(energias.map(e => `${normalizar(e.imovel)}|${normalizar(e.inquilino)}`));
+      const lista: CandidatoImportacao[] = [];
+      let ignoradas = 0;
+      linhas.forEach(l => {
+        if (l.status && !/^ativ/i.test(l.status)) { ignoradas++; return; }
+        const inquilino = l.inquilino_nome || "";
+        if (NOMES_GENERICOS.has(normalizar(inquilino))) return;
+        const partes = [
+          `${l.endereco_imovel || ""}${numeroValido(l.numero_imovel || "") ? `, nº ${l.numero_imovel}` : ""}`,
+          numeroValido(l.complemento_imovel || "") ? l.complemento_imovel : "",
+          l.bairro_imovel,
+          l.cidade_imovel
+        ].map(p => (p || "").trim()).filter(Boolean);
+        const imovel = partes.join(", ") || l.nome_imovel || "";
+        const codigo = l.codigo || l.id || "";
+        const par = `${normalizar(imovel)}|${normalizar(inquilino)}`;
+        if ((codigo && codigosVistos.has(codigo)) || paresVistos.has(par)) return;
+        if (codigo) codigosVistos.add(codigo);
+        paresVistos.add(par);
+        const doc = (l.cpf_cnpj_inquilino || "").replace(/\D/g, "");
+        lista.push({
+          chave: `csv-${codigo || par}`,
+          imovel,
+          inquilino,
+          cpf: doc.length === 11 || doc.length === 14 ? doc : undefined,
+          origem: `Planilha · contrato ${codigo}`,
+          codigoContrato: codigo || undefined,
+          telefone: (l.celular_inquilino || "").replace(/\D/g, "") || undefined,
+          observacao: [l.nome_imovel ? `Imóvel: ${l.nome_imovel}` : "", l.tipo ? `Tipo: ${l.tipo}` : "", l.data_inicio_contrato ? `Início: ${l.data_inicio_contrato}` : ""].filter(Boolean).join(" · ")
+        });
+      });
+      if (lista.length === 0) {
+        toast.success(ignoradas ? `Nada novo para importar (${ignoradas} locação(ões) não ativa(s) ignorada(s)).` : "Todas as locações da planilha já estão aqui.");
+        return;
+      }
+      setCandidatos(lista);
+      setMarcados(new Set(lista.map(c => c.chave)));
+    } catch (err) {
+      console.error(err);
+      toast.error("Não foi possível ler a planilha.");
+    } finally {
+      if (inputCsvRef.current) inputCsvRef.current.value = "";
+    }
+  };
+
   const importarMarcadas = () => {
     if (!candidatos || !profile?.uid) return;
     const registros = candidatos
@@ -185,8 +276,10 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
         inquilino: c.inquilino,
         unidadeConsumidora: c.unidadeConsumidora || "",
         cpf: c.cpf,
+        codigoContrato: c.codigoContrato,
+        telefone: c.telefone,
         status: "transferida" as const,
-        observacoes: `Importado de: ${c.origem}`,
+        observacoes: [`Importado de: ${c.origem}`, c.observacao].filter(Boolean).join(" · "),
         criadoPor: profile.uid,
         criadoPorNome: profile.displayName || "Usuário"
       }));
@@ -322,6 +415,24 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
               {buscandoLocacoes ? "Buscando…" : "Importar locações"}
             </button>
           )}
+          {isAdmin && (
+            <>
+              <input
+                ref={inputCsvRef}
+                type="file"
+                accept=".csv,text/csv"
+                className="hidden"
+                onChange={ev => { const f = ev.target.files?.[0]; if (f) importarPlanilha(f); }}
+              />
+              <button
+                type="button"
+                onClick={() => inputCsvRef.current?.click()}
+                className="h-10 px-3 rounded-lg border border-zinc-300 bg-white text-sm font-medium text-zinc-800 hover:bg-zinc-50"
+              >
+                Importar planilha
+              </button>
+            </>
+          )}
           <button
             type="button"
             onClick={() => { setEditingEnergia(null); setIsFormOpen(true); }}
@@ -399,7 +510,7 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
               const atrasoSemConferir = venceuSemConferir(e, mes);
               const dadosEquatorial = [
                 e.unidadeConsumidora ? `UC: ${e.unidadeConsumidora}` : "",
-                e.cpf ? `CPF: ${maskCPF(e.cpf)}` : "",
+                e.cpf ? `CPF: ${maskDoc(e.cpf)}` : "",
                 e.dataNascimento ? `Nascimento: ${formatDateBR(e.dataNascimento)}` : ""
               ].filter(Boolean).join(" · ");
               return (
@@ -416,7 +527,7 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
                       )}
                       {e.cpf && (
                         <button type="button" onClick={() => copiar(e.cpf!, "CPF")} className="inline-flex items-center gap-1 hover:text-zinc-900" title="Copiar CPF">
-                          CPF <span className="font-mono text-zinc-900">{maskCPF(e.cpf)}</span> <Copy className="w-3 h-3" />
+                          CPF <span className="font-mono text-zinc-900">{maskDoc(e.cpf)}</span> <Copy className="w-3 h-3" />
                         </button>
                       )}
                       {e.dataNascimento && (
@@ -428,6 +539,11 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
                         <button type="button" onClick={() => copiar(dadosEquatorial, "Dados para a Equatorial")} className="inline-flex items-center gap-1 text-blue-700 hover:underline">
                           Copiar tudo
                         </button>
+                      )}
+                      {e.telefone && (
+                        <a href={`https://wa.me/${e.telefone.startsWith("55") ? e.telefone : "55" + e.telefone}`} target="_blank" rel="noopener noreferrer" className="text-emerald-700 hover:underline">
+                          WhatsApp
+                        </a>
                       )}
                       {e.diaVencimentoConta && <span>Conta vence dia {e.diaVencimentoConta}</span>}
                     </div>
@@ -525,7 +641,7 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
             <div className="px-5 py-4 border-b border-zinc-200">
               <h2 id="titulo-importar" className="text-lg font-semibold text-zinc-900">Importar locações</h2>
               <p className="text-sm text-zinc-600">
-                {candidatos.length} locação(ões) dos contratos e das comissões ainda não estão aqui. Entram como "Transferida"; dia de vencimento e unidade consumidora você completa depois.
+                {candidatos.length} locação(ões) ainda não estão aqui. Entram como "Transferida"; dia de vencimento e unidade consumidora você completa depois.
               </p>
             </div>
             <div className="px-5 py-2 border-b border-zinc-100 flex items-center justify-between text-sm">
@@ -556,7 +672,7 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
                     />
                     <span className="min-w-0">
                       <span className="block text-sm font-medium text-zinc-900">{formatPersonName(c.inquilino)}</span>
-                      <span className="block text-xs text-zinc-600 truncate">{c.imovel} · {c.origem}{c.cpf ? " · com CPF" : ""}</span>
+                      <span className="block text-xs text-zinc-600 truncate">{c.imovel} · {c.origem}{c.cpf ? (c.cpf.length === 14 ? " · com CNPJ" : " · com CPF") : ""}</span>
                     </span>
                   </label>
                 </li>

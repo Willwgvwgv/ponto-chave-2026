@@ -711,6 +711,8 @@ export interface EnergiaLocacao {
   dataVencimento?: string; // YYYY-MM-DD — prazo para transferir a conta para o inquilino
   status: StatusEnergiaLocacao; // situação da transferência
   diaVencimentoConta?: number; // dia do mês em que vence a conta de energia
+  codigoContrato?: string; // código da locação no sistema de origem (importação por planilha)
+  telefone?: string; // celular do inquilino
   // Conferência mensal do pagamento da conta (chave = "YYYY-MM")
   pagamentos?: Record<string, PagamentoEnergiaMes>;
   observacoes?: string;

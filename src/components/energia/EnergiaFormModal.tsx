@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { X, Zap } from "lucide-react";
 import { EnergiaLocacao, StatusEnergiaLocacao } from "../../types";
-import { maskCPF, stripDoc } from "../../lib/utils";
+import { maskDoc, stripDoc } from "../../lib/utils";
 
 interface EnergiaFormModalProps {
   initial: EnergiaLocacao | null;
@@ -20,7 +20,7 @@ export const EnergiaFormModal: React.FC<EnergiaFormModalProps> = ({ initial, onS
   const [imovel, setImovel] = useState(initial?.imovel || "");
   const [inquilino, setInquilino] = useState(initial?.inquilino || "");
   const [unidadeConsumidora, setUnidadeConsumidora] = useState(initial?.unidadeConsumidora || "");
-  const [cpf, setCpf] = useState(initial?.cpf ? maskCPF(initial.cpf) : "");
+  const [cpf, setCpf] = useState(initial?.cpf ? maskDoc(initial.cpf) : "");
   const [dataNascimento, setDataNascimento] = useState(initial?.dataNascimento || "");
   const [dataVencimento, setDataVencimento] = useState(initial?.dataVencimento || "");
   const [status, setStatus] = useState<StatusEnergiaLocacao>(initial?.status || "transferida");
@@ -128,7 +128,7 @@ export const EnergiaFormModal: React.FC<EnergiaFormModalProps> = ({ initial, onS
               <input
                 type="text"
                 value={cpf}
-                onChange={e => setCpf(maskCPF(e.target.value))}
+                onChange={e => setCpf(maskDoc(e.target.value))}
                 placeholder="000.000.000-00"
                 className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all"
               />
