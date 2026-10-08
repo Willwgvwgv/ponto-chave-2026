@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { X, Copy, RefreshCw, CheckCircle2, AlertTriangle } from "lucide-react";
+import { X, Copy, RefreshCw, CheckCircle2, AlertTriangle, Search } from "lucide-react";
 import { toast } from "sonner";
 import { auth } from "../../firebase";
 
@@ -27,8 +27,10 @@ interface RespostaScaza {
 interface Props {
   onClose: () => void;
   companyId?: string;
-  locacoes?: { id: string; rotulo: string }[];
+  locacoes?: { id: string; rotulo: string; busca?: string }[];
 }
+
+const normalizar = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
 const TOPICOS_COM_CONTA = ["conta.atualizada", "emissao_boleto.concluida"];
 
@@ -45,6 +47,18 @@ export const ScazaIntegracaoModal: React.FC<Props> = ({ onClose, companyId, loca
   const [reprocessando, setReprocessando] = useState<string | null>(null);
 
   const [escolha, setEscolha] = useState<Record<string, string>>({});
+  const [termo, setTermo] = useState<Record<string, string>>({});
+  const filtrarLocacoes = (txt: string) => {
+    const partes = normalizar(txt).split(/\s+/).filter(Boolean);
+    if (!partes.length) return [];
+    return locacoesOrdenadas
+      .filter(l => {
+        const alvo = normalizar(`${l.rotulo} ${l.busca || ""}`);
+        const alvoDigitos = alvo.replace(/\D/g, "");
+        return partes.every(p => alvo.includes(p) || (/^\d+$/.test(p.replace(/\D/g, "")) && p.replace(/\D/g, "").length >= 3 && alvoDigitos.includes(p.replace(/\D/g, ""))));
+      })
+      .slice(0, 8);
+  };
   const locacoesOrdenadas = [...locacoes].sort((a, b) => a.rotulo.localeCompare(b.rotulo, "pt-BR"));
 
   const reprocessar = async (id: string, energiaId?: string) => {
@@ -190,27 +204,59 @@ export const ScazaIntegracaoModal: React.FC<Props> = ({ onClose, companyId, loca
                             >
                               {reprocessando === ev.id ? "Processando…" : "Processar de novo"}
                             </button>
-                            {!ev.processado && locacoesOrdenadas.length > 0 && (
-                              <>
-                                <select
-                                  aria-label="Locação para vincular"
-                                  value={escolha[ev.id] || ""}
-                                  onChange={e => setEscolha(prev => ({ ...prev, [ev.id]: e.target.value }))}
-                                  className="h-8 max-w-[260px] px-2 rounded-lg border border-zinc-300 text-xs bg-white"
-                                >
-                                  <option value="">Vincular a uma locação…</option>
-                                  {locacoesOrdenadas.map(l => <option key={l.id} value={l.id}>{l.rotulo}</option>)}
-                                </select>
-                                <button
-                                  type="button"
-                                  onClick={() => reprocessar(ev.id, escolha[ev.id])}
-                                  disabled={!escolha[ev.id] || reprocessando === ev.id}
-                                  className="h-8 px-3 rounded-lg bg-zinc-900 text-white text-xs font-medium hover:bg-zinc-800 disabled:opacity-40"
-                                >
-                                  Vincular e aplicar
-                                </button>
-                              </>
-                            )}
+                            {locacoesOrdenadas.length > 0 && (() => {
+                              const selecionada = locacoesOrdenadas.find(l => l.id === escolha[ev.id]);
+                              const resultados = selecionada ? [] : filtrarLocacoes(termo[ev.id] || "");
+                              return (
+                                <div className="w-full mt-1 space-y-1.5">
+                                  <p className="text-xs text-zinc-600">{ev.processado ? "Ligou na locação errada? Escolha a certa:" : "Vincular a uma locação:"}</p>
+                                  {selecionada ? (
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <span className="px-2.5 py-1 rounded-lg bg-zinc-100 text-xs text-zinc-900">{selecionada.rotulo}</span>
+                                      <button type="button" onClick={() => setEscolha(prev => ({ ...prev, [ev.id]: "" }))} className="text-xs text-zinc-600 hover:text-zinc-900 underline">trocar</button>
+                                      <button
+                                        type="button"
+                                        onClick={() => reprocessar(ev.id, selecionada.id)}
+                                        disabled={reprocessando === ev.id}
+                                        className="h-8 px-3 rounded-lg bg-zinc-900 text-white text-xs font-medium hover:bg-zinc-800 disabled:opacity-40"
+                                      >
+                                        Vincular e aplicar
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <>
+                                      <div className="relative">
+                                        <Search className="w-3.5 h-3.5 text-zinc-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                                        <input
+                                          type="text"
+                                          aria-label="Buscar locação por inquilino, endereço, UC ou CPF"
+                                          placeholder="Buscar por inquilino, rua, quadra, UC ou CPF"
+                                          value={termo[ev.id] || ""}
+                                          onChange={e => setTermo(prev => ({ ...prev, [ev.id]: e.target.value }))}
+                                          className="w-full h-9 pl-8 pr-3 rounded-lg border border-zinc-300 text-xs focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600"
+                                        />
+                                      </div>
+                                      {(termo[ev.id] || "").trim() && (
+                                        resultados.length === 0 ? (
+                                          <p className="text-xs text-zinc-500 px-1">Nenhuma locação encontrada. Tente o nome da rua ou do inquilino.</p>
+                                        ) : (
+                                          <ul className="border border-zinc-200 rounded-lg divide-y divide-zinc-100 max-h-56 overflow-y-auto">
+                                            {resultados.map(l => (
+                                              <li key={l.id}>
+                                                <button type="button" onClick={() => setEscolha(prev => ({ ...prev, [ev.id]: l.id }))}
+                                                  className="w-full text-left px-3 py-2 text-xs text-zinc-800 hover:bg-zinc-50">
+                                                  {l.rotulo}
+                                                </button>
+                                              </li>
+                                            ))}
+                                          </ul>
+                                        )
+                                      )}
+                                    </>
+                                  )}
+                                </div>
+                              );
+                            })()}
                           </div>
                         )}
                         {aberto === ev.id && (

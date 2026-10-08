@@ -684,7 +684,11 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
 
       {scazaAberto && <ScazaIntegracaoModal
           companyId={companyId}
-          locacoes={energias.map(x => ({ id: x.id, rotulo: `${x.inquilino ? formatPersonName(x.inquilino) : "Sem locatário"} — ${x.imovel}` }))}
+          locacoes={energias.map(x => ({
+            id: x.id,
+            rotulo: `${x.inquilino ? formatPersonName(x.inquilino) : "Sem locatário"} — ${x.imovel}`,
+            busca: [x.unidadeConsumidora, x.cpf, x.codigoContrato, x.telefone].filter(Boolean).join(" ")
+          }))}
           onClose={() => setScazaAberto(false)}
         />}
 
