@@ -64,6 +64,7 @@ import {
   Minimize2,
   Maximize2,
   Paperclip,
+  MoreHorizontal,
   Menu,
   Sliders,
   Calculator,
@@ -6463,6 +6464,44 @@ const ProcessesView = ({
     }
   }, [activeInstanceId, activeInstance]);
 
+  // Ao abrir um processo (ou quando a situação dele muda), a lista passa a
+  // mostrar a situação dele — assim o item aberto aparece destacado.
+  useEffect(() => {
+    if (activeInstance && activeInstance.status !== statusFilter) {
+      setStatusFilter(activeInstance.status);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeInstanceId, activeInstance?.status]);
+
+  // Lista da esquerda: os filtrados + o processo aberto, para nunca mostrar
+  // "Nenhum processo" com um processo aberto (ex.: busca que não o inclui).
+  const processosDaLista = useMemo(() => {
+    if (!activeInstance || filteredProcesses.some(p => p.id === activeInstance.id)) return filteredProcesses;
+    return [activeInstance, ...filteredProcesses];
+  }, [filteredProcesses, activeInstance]);
+
+  const itemSelecionadoRef = React.useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    itemSelecionadoRef.current?.scrollIntoView({ block: "nearest" });
+  }, [activeInstanceId, viewMode]);
+
+  const [menuAcoesAberto, setMenuAcoesAberto] = useState(false);
+  const menuAcoesRef = React.useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!menuAcoesAberto) return;
+    const fora = (e: MouseEvent) => {
+      if (menuAcoesRef.current && !menuAcoesRef.current.contains(e.target as Node)) setMenuAcoesAberto(false);
+    };
+    const tecla = (e: KeyboardEvent) => { if (e.key === "Escape") setMenuAcoesAberto(false); };
+    document.addEventListener("mousedown", fora);
+    document.addEventListener("keydown", tecla);
+    return () => {
+      document.removeEventListener("mousedown", fora);
+      document.removeEventListener("keydown", tecla);
+    };
+  }, [menuAcoesAberto]);
+  useEffect(() => { setMenuAcoesAberto(false); }, [activeInstanceId]);
+
   const imprimirRelatorio = () => {
     const printArea = document.getElementById('print-area');
     if (!printArea) {
@@ -6581,7 +6620,7 @@ const ProcessesView = ({
               type="button"
               onClick={() => setIsMaximized(!isMaximized)}
               className={cn(
-                "h-10 px-3.5 rounded-lg border text-sm font-medium flex items-center gap-2 transition-colors",
+                "h-10 px-4 rounded-lg border text-sm font-medium flex items-center gap-2 transition-colors",
                 isMaximized ? "bg-blue-50 border-blue-200 text-blue-800" : "bg-white border-zinc-300 text-zinc-700 hover:bg-zinc-50"
               )}
               title={isMaximized ? "Sair da tela cheia" : "Ver em tela cheia"}
@@ -6590,13 +6629,13 @@ const ProcessesView = ({
               {isMaximized ? "Sair da tela cheia" : "Tela cheia"}
             </button>
           )}
-          <div className="flex p-[3px] bg-zinc-200/70 rounded-[10px] gap-0.5" role="group" aria-label="Modo de visualização">
+          <div className="flex p-1 bg-zinc-200/70 rounded-lg gap-1" role="group" aria-label="Modo de visualização">
             <button 
               type="button"
               onClick={() => setViewMode("list")}
               aria-pressed={viewMode === "list"}
               className={cn(
-                "h-9 px-3.5 rounded-lg text-sm flex items-center gap-2 transition-colors",
+                "h-9 px-4 rounded-lg text-sm flex items-center gap-2 transition-colors",
                 viewMode === "list" ? "bg-white text-zinc-900 font-semibold shadow-sm" : "text-zinc-700 font-medium hover:text-zinc-900"
               )}
             >
@@ -6608,7 +6647,7 @@ const ProcessesView = ({
               onClick={() => setViewMode("kanban")}
               aria-pressed={viewMode === "kanban"}
               className={cn(
-                "h-9 px-3.5 rounded-lg text-sm flex items-center gap-2 transition-colors",
+                "h-9 px-4 rounded-lg text-sm flex items-center gap-2 transition-colors",
                 viewMode === "kanban" ? "bg-white text-zinc-900 font-semibold shadow-sm" : "text-zinc-700 font-medium hover:text-zinc-900"
               )}
             >
@@ -6619,7 +6658,7 @@ const ProcessesView = ({
           <button 
             type="button"
             onClick={() => setIsModalOpen(true)}
-            className="h-[42px] px-[18px] flex items-center gap-2 bg-blue-700 hover:bg-blue-800 text-white rounded-[10px] font-semibold text-sm transition-colors"
+            className="h-10 px-4 flex items-center gap-2 bg-blue-700 hover:bg-blue-800 text-white rounded-lg font-semibold text-sm transition-colors"
           >
             <Plus className="w-4 h-4" />
             Novo processo
@@ -6629,21 +6668,15 @@ const ProcessesView = ({
 
       {viewMode === "kanban" ? (
         <div className={cn(
-          "overflow-x-auto pb-6 custom-scrollbar",
-          isMaximized 
-            ? "fixed inset-0 z-50 bg-zinc-100 p-6 md:p-10 overflow-y-auto" 
-            : "h-[calc(100vh-280px)] -mx-4 px-4"
+          isMaximized && "fixed inset-0 z-50 bg-zinc-100 p-6 md:p-10 overflow-y-auto"
         )}>
           {isMaximized && (
             <div className="max-w-[1800px] mx-auto flex flex-wrap items-center justify-between gap-4 mb-6 pb-5 border-b border-zinc-200">
-              <div className="space-y-1">
-                <h2 className="text-2xl font-semibold tracking-tight text-zinc-900">Gestão de Processos</h2>
-                <p className="text-sm text-zinc-600">Tela cheia</p>
-              </div>
+              <h2 className="text-2xl font-semibold tracking-tight text-zinc-900">Gestão de Processos</h2>
               <button 
                 type="button"
                 onClick={() => setIsMaximized(false)}
-                className="h-10 px-3.5 flex items-center gap-2 bg-white border border-zinc-300 rounded-lg text-sm font-medium text-zinc-700 hover:bg-zinc-50 transition-colors"
+                className="h-10 px-4 flex items-center gap-2 bg-white border border-zinc-300 rounded-lg text-sm font-medium text-zinc-700 hover:bg-zinc-50 transition-colors"
               >
                 <Minimize2 className="w-4 h-4" />
                 Sair da tela cheia
@@ -6651,11 +6684,17 @@ const ProcessesView = ({
             </div>
           )}
           
+          {/* Abaixo de ~1280px as 5 colunas não cabem: rolagem horizontal com aviso visível. */}
+          <p className="xl:hidden mb-2 flex items-center gap-2 text-[13px] text-zinc-600">
+            <ChevronRight className="w-4 h-4" />
+            Deslize para o lado para ver todas as etapas
+          </p>
+          <div className="overflow-x-auto pb-3">
           <div className={cn(
-            "flex gap-4 h-full min-w-max",
-            isMaximized && "max-w-[1800px] mx-auto h-[calc(100vh-180px)]"
+            "grid gap-3 items-start grid-cols-[repeat(5,minmax(220px,1fr))]",
+            isMaximized && "max-w-[1800px] mx-auto"
           )}>
-            {kanbanColumns.map((column, colIdx) => {
+{kanbanColumns.map((column, colIdx) => {
               const columnProcesses = filteredProcesses.filter(p => {
                 let effectiveStatus = p.kanbanStatus || "prospeccao";
                 if (effectiveStatus === "todo") effectiveStatus = "prospeccao";
@@ -6679,12 +6718,11 @@ const ProcessesView = ({
                   }}
                   aria-label={column.label}
                   className={cn(
-                    "w-72 flex flex-col h-full rounded-xl border p-3 transition-colors duration-300",
-                    isMaximized && "w-80",
+                    "min-w-0 flex flex-col rounded-xl border p-2 min-h-[96px] transition-colors duration-300",
                     highlightedColumnId === column.id ? "bg-green-50 border-green-600" : "bg-zinc-200/60 border-transparent"
                   )}
                 >
-                  <div className="flex items-center justify-between mb-3 px-1 pt-0.5">
+                  <div className="flex items-center justify-between mb-2 px-2 pt-1">
                     <div className="flex items-center gap-2 flex-1 group/header">
                       <div className={cn("w-2 h-2 rounded-full", column.color)} />
                       {columnEditing === column.id ? (
@@ -6697,7 +6735,7 @@ const ProcessesView = ({
                             if (e.key === 'Enter') updateColumnName(column.id);
                             if (e.key === 'Escape') setColumnEditing(null);
                           }}
-                          className="bg-white border border-blue-300 rounded-md px-2 py-0.5 text-sm font-semibold text-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-600/20 w-full"
+                          className="bg-white border border-blue-300 rounded-md px-2 py-1 text-sm font-semibold text-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-600/20 w-full"
                         />
                       ) : (
                         <div className="flex items-center gap-2 cursor-pointer" onClick={() => {
@@ -6711,12 +6749,12 @@ const ProcessesView = ({
                         </div>
                       )}
                     </div>
-                    <span className="min-w-6 h-[22px] px-2 rounded-full bg-white text-xs font-semibold text-zinc-700 flex items-center justify-center">
+                    <span className="min-w-6 h-6 px-2 rounded-full bg-white text-xs font-semibold text-zinc-700 flex items-center justify-center">
                       {columnProcesses.length}
                     </span>
                   </div>
 
-                  <div className="flex-1 space-y-2.5 overflow-y-auto pr-0.5 custom-scrollbar">
+                  <div className="space-y-2">
                     <AnimatePresence mode="popLayout">
                       {columnProcesses.map((proc) => {
                         const procTemplate = templates.find(t => t.type === proc.type);
@@ -6743,103 +6781,99 @@ const ProcessesView = ({
                             exit={{ opacity: 0 }}
                             whileDrag={{ boxShadow: "0 8px 24px rgba(24,24,27,0.16)", zIndex: 50 }}
                             transition={{ duration: 0.15 }}
-                            className="bg-white p-3.5 rounded-[10px] border border-zinc-200 shadow-[0_1px_2px_rgba(24,24,27,0.04)] hover:border-zinc-300 transition-colors cursor-grab active:cursor-grabbing flex flex-col gap-3"
+                            className="bg-white p-3 rounded-lg border border-zinc-200 hover:border-zinc-300 transition-colors cursor-grab active:cursor-grabbing flex flex-col gap-2"
                           >
-                            <div className="space-y-1">
-                              <span className={cn("text-xs font-medium", corTipo(procTemplate.color))}>{procTemplate.title}</span>
-                              <h4 className="font-semibold text-zinc-900 text-[15px] leading-[21px] line-clamp-2">{proc.title}</h4>
+                            <div className="flex items-center justify-between gap-2">
+                              <span className={cn("text-xs font-medium truncate", corTipo(procTemplate.color))}>{procTemplate.title}</span>
+                              {proc.dueDate && (
+                                <span className={cn(
+                                  "text-xs font-medium px-2 py-1 rounded whitespace-nowrap",
+                                  proc.status === "completed" ? "bg-green-100 text-green-800"
+                                    : proc.dueDate < TODAY_ISO ? "bg-orange-100 text-orange-800"
+                                    : "text-zinc-600"
+                                )}>
+                                  {proc.status !== "completed" && proc.dueDate < TODAY_ISO ? "Venceu " : ""}{format(parseISO(proc.dueDate), "dd MMM", { locale: ptBR })}
+                                </span>
+                              )}
                             </div>
+                            <h4 className="font-semibold text-zinc-900 text-sm leading-5 line-clamp-2">{proc.title}</h4>
 
-                            <div className="space-y-1.5">
+                            <div className="space-y-1">
                               <div className="flex justify-between text-xs text-zinc-600">
                                 <span>{proc.completedSteps.length} de {procTemplate.steps.length} etapas</span>
                                 <span className="tabular-nums">{progress}%</span>
                               </div>
                               <div className="h-1 bg-zinc-100 rounded-full overflow-hidden">
-                                <div 
+                                <div
                                   className={cn("h-full rounded-full", progress >= 100 ? "bg-green-700" : "bg-blue-700")}
                                   style={{ width: `${Math.min(progress, 100)}%` }}
                                 />
                               </div>
                             </div>
 
-                            <div className="flex items-center justify-between gap-2 pt-2.5 border-t border-zinc-100">
-                              <div className="flex items-center gap-2 min-w-0">
-                                <span className="w-[26px] h-[26px] flex-none rounded-full bg-blue-50 text-blue-800 text-[11px] font-bold flex items-center justify-center">
-                                  {iniciaisResponsavel(proc.uid)}
-                                </span>
-                                <span className="text-[13px] text-zinc-700 truncate">{nomeResponsavel(proc.uid)}</span>
-                              </div>
-                              {proc.dueDate && (
-                                <span className={cn(
-                                  "text-xs font-medium px-2 py-[3px] rounded-md whitespace-nowrap",
-                                  proc.status === "completed" ? "bg-green-100 text-green-800"
-                                    : proc.dueDate < TODAY_ISO ? "bg-orange-100 text-orange-800"
-                                    : "bg-zinc-100 text-zinc-700"
-                                )}>
-                                  {proc.status !== "completed" && proc.dueDate < TODAY_ISO ? "Venceu " : ""}{format(parseISO(proc.dueDate), "dd MMM", { locale: ptBR })}
-                                </span>
-                              )}
-                            </div>
-
                             {/* Setas usam a mesma função do arrastar (moverProcesso).
                                 Sem "volta ao início": na primeira coluna não há
                                 "voltar" e na última não há "avançar". */}
-                            <div className="flex gap-2">
-                              {colIdx > 0 && (
-                                <button
-                                  type="button"
-                                  disabled={movendoProcessoId === proc.id}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    moverProcesso(proc, kanbanColumns[colIdx - 1].id);
-                                  }}
-                                  title={`Voltar para ${kanbanColumns[colIdx - 1].label}`}
-                                  aria-label={`Voltar para ${kanbanColumns[colIdx - 1].label}`}
-                                  className="flex-1 min-w-0 h-9 px-2 border border-zinc-200 rounded-lg bg-white text-[13px] font-medium text-zinc-700 hover:bg-zinc-50 flex items-center justify-center gap-1 transition-colors disabled:opacity-50"
-                                >
-                                  <ChevronLeft className="w-3.5 h-3.5 flex-none" />
-                                  <span className="truncate">{kanbanColumns[colIdx - 1].label}</span>
-                                </button>
-                              )}
-                              {colIdx < kanbanColumns.length - 1 && (
-                                <button
-                                  type="button"
-                                  disabled={movendoProcessoId === proc.id}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    moverProcesso(proc, kanbanColumns[colIdx + 1].id);
-                                  }}
-                                  title={`Avançar para ${kanbanColumns[colIdx + 1].label}`}
-                                  aria-label={`Avançar para ${kanbanColumns[colIdx + 1].label}`}
-                                  className="flex-1 min-w-0 h-9 px-2 border border-zinc-200 rounded-lg bg-white text-[13px] font-semibold text-zinc-900 hover:bg-zinc-50 flex items-center justify-center gap-1 transition-colors disabled:opacity-50"
-                                >
-                                  <span className="truncate">{kanbanColumns[colIdx + 1].label}</span>
-                                  <ChevronRight className="w-3.5 h-3.5 flex-none" />
-                                </button>
-                              )}
+                            <div className="flex items-center justify-between gap-2 pt-2 border-t border-zinc-100">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className="w-6 h-6 flex-none rounded-full bg-blue-50 text-blue-800 text-[10px] font-bold flex items-center justify-center">
+                                  {iniciaisResponsavel(proc.uid)}
+                                </span>
+                                <span className="text-xs text-zinc-700 truncate">{nomeResponsavel(proc.uid)}</span>
+                              </div>
+                              <div className="flex items-center flex-none">
+                                {colIdx > 0 && (
+                                  <button
+                                    type="button"
+                                    disabled={movendoProcessoId === proc.id}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      moverProcesso(proc, kanbanColumns[colIdx - 1].id);
+                                    }}
+                                    title={`Mover para ${kanbanColumns[colIdx - 1].label}`}
+                                    aria-label={`Mover para ${kanbanColumns[colIdx - 1].label}`}
+                                    className="w-8 h-8 rounded-md text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 flex items-center justify-center transition-colors disabled:opacity-50"
+                                  >
+                                    <ChevronLeft className="w-4 h-4" />
+                                  </button>
+                                )}
+                                {colIdx < kanbanColumns.length - 1 && (
+                                  <button
+                                    type="button"
+                                    disabled={movendoProcessoId === proc.id}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      moverProcesso(proc, kanbanColumns[colIdx + 1].id);
+                                    }}
+                                    title={`Mover para ${kanbanColumns[colIdx + 1].label}`}
+                                    aria-label={`Mover para ${kanbanColumns[colIdx + 1].label}`}
+                                    className="w-8 h-8 rounded-md text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 flex items-center justify-center transition-colors disabled:opacity-50"
+                                  >
+                                    <ChevronRight className="w-4 h-4" />
+                                  </button>
+                                )}
+                              </div>
                             </div>
                           </motion.div>
                         );
                       })}
                     </AnimatePresence>
                     {columnProcesses.length === 0 && (
-                      <div className="py-5 px-3.5 border border-dashed border-zinc-300 rounded-[10px] text-center text-[13px] text-zinc-600">
-                        Nenhum processo nesta etapa.
-                      </div>
+                      <p className="px-2 py-2 text-[13px] text-zinc-500">Nenhum processo</p>
                     )}
                   </div>
                 </motion.div>
               );
             })}
           </div>
+          </div>
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {/* Sidebar: List of Instances */}
-        <div className="lg:col-span-1 flex flex-col gap-3 min-w-0">
-          <div className="bg-white p-4 rounded-xl border border-zinc-200 space-y-3.5">
-            <div className="flex flex-col gap-1.5">
+        <div className="lg:col-span-1 flex flex-col gap-4 min-w-0">
+          <div className="space-y-3">
+            <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between">
                 <label htmlFor="busca-processos" className="text-[13px] font-medium text-zinc-700">Buscar</label>
                 {profile?.role === 'admin' && (
@@ -6861,14 +6895,14 @@ const ProcessesView = ({
                   placeholder="Buscar pelo título"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full h-10 pl-9 pr-3 bg-white border border-zinc-300 rounded-lg text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 placeholder:text-zinc-500"
+                  className="w-full h-10 pl-9 pr-3 bg-white border border-zinc-300 rounded-lg text-smtext-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 placeholder:text-zinc-500"
                 />
               </div>
             </div>
 
-            <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-2">
               <span className="text-[13px] font-medium text-zinc-700">Situação</span>
-              <div className="flex p-[3px] bg-zinc-100 border border-zinc-200 rounded-lg gap-0.5" role="group" aria-label="Situação">
+              <div className="flex p-1 bg-zinc-200/70 rounded-lg gap-1" role="group" aria-label="Situação">
                 {(["active", "completed", "archived"] as const).map((status) => (
                   <button
                     key={status}
@@ -6876,53 +6910,54 @@ const ProcessesView = ({
                     onClick={() => setStatusFilter(status)}
                     aria-pressed={statusFilter === status}
                     className={cn(
-                      "flex-1 h-8 text-[13px] rounded-md transition-colors",
+                      "flex-1 h-8 px-2 text-[13px] rounded-md whitespace-nowrap transition-colors",
                       statusFilter === status 
                         ? "bg-white text-zinc-900 font-semibold shadow-sm" 
                         : "text-zinc-600 font-medium hover:text-zinc-900"
                     )}
                   >
-                    {status === "active" ? "Em andamento" : status === "completed" ? "Concluídos" : "Arquivados"}
+                    {status === "active" ? "Ativos" : status === "completed" ? "Concluídos" : "Arquivados"}
                   </button>
                 ))}
               </div>
             </div>
           </div>
 
-          <ul className="space-y-2 overflow-y-auto max-h-[600px] pr-0.5 custom-scrollbar">
-            {filteredProcesses.length === 0 ? (
-              <li className="p-6 text-center rounded-[10px] border border-dashed border-zinc-300 text-zinc-600 text-sm">
+          <ul className="space-y-2 overflow-y-auto max-h-[600px] pr-1 custom-scrollbar">
+            {processosDaLista.length === 0 ? (
+              <li className="px-2 py-4 text-zinc-600 text-sm">
                 {searchTerm ? "Nenhum processo encontrado para essa busca." : "Nenhum processo nesta situação."}
               </li>
-            ) : filteredProcesses.map((proc) => {
+            ) : processosDaLista.map((proc) => {
               const procTemplate = templates.find(t => t.type === proc.type);
               if (!procTemplate) return null;
               const progress = Math.round((proc.completedSteps.length / procTemplate.steps.length) * 100);
-              const atrasado = !!proc.dueDate && proc.dueDate < TODAY_ISO && proc.status === 'active';
+              const atrasado= !!proc.dueDate && proc.dueDate < TODAY_ISO && proc.status === 'active';
               const colunaLabel = kanbanColumns.find(c => c.id === normalizarColuna(proc.kanbanStatus))?.label;
 
               return (
                 <li key={proc.id}>
-                  <button 
+                  <button
                     type="button"
+                    ref={activeInstanceId === proc.id ? itemSelecionadoRef : undefined}
                     onClick={() => setActiveInstanceId(proc.id)}
                     aria-current={activeInstanceId === proc.id ? "true" : undefined}
                     className={cn(
-                      "w-full text-left p-3.5 rounded-[10px] border bg-white transition-colors flex flex-col gap-2.5",
+                      "w-full text-left p-3 rounded-lg border bg-white transition-colors flex flex-col gap-2",
                       activeInstanceId === proc.id 
-                        ? "border-blue-700 ring-[3px] ring-blue-700/10" 
+                        ? "border-blue-700 bg-blue-50/40 ring-2 ring-blue-700/15" 
                         : "border-zinc-200 hover:border-zinc-300"
                     )}
                   >
                     <span className="flex items-baseline justify-between gap-2 w-full">
-                      <span className="font-semibold text-zinc-900 text-[15px] leading-[21px] line-clamp-2">{proc.title}</span>
+                      <span className="font-semibold text-zinc-900 text-sm leading-5 line-clamp-2">{proc.title}</span>
                       {proc.dueDate && (
                         <span className={cn("text-xs font-medium whitespace-nowrap", atrasado ? "text-orange-800" : "text-zinc-600")}>
                           {atrasado ? "Venceu " : ""}{format(parseISO(proc.dueDate), "dd/MM")}
                         </span>
                       )}
                     </span>
-                    <span className="flex items-center justify-between gap-2 w-full text-[13px] text-zinc-600">
+                    <span className="flex items-center justify-between gap-2 w-full text-xs text-zinc-600">
                       <span className="truncate">{procTemplate.title}{colunaLabel ? ` · ${colunaLabel}` : ""}</span>
                       <span className="truncate">{nomeResponsavel(proc.uid)}</span>
                     </span>
@@ -6954,48 +6989,48 @@ const ProcessesView = ({
                         type="text"
                         value={editingTitleValue}
                         onChange={(e) => setEditingTitleValue(e.target.value)}
-                        className="flex-1 min-w-0 h-[38px] text-xl font-semibold text-zinc-900 bg-white border border-blue-600 rounded-lg px-2 focus:outline-none focus:ring-2 focus:ring-blue-600/20"
+                        className="flex-1 min-w-0 h-10 text-xl font-semibold text-zinc-900 bg-white border border-blue-600 rounded-lg px-2 focus:outline-none focus:ring-2 focus:ring-blue-600/20"
                         autoFocus
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') updateProcessTitle();
                           if (e.key === 'Escape') setIsEditingTitle(false);
                         }}
                       />
-                      <button type="button" onClick={updateProcessTitle} aria-label="Salvar título" className="w-[38px] h-[38px] flex items-center justify-center bg-blue-700 text-white rounded-lg hover:bg-blue-800 transition-colors">
+                      <button type="button" onClick={updateProcessTitle} aria-label="Salvar título" className="w-10 h-10 flex items-center justify-center bg-blue-700 text-white rounded-lg hover:bg-blue-800 transition-colors">
                         <Check className="w-4 h-4" />
                       </button>
-                      <button type="button" onClick={() => setIsEditingTitle(false)} aria-label="Cancelar edição do título" className="w-[38px] h-[38px] flex items-center justify-center border border-zinc-300 text-zinc-700 rounded-lg hover:bg-zinc-50 transition-colors">
+                      <button type="button" onClick={() => setIsEditingTitle(false)} aria-label="Cancelar edição do título" className="w-10 h-10 flex items-center justify-center border border-zinc-300 text-zinc-700 rounded-lg hover:bg-zinc-50 transition-colors">
                         <X className="w-4 h-4" />
                       </button>
                     </div>
                   ) : (
-                    <div className="flex items-center gap-1.5 group/title min-h-[38px]">
+                    <div className="flex items-center gap-2 group/title min-h-10">
                       <h3 className="text-[22px] leading-[30px] font-semibold text-zinc-900">{activeInstance.title}</h3>
                       <button 
                         type="button"
                         onClick={() => setIsEditingTitle(true)}
                         aria-label="Editar título"
                         title="Editar título"
-                        className="p-1.5 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 rounded-md transition-colors"
+                        className="p-2 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 rounded-md transition-colors"
                       >
                         <Edit2 className="w-4 h-4" />
                       </button>
                     </div>
                   )}
                   <dl className="flex flex-wrap gap-x-6 gap-y-2 text-[13px]">
-                    <div className="flex gap-1.5">
+                    <div className="flex gap-2">
                       <dt className="text-zinc-600">Responsável</dt>
                       <dd className="font-medium text-zinc-900">{nomeResponsavel(activeInstance.uid)}</dd>
                     </div>
-                    <div className="flex gap-1.5">
+                    <div className="flex gap-2">
                       <dt className="text-zinc-600">Iniciado em</dt>
                       <dd className="font-medium text-zinc-900">{activeInstance.createdAt?.toDate ? format(activeInstance.createdAt.toDate(), "dd/MM/yyyy") : format(new Date(), "dd/MM/yyyy")}</dd>
                     </div>
-                    <div className="flex gap-1.5 items-center">
+                    <div className="flex gap-2 items-center">
                       <dt className="text-zinc-600">Prazo</dt>
                       <dd className="relative">
                         <span className={cn(
-                          "font-medium px-1.5 py-0.5 rounded-md cursor-pointer hover:bg-zinc-100",
+                          "font-medium px-2 py-1 rounded-md cursor-pointer hover:bg-zinc-100",
                           (activeInstance.dueDate && activeInstance.dueDate < TODAY_ISO && activeInstance.status === 'active') ? "text-orange-800 bg-orange-100 hover:bg-orange-100" : "text-zinc-900"
                         )}>
                           {activeInstance.dueDate ? format(parseISO(activeInstance.dueDate), "dd/MM/yyyy") : "Definir prazo"}
@@ -7021,12 +7056,12 @@ const ProcessesView = ({
                       </dd>
                     </div>
                     {activeInstance.tenantName && (
-                      <div className="flex gap-1.5">
+                      <div className="flex gap-2">
                         <dt className="text-zinc-600">Inquilino</dt>
                         <dd className="font-medium text-zinc-900">{activeInstance.tenantName}</dd>
                       </div>
                     )}
-                    <div className="flex gap-1.5">
+                    <div className="flex gap-2">
                       <dt className="text-zinc-600">Situação</dt>
                       <dd className={cn(
                         "font-medium",
@@ -7049,14 +7084,14 @@ const ProcessesView = ({
                         aluguelMensal: activeInstance.rentAmount || 0,
                         processId: activeInstance.id
                       })}
-                      className="h-10 px-3.5 border border-zinc-300 rounded-lg bg-white text-sm font-medium text-zinc-900 hover:bg-zinc-50 flex items-center gap-2 transition-colors"
+                      className="h-10 px-4 border border-zinc-300 rounded-lg bg-white text-sm font-medium text-zinc-900 hover:bg-zinc-50 flex items-center gap-2 transition-colors"
                     >
                       <DollarSign className="w-4 h-4" />
                       Lançar comissão
                     </button>
                   )}
                   {activeInstance.isCommissionLaunched && (
-                    <span className="h-10 px-3.5 rounded-lg bg-green-50 text-sm font-medium text-green-800 flex items-center gap-2">
+                    <span className="h-10 px-4 rounded-lg bg-green-50 text-sm font-medium text-green-800 flex items-center gap-2">
                       <CheckCircle2 className="w-4 h-4" />
                       Comissão lançada
                     </span>
@@ -7064,29 +7099,46 @@ const ProcessesView = ({
                   <button 
                     type="button"
                     onClick={() => setIsReportModalOpen(true)}
-                    className="h-10 px-3.5 border border-zinc-300 rounded-lg bg-white text-sm font-medium text-zinc-900 hover:bg-zinc-50 flex items-center gap-2 transition-colors"
+                    className="h-10 px-4 border border-zinc-300 rounded-lg bg-white text-sm font-medium text-zinc-900 hover:bg-zinc-50 flex items-center gap-2 transition-colors"
                   >
                     <Download className="w-4 h-4" />
                     Relatório
                   </button>
-                  <button 
-                    type="button"
-                    onClick={() => archiveProcess(activeInstance.id, activeInstance.status)}
-                    aria-label={activeInstance.status === 'archived' ? "Reativar processo" : "Arquivar processo"}
-                    title={activeInstance.status === 'archived' ? "Reativar processo" : "Arquivar processo"}
-                    className="w-10 h-10 border border-zinc-300 rounded-lg bg-white text-zinc-700 hover:bg-zinc-50 flex items-center justify-center transition-colors"
-                  >
-                    <Archive className="w-4 h-4" />
-                  </button>
-                  <button 
-                    type="button"
-                    onClick={() => deleteProcess(activeInstance.id)}
-                    aria-label="Excluir processo"
-                    title="Excluir processo"
-                    className="w-10 h-10 border border-zinc-300 rounded-lg bg-white text-red-700 hover:bg-red-50 flex items-center justify-center transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <div className="relative" ref={menuAcoesRef}>
+                    <button
+                      type="button"
+                      onClick={() => setMenuAcoesAberto(v => !v)}
+                      aria-haspopup="menu"
+                      aria-expanded={menuAcoesAberto}
+                      aria-label="Mais ações"
+                      title="Mais ações"
+                      className="w-10 h-10 border border-zinc-300 rounded-lg bg-white text-zinc-700 hover:bg-zinc-50 flex items-center justify-center transition-colors"
+                    >
+                      <MoreHorizontal className="w-4 h-4" />
+                    </button>
+                    {menuAcoesAberto && (
+                      <div role="menu" className="absolute right-0 top-11 z-20 w-52 py-1 bg-white border border-zinc-200 rounded-lg shadow-lg">
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => { setMenuAcoesAberto(false); archiveProcess(activeInstance.id, activeInstance.status); }}
+                          className="w-full h-10 px-3 flex items-center gap-2 text-sm text-zinc-900 hover:bg-zinc-50"
+                        >
+                          <Archive className="w-4 h-4 text-zinc-600" />
+                          {activeInstance.status === 'archived' ? "Reativar processo" : "Arquivar processo"}
+                        </button>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => { setMenuAcoesAberto(false); deleteProcess(activeInstance.id); }}
+                          className="w-full h-10 px-3 flex items-center gap-2 text-sm text-red-700 hover:bg-red-50"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          Excluir processo
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -7096,18 +7148,18 @@ const ProcessesView = ({
                 const anterior = kanbanColumns[idxColuna - 1];
                 const proxima = kanbanColumns[idxColuna + 1];
                 return (
-                  <div className="px-6 md:px-7 py-3.5 border-b border-zinc-200 bg-zinc-50 flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex items-center gap-2.5 text-sm">
+                  <div className="px-6 md:px-7 py-4 border-b border-zinc-200 bg-zinc-50 flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 text-sm">
                       <span className="text-zinc-600">Etapa no quadro</span>
                       <span className="font-semibold text-zinc-900">{kanbanColumns[idxColuna].label}</span>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                       {anterior && (
                         <button
                           type="button"
                           disabled={movendoProcessoId === activeInstance.id}
                           onClick={() => moverProcesso(activeInstance, anterior.id)}
-                          className="h-9 px-3 border border-zinc-300 rounded-lg bg-white text-[13px] font-medium text-zinc-700 hover:bg-zinc-50 flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                          className="h-9 px-3 border border-zinc-300 rounded-lg bg-white whitespace-nowrap text-[13px] font-medium text-zinc-700 hover:bg-zinc-50 flex items-center gap-2 transition-colors disabled:opacity-50"
                         >
                           <ChevronLeft className="w-3.5 h-3.5" />
                           Voltar para {anterior.label}
@@ -7118,7 +7170,7 @@ const ProcessesView = ({
                           type="button"
                           disabled={movendoProcessoId === activeInstance.id}
                           onClick={() => moverProcesso(activeInstance, proxima.id)}
-                          className="h-9 px-3 border border-zinc-300 rounded-lg bg-white text-[13px] font-semibold text-zinc-900 hover:bg-zinc-50 flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                          className="h-9 px-3 border border-zinc-300 rounded-lg bg-white whitespace-nowrap text-[13px] font-semibold text-zinc-900 hover:bg-zinc-50 flex items-center gap-2 transition-colors disabled:opacity-50"
                         >
                           Avançar para {proxima.label}
                           <ChevronRight className="w-3.5 h-3.5" />
@@ -7171,7 +7223,7 @@ const ProcessesView = ({
                         });
                       };
                       return (
-                        <li key={sIdx} className="flex gap-3.5 py-3.5 border-b border-zinc-100 last:border-b-0 items-start">
+                        <li key={sIdx} className="flex gap-3 py-3 border-b border-zinc-100 last:border-b-0 items-start">
                           {/* Concluir/desmarcar a etapa é só pelo círculo — separado dos
                               anexos. Desmarcar pede confirmação (apaga a data de conclusão). */}
                           <button
@@ -7186,25 +7238,27 @@ const ProcessesView = ({
                             title={isDone ? "Desmarcar etapa" : "Concluir etapa"}
                             aria-label={isDone ? `Desmarcar etapa ${step.label}` : `Concluir etapa ${step.label}`}
                             className={cn(
-                              "mt-0.5 w-7 h-7 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors",
+                              "mt-px w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors",
                               isDone ? "bg-green-700 border-green-700 text-white" : "border-zinc-400 bg-white hover:border-blue-700"
                             )}>
-                            {isDone && <Check className="w-3.5 h-3.5" strokeWidth={3} />}
+                            {isDone && <Check className="w-3 h-3" strokeWidth={3} />}
                           </button>
                           <div className="flex-1 min-w-0 flex flex-col gap-1">
-                            <span className="font-semibold text-[15px] text-zinc-900">{step.label}</span>
-                            {step.desc && <span className="text-[13px] leading-[19px] text-zinc-600">{step.desc}</span>}
-                            {isDone && registro?.completedAt && (
-                              <span className="text-xs text-green-800">Concluída em {formatSafeDate(registro.completedAt, "dd/MM/yyyy")}</span>
-                            )}
+                            <span className="flex flex-wrap items-baseline gap-x-2">
+                              <span className="font-semibold text-sm text-zinc-900">{step.label}</span>
+                              {isDone && registro?.completedAt && (
+                                <span className="text-xs text-green-800">Concluída em {formatSafeDate(registro.completedAt, "dd/MM/yyyy")}</span>
+                              )}
+                            </span>
+                            {step.desc && <span className="text-[13px] leading-5 text-zinc-600">{step.desc}</span>}
                             {attachments.length > 0 && (
-                              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                              <div className="mt-1 flex flex-wrap gap-2">
                                 {attachments.map((att, aIdx) => (
                                   <button 
                                     key={aIdx}
                                     type="button"
                                     onClick={() => handleOpenAttachment(att.url, att.name)}
-                                    className="inline-flex items-center gap-1.5 h-8 px-2.5 bg-white text-zinc-700 border border-zinc-200 rounded-md text-[13px] hover:bg-zinc-50 transition-colors max-w-full"
+                                    className="inline-flex items-center gap-2 h-7 px-2 bg-zinc-100 text-zinc-800 rounded-md text-xs hover:bg-zinc-200 transition-colors max-w-full"
                                   >
                                     <FileText className="w-3.5 h-3.5 text-zinc-500 flex-none" />
                                     <span className="truncate">{att.name}</span>
@@ -7216,10 +7270,11 @@ const ProcessesView = ({
                           <button
                             type="button"
                             onClick={abrirAnexos}
-                            className="h-[34px] px-3 border border-zinc-200 rounded-lg bg-white text-[13px] font-medium text-zinc-700 hover:bg-zinc-50 flex items-center gap-1.5 whitespace-nowrap transition-colors"
+                            title={attachments.length === 0 ? "Anexar arquivo" : `Anexos da etapa (${attachments.length})`}
+                            aria-label={attachments.length === 0 ? `Anexar arquivo em ${step.label}` : `Anexos de ${step.label} (${attachments.length})`}
+                            className="w-8 h-8 flex-none rounded-md text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 flex items-center justify-center transition-colors"
                           >
-                            <Paperclip className="w-3.5 h-3.5" />
-                            {attachments.length === 0 ? "Anexar" : attachments.length === 1 ? "1 anexo" : `${attachments.length} anexos`}
+                            <Paperclip className="w-4 h-4" />
                           </button>
                         </li>
                       );
@@ -7236,7 +7291,7 @@ const ProcessesView = ({
                         <h4 className="text-sm font-semibold text-zinc-900">Movimentações no quadro</h4>
                       </div>
                       {(!activeInstance.kanbanHistory || activeInstance.kanbanHistory.length === 0) ? (
-                        <div className="p-5 text-center rounded-[10px] border border-dashed border-zinc-300">
+                        <div className="p-5 text-center rounded-lg border border-dashed border-zinc-300">
                           <p className="text-[13px] text-zinc-600">Nenhuma movimentação registrada ainda.</p>
                         </div>
                       ) : (
@@ -7246,7 +7301,7 @@ const ProcessesView = ({
                               <div className="absolute left-0 top-0 w-8 h-8 rounded-full bg-white border border-zinc-200 flex items-center justify-center z-10">
                                 <ChevronRight className="w-4 h-4 text-zinc-600" />
                               </div>
-                              <div className="pt-0.5">
+                              <div className="pt-1">
                                 <p className="text-sm font-medium text-zinc-900 leading-5">
                                   Movido de <span className="text-zinc-600">{entry.from}</span> para <span className="font-semibold">{entry.to}</span>
                                 </p>
@@ -7277,7 +7332,7 @@ const ProcessesView = ({
                         <h4 className="text-sm font-semibold text-zinc-900">Etapas concluídas</h4>
                       </div>
                       {(!activeInstance.stepHistory || activeInstance.stepHistory.length === 0) ? (
-                        <div className="p-5 text-center rounded-[10px] border border-dashed border-zinc-300">
+                        <div className="p-5 text-center rounded-lg border border-dashed border-zinc-300">
                           <p className="text-[13px] text-zinc-600">Nenhuma etapa do checklist concluída ainda.</p>
                         </div>
                       ) : (
@@ -7287,7 +7342,7 @@ const ProcessesView = ({
                               <div className="absolute left-0 top-0 w-8 h-8 rounded-full bg-green-50 border border-green-200 flex items-center justify-center z-10">
                                 <Check className="w-4 h-4 text-green-700" />
                               </div>
-                              <div className="pt-0.5">
+                              <div className="pt-1">
                                 <p className="text-sm font-medium text-zinc-900 leading-5">{entry.label}</p>
                                 <div className="flex items-center gap-1 text-xs text-zinc-600 mt-1 w-fit">
                                   <Clock className="w-3 h-3" />
@@ -7364,7 +7419,7 @@ const ProcessesView = ({
               <div className="w-12 h-12 bg-zinc-100 rounded-xl flex items-center justify-center mb-4">
                 <ClipboardList className="w-6 h-6 text-zinc-500" />
               </div>
-              <h3 className="text-lg font-semibold text-zinc-900 mb-1.5">Selecione ou crie um processo</h3>
+              <h3 className="text-lg font-semibold text-zinc-900 mb-2">Selecione ou crie um processo</h3>
               <p className="text-sm text-zinc-600 max-w-sm mb-6">Escolha um processo na lista ao lado ou crie um rápido pelo tipo abaixo.</p>
               
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-2xl">
@@ -7373,7 +7428,7 @@ const ProcessesView = ({
                     key={t.id}
                     onClick={() => quickCreate(t.type)}
                     type="button"
-                    className="flex flex-col items-center gap-2.5 p-5 rounded-[10px] border border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50 transition-colors"
+                    className="flex flex-col items-center gap-3 p-5 rounded-lg border border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50 transition-colors"
                   >
                     <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-zinc-100">
                       {React.createElement(ICON_MAP[t.icon] || ClipboardList, { className: cn("w-5 h-5", corTipo(t.color)) })}
@@ -7394,21 +7449,21 @@ const ProcessesView = ({
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setSuggestionModal({ ...suggestionModal, isOpen: false })} className="absolute inset-0 bg-zinc-900/30" />
             <motion.div role="dialog" aria-modal="true" aria-labelledby="titulo-proxima-etapa" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }} className="relative bg-white w-full max-w-sm rounded-xl shadow-xl overflow-y-auto max-h-[90vh] p-6">
-              <h3 id="titulo-proxima-etapa" className="text-lg font-semibold text-zinc-900 mb-1.5">Próxima etapa</h3>
+              <h3 id="titulo-proxima-etapa" className="text-lg font-semibold text-zinc-900 mb-2">Próxima etapa</h3>
               <p className="text-sm text-zinc-600 mb-5 leading-relaxed">
                 Quer definir uma data para <strong className="font-semibold text-zinc-900">{suggestionModal.nextStepLabel}</strong>?
               </p>
-              <div className="flex flex-col gap-1.5 mb-6">
+              <div className="flex flex-col gap-2 mb-6">
                 <label htmlFor="data-proxima-etapa" className="text-sm font-medium text-zinc-900">Previsão</label>
                 <input 
                   id="data-proxima-etapa"
                   type="date" 
                   value={suggestionModal.suggestedDate}
                   onChange={(e) => setSuggestionModal({ ...suggestionModal, suggestedDate: e.target.value })}
-                  className="w-full h-[42px] px-3 bg-white border border-zinc-300 rounded-lg text-[15px] text-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 placeholder:text-zinc-500"
+                  className="w-full h-10 px-3 bg-white border border-zinc-300 rounded-lg text-[15px] text-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 placeholder:text-zinc-500"
                 />
               </div>
-              <div className="flex justify-end gap-2.5">
+              <div className="flex justify-end gap-3">
                 <button 
                   type="button"
                   onClick={() => setSuggestionModal({ ...suggestionModal, isOpen: false })} 
@@ -7470,7 +7525,7 @@ const ProcessesView = ({
                 </button>
               </div>
               <form id="form-novo-processo" onSubmit={addProcess} className="p-6 space-y-5 overflow-y-auto custom-scrollbar flex-1">
-                <div className="flex flex-col gap-1.5">
+                <div className="flex flex-col gap-2">
                   <label htmlFor="novo-nome" className="text-sm font-medium text-zinc-900">Nome do processo</label>
                   <input 
                     id="novo-nome"
@@ -7480,7 +7535,7 @@ const ProcessesView = ({
                     value={newProcessTitle}
                     onChange={(e) => setNewProcessTitle(e.target.value)}
                     placeholder="Ex.: Locação casa Maria Nadir"
-                    className="w-full h-[42px] px-3 bg-white border border-zinc-300 rounded-lg text-[15px] text-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 placeholder:text-zinc-500"
+                    className="w-full h-10 px-3 bg-white border border-zinc-300 rounded-lg text-[15px] text-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 placeholder:text-zinc-500"
                   />
                 </div>
                 <fieldset className="flex flex-col gap-2">
@@ -7492,14 +7547,14 @@ const ProcessesView = ({
                       onClick={() => setNewProcessType(t.type)}
                       aria-pressed={newProcessType === t.type}
                       className={cn(
-                        "flex items-center gap-3 px-3.5 py-3 rounded-[10px] border transition-colors text-left",
+                        "flex items-center gap-3 px-4 py-3 rounded-lg border transition-colors text-left",
                         newProcessType === t.type 
                           ? "bg-blue-50 border-blue-700" 
                           : "bg-white border-zinc-200 hover:border-zinc-300"
                       )}
                     >
                       <span className={cn(
-                        "w-[18px] h-[18px] rounded-full border-2 flex-none flex items-center justify-center",
+                        "w-5 h-5 rounded-full border-2 flex-none flex items-center justify-center",
                         newProcessType === t.type ? "border-blue-700" : "border-zinc-400"
                       )}>
                         {newProcessType === t.type && <span className="w-2 h-2 rounded-full bg-blue-700" />}
@@ -7512,9 +7567,10 @@ const ProcessesView = ({
                   ))}
                 </fieldset>
                 {newProcessType === "locacao" && (
-                  <fieldset className="p-4 border border-zinc-200 rounded-[10px] flex flex-col gap-4">
-                    <legend className="text-[13px] font-semibold text-zinc-700 px-1.5">Dados da locação</legend>
-                    <div className="flex flex-col gap-1.5">
+                  <fieldset className="pt-4 border-t border-zinc-200 flex flex-col gap-4">
+                    <legend className="sr-only">Dados da locação</legend>
+                    <p className="text-sm font-semibold text-zinc-900" aria-hidden="true">Dados da locação</p>
+                    <div className="flex flex-col gap-2">
                       <label htmlFor="novo-inquilino" className="text-sm font-medium text-zinc-900">Inquilino</label>
                       <input 
                         id="novo-inquilino"
@@ -7522,10 +7578,10 @@ const ProcessesView = ({
                         value={newProcessTenantName}
                         onChange={(e) => setNewProcessTenantName(e.target.value)}
                         placeholder="Nome completo"
-                        className="w-full h-[42px] px-3 bg-white border border-zinc-300 rounded-lg text-[15px] text-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 placeholder:text-zinc-500"
+                        className="w-full h-10 px-3 bg-white border border-zinc-300 rounded-lg text-[15px] text-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 placeholder:text-zinc-500"
                       />
                     </div>
-                    <div className="flex flex-col gap-1.5">
+                    <div className="flex flex-col gap-2">
                       <label htmlFor="novo-endereco" className="text-sm font-medium text-zinc-900">Endereço do imóvel</label>
                       <input 
                         id="novo-endereco"
@@ -7533,10 +7589,10 @@ const ProcessesView = ({
                         value={newProcessPropertyAddress}
                         onChange={(e) => setNewProcessPropertyAddress(e.target.value)}
                         placeholder="Rua, número, bairro"
-                        className="w-full h-[42px] px-3 bg-white border border-zinc-300 rounded-lg text-[15px] text-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 placeholder:text-zinc-500"
+                        className="w-full h-10 px-3 bg-white border border-zinc-300 rounded-lg text-[15px] text-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 placeholder:text-zinc-500"
                       />
                     </div>
-                    <div className="flex flex-col gap-1.5">
+                    <div className="flex flex-col gap-2">
                       <label htmlFor="novo-aluguel" className="text-sm font-medium text-zinc-900">Valor do aluguel (R$)</label>
                       <input 
                         id="novo-aluguel"
@@ -7544,31 +7600,31 @@ const ProcessesView = ({
                         value={newProcessRentAmount}
                         onChange={(e) => setNewProcessRentAmount(Number(e.target.value))}
                         placeholder="0,00"
-                        className="w-full h-[42px] px-3 bg-white border border-zinc-300 rounded-lg text-[15px] text-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 placeholder:text-zinc-500"
+                        className="w-full h-10 px-3 bg-white border border-zinc-300 rounded-lg text-[15px] text-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 placeholder:text-zinc-500"
                       />
                     </div>
                   </fieldset>
                 )}
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="flex flex-col gap-1.5">
+                  <div className="flex flex-col gap-2">
                     <label htmlFor="novo-prazo" className="text-sm font-medium text-zinc-900">Prazo <span className="font-normal text-zinc-600">(opcional)</span></label>
                     <input 
                       id="novo-prazo"
                       type="date"
                       value={newProcessDueDate}
                       onChange={(e) => setNewProcessDueDate(e.target.value)}
-                      className="w-full h-[42px] px-3 bg-white border border-zinc-300 rounded-lg text-[15px] text-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 placeholder:text-zinc-500"
+                      className="w-full h-10 px-3 bg-white border border-zinc-300 rounded-lg text-[15px] text-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 placeholder:text-zinc-500"
                     />
                   </div>
                   {isAdmin && (
-                    <div className="flex flex-col gap-1.5">
+                    <div className="flex flex-col gap-2">
                       <label htmlFor="novo-responsavel" className="text-sm font-medium text-zinc-900">Responsável</label>
                       <select 
                         id="novo-responsavel"
                         value={newProcessAssignedTo || user?.uid} 
                         onChange={(e) => setNewProcessAssignedTo(e.target.value)} 
-                        className="w-full h-[42px] px-3 bg-white border border-zinc-300 rounded-lg text-[15px] text-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 placeholder:text-zinc-500"
+                        className="w-full h-10 px-3 bg-white border border-zinc-300 rounded-lg text-[15px] text-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 placeholder:text-zinc-500"
                       >
                         <option value={user?.uid}>Eu mesmo</option>
                         {allUsers.filter(u => u.uid !== user?.uid).map(u => (
@@ -7583,7 +7639,7 @@ const ProcessesView = ({
                 <button 
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="h-11 px-[18px] border border-zinc-300 bg-white text-zinc-900 rounded-[10px] font-medium text-[15px] hover:bg-zinc-50 transition-colors"
+                  className="h-11 px-4 border border-zinc-300 bg-white text-zinc-900 rounded-lg font-medium text-[15px] hover:bg-zinc-50 transition-colors"
                 >
                   Cancelar
                 </button>
@@ -7591,7 +7647,7 @@ const ProcessesView = ({
                   type="submit"
                   form="form-novo-processo"
                   disabled={isSubmitting}
-                  className="h-11 px-5 bg-blue-700 text-white rounded-[10px] font-semibold text-[15px] hover:bg-blue-800 transition-colors disabled:opacity-50"
+                  className="h-11 px-5 bg-blue-700 text-white rounded-lg font-semibold text-[15px] hover:bg-blue-800 transition-colors disabled:opacity-50"
                 >
                   {isSubmitting ? "Criando..." : "Criar processo"}
                 </button>
@@ -7648,7 +7704,7 @@ const ProcessesView = ({
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => { if (!salvandoAnexos) fecharJanelaAnexos(); }} className="absolute inset-0 bg-zinc-900/30" />
             <motion.div role="dialog" aria-modal="true" aria-labelledby="titulo-anexos" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }} className="relative bg-white w-full max-w-md rounded-xl shadow-xl overflow-y-auto max-h-[90vh] custom-scrollbar p-6 flex flex-col">
               <span className="text-[13px] font-medium text-zinc-600 mb-1">Anexos da etapa</span>
-              <h3 id="titulo-anexos" className="text-lg font-semibold text-zinc-900 mb-1.5">{stepProofModal.stepLabel}</h3>
+              <h3 id="titulo-anexos" className="text-lg font-semibold text-zinc-900 mb-2">{stepProofModal.stepLabel}</h3>
               <p className="text-sm text-zinc-600 mb-5">
                 {(processes.find(p => p.id === stepProofModal.instance?.id) || stepProofModal.instance)?.completedSteps.includes(stepProofModal.stepLabel)
                   ? "Etapa concluída. Adicione ou remova comprovantes; a conclusão da etapa não é alterada."
@@ -7658,9 +7714,9 @@ const ProcessesView = ({
               <div className="w-full space-y-3 mb-6 text-left">
                 
                 {stepProofModal.attachments && stepProofModal.attachments.length > 0 && (
-                  <div className="space-y-2">
+                  <ul className="divide-y divide-zinc-100 border-y border-zinc-100">
                     {stepProofModal.attachments.map((file, fIdx) => (
-                      <div key={fIdx} className="flex items-center justify-between gap-2 pl-3 pr-1 py-1 bg-white border border-zinc-200 rounded-lg">
+                      <li key={fIdx} className="flex items-center justify-between gap-2 py-1">
                         <div className="flex items-center gap-3 overflow-hidden">
                           <FileText className="w-4 h-4 text-zinc-500 shrink-0" />
                           <span className="text-sm text-zinc-900 truncate">{file.name}</span>
@@ -7672,13 +7728,13 @@ const ProcessesView = ({
                           }}
                           title={`Remover ${file.name}`}
                           aria-label={`Remover ${file.name}`}
-                          className="w-9 h-9 flex items-center justify-center text-zinc-600 hover:text-red-700 hover:bg-red-50 rounded-md transition-colors"
+                          className="w-8 h-8 flex items-center justify-center text-zinc-600 hover:text-red-700 hover:bg-red-50 rounded-md transition-colors"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
-                      </div>
+                      </li>
                     ))}
-                  </div>
+                  </ul>
                 )}
 
                 <button 
@@ -7721,7 +7777,7 @@ const ProcessesView = ({
                     input.click();
                   }}
                   type="button"
-                  className="w-full h-[52px] border border-dashed border-zinc-300 rounded-lg flex items-center justify-center gap-2 text-zinc-700 hover:border-blue-700 hover:text-blue-800 hover:bg-blue-50/50 transition-colors"
+                  className="w-full h-12 border border-dashed border-zinc-300 rounded-lg flex items-center justify-center gap-2 text-zinc-700 hover:border-blue-700 hover:text-blue-800 hover:bg-blue-50/50 transition-colors"
                 >
                   {stepProofModal.isUploading ? (
                     <span className="text-sm text-zinc-600">Preparando arquivo…</span>
@@ -7784,117 +7840,120 @@ const ProcessesView = ({
       <AnimatePresence>
         {isReportModalOpen && activeInstance && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsReportModalOpen(false)} className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" />
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsReportModalOpen(false)} className="absolute inset-0 bg-zinc-900/40" />
             <motion.div 
-              initial={{ opacity: 0, scale: 0.9, y: 30 }} 
-              animate={{ opacity: 1, scale: 1, y: 0 }} 
-              exit={{ opacity: 0, scale: 0.9, y: 30 }} 
-              className="relative bg-white w-full max-w-4xl max-h-[90vh] rounded-[40px] shadow-2xl flex flex-col overflow-hidden"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="titulo-relatorio"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="relative bg-white w-full max-w-4xl max-h-[90vh] rounded-xl shadow-xl flex flex-col overflow-hidden"
             >
-              <div className="p-8 border-b border-slate-100 flex items-center justify-between shrink-0 h-24">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center">
-                    <FileText className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-bold text-slate-900 leading-tight">Relatório de Execução</h3>
-                    <p className="text-xs text-slate-500 font-medium uppercase tracking-widest mt-0.5">{activeInstance.title}</p>
-                  </div>
+              <div className="px-6 py-4 border-b border-zinc-200 flex items-center justify-between gap-4 shrink-0">
+                <div className="min-w-0">
+                  <h3 id="titulo-relatorio" className="text-lg font-semibold text-zinc-900">Relatório de execução</h3>
+                  <p className="text-sm text-zinc-600 truncate">{activeInstance.title}</p>
                 </div>
-                <div className="flex items-center gap-3">
-                  <button 
+                <div className="flex items-center gap-2 flex-none">
+                  <button
+                    type="button"
                     onClick={imprimirRelatorio}
-                    className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-2xl font-bold text-xs hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 cursor-pointer"
+                    className="h-10 px-4 flex items-center gap-2 bg-blue-700 text-white rounded-lg font-semibold text-sm hover:bg-blue-800 transition-colors"
                   >
                     <Download className="w-4 h-4" />
                     Imprimir / PDF
                   </button>
-                  <button onClick={() => setIsReportModalOpen(false)} className="p-3 hover:bg-slate-100 rounded-2xl transition-all">
-                    <X className="w-6 h-6 text-slate-400" />
+                  <button type="button" onClick={() => setIsReportModalOpen(false)} aria-label="Fechar relatório" className="w-10 h-10 flex items-center justify-center rounded-lg text-zinc-700 hover:bg-zinc-100 transition-colors">
+                    <X className="w-5 h-5" />
                   </button>
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-12 print:p-0 space-y-12">
-                <div id="print-area" className="p-8 space-y-12">
-                  <header className="flex justify-between items-start border-b border-slate-200 pb-8">
+              <div className="flex-1 overflow-y-auto p-4 md:p-8 print:p-0">
+                <div id="print-area" className="p-4 md:p-6 space-y-8">
+                  <header className="flex flex-wrap justify-between items-start gap-6 border-b border-zinc-200 pb-6">
                     <div>
-                      <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">{activeInstance.title}</h1>
-                      <div className="mt-5 flex flex-wrap items-center gap-6">
+                      <h1 className="text-2xl font-semibold text-zinc-900 tracking-tight">{activeInstance.title}</h1>
+                      <div className="mt-4 flex flex-wrap items-center gap-6">
                         <div className="flex flex-col">
-                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Tipo</span>
-                          <span className="text-xs font-bold text-slate-800 bg-slate-100 border border-slate-200 px-2.5 py-1 rounded-lg">
+                          <span className="text-xs text-zinc-600 mb-1">Tipo</span>
+                          <span className="text-sm font-medium text-zinc-900">
                             {activeInstance.type === 'locacao' ? 'Locação' : activeInstance.type.toUpperCase()}
                           </span>
                         </div>
                         <div className="flex flex-col">
-                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Status</span>
+                          <span className="text-xs text-zinc-600 mb-1">Situação</span>
                           <span className={cn(
-                            "text-xs font-bold px-2.5 py-1 rounded-lg border",
-                            activeInstance.status === 'completed' 
-                              ? "bg-green-50 text-green-700 border-green-200" 
-                              : "bg-blue-50 text-blue-700 border-blue-200"
+                            "text-sm font-medium",
+                            activeInstance.status === 'completed'
+                              ? "text-green-800"
+                              : "text-zinc-900"
                           )}>
-                            {activeInstance.status === 'completed' ? "Concluído" : "Em Andamento"}
+                            {activeInstance.status === 'completed' ? "Concluído" : activeInstance.status === 'archived' ? "Arquivado" : "Em andamento"}
                           </span>
                         </div>
                         <div className="flex flex-col">
-                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Progresso</span>
-                          <span className="text-xs font-bold text-slate-800 bg-blue-50 text-blue-700 border border-blue-100 px-2.5 py-1 rounded-lg">
+                          <span className="text-xs text-zinc-600 mb-1">Progresso</span>
+                          <span className="text-sm font-medium text-zinc-900 tabular-nums">
                             {Math.round((activeInstance.completedSteps.length / (template?.steps.length || 1)) * 100)}%
                           </span>
                         </div>
                       </div>
                     </div>
-                    <div className="text-right flex flex-col items-end gap-3">
+                    <div className="text-right flex flex-col items-end gap-2">
                       <div>
-                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Data do Relatório</p>
-                        <span className="text-xs font-bold text-slate-800 bg-slate-50 border border-slate-100 px-3 py-1.5 rounded-lg inline-block">
+                        <p className="text-xs text-zinc-600 mb-1">Data do relatório</p>
+                        <span className="text-sm font-medium text-zinc-900 tabular-nums">
                           {format(new Date(), "dd/MM/yyyy HH:mm")}
                         </span>
                       </div>
-                      <div className="p-3 bg-slate-50 border border-slate-100 rounded-2xl flex flex-col items-end">
-                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Gerado por</span>
-                        <span className="text-xs font-bold text-slate-700 mt-0.5">{user?.displayName || user?.email}</span>
+                      <div className="flex flex-col items-end">
+                        <span className="text-xs text-zinc-600">Gerado por</span>
+                        <span className="text-sm font-medium text-zinc-900 mt-1">{user?.displayName || user?.email}</span>
                       </div>
                     </div>
                   </header>
 
-                  <section className="space-y-6">
-                    <h2 className="text-base font-bold text-slate-900 uppercase tracking-wider border-l-4 border-blue-500 pl-4 text-left">Checklist de Execução</h2>
-                    <div className="grid grid-cols-1 gap-4">
+                  <section className="space-y-3">
+                    <h2 className="text-base font-semibold text-zinc-900 text-left">Checklist de execução</h2>
+                    <div className="flex flex-col border-t border-zinc-200">
                       {template?.steps.map((step, idx) => {
                         const isDone = activeInstance.completedSteps.includes(step.label);
                         const attachments = activeInstance.stepAttachments?.[step.label] || [];
                         return (
-                          <div key={idx} className={cn(
-                            "flex items-start gap-6 p-6 rounded-[24px] border transition-all text-left shadow-sm",
-                            isDone 
-                              ? "bg-white border-slate-200" 
-                              : "bg-slate-50/40 border-slate-100 opacity-60 print:opacity-100"
-                          )}>
+                          <div key={idx} className="flex items-start gap-3 py-3 border-b border-zinc-200 text-left">
                             <div className={cn(
-                              "w-8 h-8 rounded-full flex items-center justify-center shrink-0 border-2 mt-0.5 transition-all",
-                              isDone 
-                                ? "bg-indigo-600 border-indigo-600 text-white shadow-md shadow-indigo-100" 
-                                : "border-slate-200 bg-white text-transparent"
+                              "w-6 h-6 rounded-full flex items-center justify-center shrink-0 border-2 mt-px",
+                              isDone
+                                ? "bg-green-700 border-green-700 text-white"
+                                : "border-zinc-400 bg-white text-transparent"
                             )}>
-                              {isDone && <Check className="w-4 h-4 stroke-[3]" />}
+                              {isDone && <Check className="w-3 h-3 stroke-[3]" />}
                             </div>
-                            <div className="flex-1">
-                              <h3 className={cn("font-bold tracking-tight text-base transition-colors", isDone ? "text-slate-900" : "text-slate-700")}>{step.label}</h3>
-                              <p className="text-sm text-slate-500 mt-1 leading-relaxed font-normal">{step.desc}</p>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex flex-wrap items-baseline gap-x-2">
+                                <h3 className="font-semibold text-sm text-zinc-900">{step.label}</h3>
+                                {isDone ? (
+                                  <span className="text-xs font-medium text-green-800">Concluída</span>
+                                ) : (
+                                  <span className="text-xs font-medium text-amber-800">Pendente</span>
+                                )}
+                              </div>
+                              <p className="text-[13px] text-zinc-600 mt-1 leading-5">{step.desc}</p>
                               {isDone && attachments.length > 0 && (
-                                <div className="mt-4 flex flex-wrap gap-3">
+                                <div className="mt-2 flex flex-wrap gap-2">
                                   {attachments.map((att, aIdx) => (
                                     <div key={aIdx} className="flex items-center gap-2">
-                                      <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-xl text-[11px] font-bold border border-blue-100">
-                                        <FileText className="w-4 h-4" />
+                                      <div className="inline-flex items-center gap-2 h-7 px-2 bg-zinc-100 text-zinc-800 rounded-md text-xs">
+                                        <FileText className="w-3.5 h-3.5 text-zinc-500" />
                                         {att.name}
                                       </div>
                                       <button 
                                         onClick={() => handleOpenAttachment(att.url, att.name)}
-                                        className="text-[11px] text-blue-500 underline font-bold print:hidden"
+                                        type="button"
+                                        className="text-xs text-blue-700 underline font-medium print:hidden"
                                       >
                                         Visualizar
                                       </button>
@@ -7910,22 +7969,22 @@ const ProcessesView = ({
                   </section>
 
                   {activeInstance.notes && (
-                    <section className="space-y-6">
-                      <h2 className="text-base font-bold text-slate-900 uppercase tracking-wider border-l-4 border-blue-500 pl-4 text-left">Observações e Notas</h2>
-                      <div className="p-8 bg-slate-50 border border-slate-150 rounded-[28px] text-slate-700 text-sm leading-relaxed font-normal text-left shadow-inner whitespace-pre-wrap break-words break-all">
+                    <section className="space-y-3">
+                      <h2 className="text-base font-semibold text-zinc-900 text-left">Observações e notas</h2>
+                      <div className="p-4 bg-zinc-50 border border-zinc-200 rounded-lg text-zinc-900 text-sm leading-relaxed text-left whitespace-pre-wrap break-words">
                         {activeInstance.notes}
                       </div>
                     </section>
                   )}
                   
-                  <footer className="pt-16 mt-16 border-t border-slate-150 grid grid-cols-2 gap-12 text-center text-slate-400">
+                  <footer className="pt-12 mt-12 grid grid-cols-2 gap-12 text-center">
                     <div className="space-y-3">
-                      <div className="border-b border-slate-200 h-10 w-full max-w-xs mx-auto"></div>
-                      <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Assinatura do Responsável</p>
+                      <div className="border-b border-zinc-400 h-10 w-full max-w-xs mx-auto"></div>
+                      <p className="text-xs text-zinc-600">Assinatura do responsável</p>
                     </div>
                     <div className="space-y-3">
-                      <div className="border-b border-slate-200 h-10 w-full max-w-xs mx-auto"></div>
-                      <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Assinatura da Supervisão</p>
+                      <div className="border-b border-zinc-400 h-10 w-full max-w-xs mx-auto"></div>
+                      <p className="text-xs text-zinc-600">Assinatura da supervisão</p>
                     </div>
                   </footer>
                 </div>
@@ -7956,11 +8015,11 @@ const ProcessesView = ({
               transition={{ duration: 0.15 }}
               className="relative bg-white w-full max-w-sm rounded-xl shadow-xl overflow-hidden p-6"
             >
-              <h3 id="titulo-excluir-processo" className="text-lg font-semibold text-zinc-900 mb-1.5">Excluir processo?</h3>
+              <h3 id="titulo-excluir-processo" className="text-lg font-semibold text-zinc-900 mb-2">Excluir processo?</h3>
               <p className="text-sm text-zinc-600 mb-6 leading-relaxed">
                 <strong className="font-semibold text-zinc-900">{processes.find(p => p.id === deleteProcessModal.processId)?.title || "Este processo"}</strong> será removido permanentemente, com todo o histórico e o checklist. Não é possível desfazer.
               </p>
-              <div className="flex justify-end gap-2.5">
+              <div className="flex justify-end gap-3">
                 <button 
                   type="button"
                   onClick={() => setDeleteProcessModal({ isOpen: false, processId: null })}
