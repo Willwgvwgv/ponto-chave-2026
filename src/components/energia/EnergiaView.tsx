@@ -137,7 +137,10 @@ const ESTILO_SITUACAO: Record<SituacaoMes, { label: string; classe: string; pont
   a_verificar: { label: "A verificar", classe: "bg-zinc-100 text-zinc-700 border-zinc-200", ponto: "bg-zinc-300" }
 };
 
-type Filtro = "TODAS" | "pago" | "em_aberto" | "atrasado" | "a_verificar" | "NAO_TRANSFERIDAS";
+type Filtro = "TODAS" | "pago" | "em_aberto" | "atrasado" | "a_verificar" | "NAO_TRANSFERIDAS" | "CONTA_VENCIDA";
+
+const temContaVencida = (e: EnergiaLocacao) => (e.scaza?.faturasEmAberto || []).some(f => f.vencida);
+const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, companySettings }) => {
   const companyId = profile?.companyId || companySettings?.id || "default_agency";
@@ -300,6 +303,7 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
   const mesAtual = chaveMes(new Date());
   const transferidas = useMemo(() => energias.filter(e => e.status === "transferida"), [energias]);
   const naoTransferidas = useMemo(() => energias.filter(e => e.status !== "transferida"), [energias]);
+  const comContaVencida = useMemo(() => energias.filter(temContaVencida), [energias]);
 
   const contagem = useMemo(() => {
     const c = { pago: 0, em_aberto: 0, atrasado: 0, a_verificar: 0 };
@@ -309,15 +313,15 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
 
   const lista = useMemo(() => {
     const termo = searchTerm.trim().toLowerCase();
-    const base = filtro === "NAO_TRANSFERIDAS" ? naoTransferidas : transferidas;
+    const base = filtro === "NAO_TRANSFERIDAS" ? naoTransferidas : filtro === "CONTA_VENCIDA" ? comContaVencida : transferidas;
     return base
       .filter(e => {
         if (termo && ![e.imovel, e.inquilino, e.unidadeConsumidora, e.cpf].some(v => (v || "").toLowerCase().includes(termo))) return false;
-        if (filtro === "TODAS" || filtro === "NAO_TRANSFERIDAS") return true;
+        if (filtro === "TODAS" || filtro === "NAO_TRANSFERIDAS" || filtro === "CONTA_VENCIDA") return true;
         return situacaoDoMes(e, mes) === filtro;
       })
       .sort((a, b) => (a.inquilino || "").localeCompare(b.inquilino || "", "pt-BR"));
-  }, [transferidas, naoTransferidas, searchTerm, filtro, mes]);
+  }, [transferidas, naoTransferidas, comContaVencida, searchTerm, filtro, mes]);
 
   const registrar = (e: EnergiaLocacao, status: StatusPagamentoEnergia | null) => {
     const pagamentos: Record<string, PagamentoEnergiaMes> = { ...(e.pagamentos || {}) };
@@ -468,6 +472,21 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
       </div>
 
       {/* Indicadores do mês */}
+      {comContaVencida.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
+          <p className="text-sm text-rose-900 flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            <span>
+              <b>{comContaVencida.length} {comContaVencida.length === 1 ? "locação está" : "locações estão"} com conta de luz vencida</b>, segundo a Scaza.
+            </span>
+          </p>
+          <button type="button" onClick={() => setFiltro("CONTA_VENCIDA")}
+            className="h-9 px-3 rounded-lg bg-rose-700 hover:bg-rose-800 text-white text-sm font-medium">
+            Ver quais
+          </button>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Card id="pago" label="Pagas" valor={contagem.pago} icone={<CheckCircle2 className="w-4 h-4" />} cor="text-emerald-700" />
         <Card id="em_aberto" label="Em aberto" valor={contagem.em_aberto} icone={<Clock className="w-4 h-4" />} cor="text-amber-700" />
@@ -497,6 +516,12 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
             className={`h-8 px-3 rounded-full text-[13px] font-medium border ${filtro === "NAO_TRANSFERIDAS" ? "bg-zinc-900 text-white border-zinc-900" : "bg-white text-zinc-700 border-zinc-300 hover:bg-zinc-50"}`}>
             Ainda não transferidas <span className="opacity-70 tabular-nums">{naoTransferidas.length}</span>
           </button>
+          {comContaVencida.length > 0 && (
+            <button type="button" onClick={() => setFiltro(filtro === "CONTA_VENCIDA" ? "TODAS" : "CONTA_VENCIDA")}
+              className={`h-8 px-3 rounded-full text-[13px] font-medium border ${filtro === "CONTA_VENCIDA" ? "bg-rose-700 text-white border-rose-700" : "bg-rose-50 text-rose-800 border-rose-200 hover:bg-rose-100"}`}>
+              Conta vencida (Scaza) <span className="opacity-80 tabular-nums">{comContaVencida.length}</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -553,6 +578,30 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
                       )}
                       {e.diaVencimentoConta && <span>Conta vence dia {e.diaVencimentoConta}</span>}
                     </div>
+                    {(e.scaza?.faturasEmAberto || []).length > 0 && (
+                      <div className="mt-2 flex flex-col gap-1">
+                        {(e.scaza?.faturasEmAberto || []).map((f, i) => {
+                          const boleto = f.id != null ? e.scaza?.boletos?.[String(f.id)] : undefined;
+                          return (
+                            <div key={f.id ?? i}
+                              className={`inline-flex flex-wrap items-center gap-x-2 gap-y-1 self-start rounded-lg border px-2.5 py-1 text-xs ${f.vencida ? "border-rose-200 bg-rose-50 text-rose-800" : "border-amber-200 bg-amber-50 text-amber-900"}`}>
+                              <span className="font-semibold">{f.vencida ? "Conta de luz vencida" : "Conta de luz em aberto"}</span>
+                              <span>venc. {formatDateBR(f.vencimento)}</span>
+                              {f.valor != null && <span className="font-medium tabular-nums">{brl(f.valor)}</span>}
+                              {boleto && (
+                                <a href={boleto.link} target="_blank" rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 font-medium underline underline-offset-2 hover:no-underline">
+                                  <ExternalLink className="w-3 h-3" /> Ver boleto
+                                </a>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {e.scaza?.ultimaAtualizacao && (e.scaza?.faturasEmAberto || []).length === 0 && (
+                      <p className="mt-1 text-xs text-emerald-700">Scaza: nenhuma conta de luz em aberto · {new Date(e.scaza.ultimaAtualizacao).toLocaleDateString("pt-BR")}</p>
+                    )}
                     {e.status !== "transferida" && (
                       <p className="mt-1 text-xs text-amber-800">
                         Transferência {e.status === "em_processo" ? "em processo" : "pendente"}
@@ -592,31 +641,6 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
                           </span>
                         )}
                       </div>
-                      {e.scaza?.ultimaAtualizacao && (
-                        <p className="text-xs text-zinc-600">
-                          <span className="font-medium text-zinc-800">Scaza:</span>{" "}
-                          {(e.scaza.faturasEmAberto || []).length === 0
-                            ? "nenhuma fatura em aberto"
-                            : (e.scaza.faturasEmAberto || []).map((f, i) => {
-                                const boleto = f.id != null ? e.scaza?.boletos?.[String(f.id)] : undefined;
-                                return (
-                                  <span key={f.id ?? i}>
-                                    {i > 0 && " · "}
-                                    {formatDateBR(f.vencimento)}
-                                    {f.valor != null && " " + f.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                                    {f.vencida && " (vencida)"}
-                                    {boleto && (
-                                      <>
-                                        {" "}
-                                        <a href={boleto.link} target="_blank" rel="noopener noreferrer" className="text-blue-700 hover:underline">boleto</a>
-                                      </>
-                                    )}
-                                  </span>
-                                );
-                              })}
-                          {" · "}atualizado {new Date(e.scaza.ultimaAtualizacao).toLocaleDateString("pt-BR")}
-                        </p>
-                      )}
                       {isAdmin && (
                         <div className="flex flex-wrap gap-1.5">
                           {(["pago", "em_aberto", "atrasado"] as StatusPagamentoEnergia[]).map(s => (
