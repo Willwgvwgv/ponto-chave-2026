@@ -592,14 +592,28 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
                           </span>
                         )}
                       </div>
-                      {e.scaza && (
+                      {e.scaza?.ultimaAtualizacao && (
                         <p className="text-xs text-zinc-600">
                           <span className="font-medium text-zinc-800">Scaza:</span>{" "}
-                          {e.scaza.faturasEmAberto.length === 0
+                          {(e.scaza.faturasEmAberto || []).length === 0
                             ? "nenhuma fatura em aberto"
-                            : e.scaza.faturasEmAberto
-                                .map(f => `${formatDateBR(f.vencimento)}${f.valor != null ? " " + f.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : ""}${f.vencida ? " (vencida)" : ""}`)
-                                .join(" · ")}
+                            : (e.scaza.faturasEmAberto || []).map((f, i) => {
+                                const boleto = f.id != null ? e.scaza?.boletos?.[String(f.id)] : undefined;
+                                return (
+                                  <span key={f.id ?? i}>
+                                    {i > 0 && " · "}
+                                    {formatDateBR(f.vencimento)}
+                                    {f.valor != null && " " + f.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                                    {f.vencida && " (vencida)"}
+                                    {boleto && (
+                                      <>
+                                        {" "}
+                                        <a href={boleto.link} target="_blank" rel="noopener noreferrer" className="text-blue-700 hover:underline">boleto</a>
+                                      </>
+                                    )}
+                                  </span>
+                                );
+                              })}
                           {" · "}atualizado {new Date(e.scaza.ultimaAtualizacao).toLocaleDateString("pt-BR")}
                         </p>
                       )}
@@ -644,7 +658,11 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
         )}
       </div>
 
-      {scazaAberto && <ScazaIntegracaoModal companyId={companyId} onClose={() => setScazaAberto(false)} />}
+      {scazaAberto && <ScazaIntegracaoModal
+          companyId={companyId}
+          locacoes={energias.map(x => ({ id: x.id, rotulo: `${x.inquilino ? formatPersonName(x.inquilino) : "Sem locatário"} — ${x.imovel}` }))}
+          onClose={() => setScazaAberto(false)}
+        />}
 
       {isFormOpen && (
         <EnergiaFormModal

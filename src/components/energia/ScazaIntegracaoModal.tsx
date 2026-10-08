@@ -27,21 +27,27 @@ interface RespostaScaza {
 interface Props {
   onClose: () => void;
   companyId?: string;
+  locacoes?: { id: string; rotulo: string }[];
 }
+
+const TOPICOS_COM_CONTA = ["conta.atualizada", "emissao_boleto.concluida"];
 
 const fmtData = (iso: string) => {
   const d = new Date(iso);
   return isNaN(d.getTime()) ? iso : d.toLocaleString("pt-BR");
 };
 
-export const ScazaIntegracaoModal: React.FC<Props> = ({ onClose, companyId }) => {
+export const ScazaIntegracaoModal: React.FC<Props> = ({ onClose, companyId, locacoes = [] }) => {
   const [dados, setDados] = useState<RespostaScaza | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(false);
   const [aberto, setAberto] = useState<string | null>(null);
   const [reprocessando, setReprocessando] = useState<string | null>(null);
 
-  const reprocessar = async (id: string) => {
+  const [escolha, setEscolha] = useState<Record<string, string>>({});
+  const locacoesOrdenadas = [...locacoes].sort((a, b) => a.rotulo.localeCompare(b.rotulo, "pt-BR"));
+
+  const reprocessar = async (id: string, energiaId?: string) => {
     setReprocessando(id);
     try {
       const user = (auth as any).currentUser;
@@ -50,7 +56,7 @@ export const ScazaIntegracaoModal: React.FC<Props> = ({ onClose, companyId }) =>
       const r = await fetch("/api/scaza/webhook", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ acao: "reprocessar", id })
+        body: JSON.stringify(energiaId ? { acao: "vincular", id, energiaId } : { acao: "reprocessar", id })
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j?.error || `Erro ${r.status}`);
@@ -174,15 +180,38 @@ export const ScazaIntegracaoModal: React.FC<Props> = ({ onClose, companyId }) =>
                             : ev.motivo || "Não aplicado"}
                           {ev.processado && ev.motivo ? ` · ${ev.motivo}` : ""}
                         </p>
-                        {aberto === ev.id && ev.topico === "conta.atualizada" && (
-                          <button
-                            type="button"
-                            onClick={() => reprocessar(ev.id)}
-                            disabled={reprocessando === ev.id}
-                            className="mt-2 h-8 px-3 rounded-lg border border-zinc-300 text-xs font-medium hover:bg-zinc-50 disabled:opacity-50"
-                          >
-                            {reprocessando === ev.id ? "Processando…" : "Processar de novo"}
-                          </button>
+                        {aberto === ev.id && TOPICOS_COM_CONTA.includes(ev.topico || "") && (
+                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => reprocessar(ev.id)}
+                              disabled={reprocessando === ev.id}
+                              className="h-8 px-3 rounded-lg border border-zinc-300 text-xs font-medium hover:bg-zinc-50 disabled:opacity-50"
+                            >
+                              {reprocessando === ev.id ? "Processando…" : "Processar de novo"}
+                            </button>
+                            {!ev.processado && locacoesOrdenadas.length > 0 && (
+                              <>
+                                <select
+                                  aria-label="Locação para vincular"
+                                  value={escolha[ev.id] || ""}
+                                  onChange={e => setEscolha(prev => ({ ...prev, [ev.id]: e.target.value }))}
+                                  className="h-8 max-w-[260px] px-2 rounded-lg border border-zinc-300 text-xs bg-white"
+                                >
+                                  <option value="">Vincular a uma locação…</option>
+                                  {locacoesOrdenadas.map(l => <option key={l.id} value={l.id}>{l.rotulo}</option>)}
+                                </select>
+                                <button
+                                  type="button"
+                                  onClick={() => reprocessar(ev.id, escolha[ev.id])}
+                                  disabled={!escolha[ev.id] || reprocessando === ev.id}
+                                  className="h-8 px-3 rounded-lg bg-zinc-900 text-white text-xs font-medium hover:bg-zinc-800 disabled:opacity-40"
+                                >
+                                  Vincular e aplicar
+                                </button>
+                              </>
+                            )}
+                          </div>
                         )}
                         {aberto === ev.id && (
                           <pre className="mt-2 max-h-64 overflow-auto bg-zinc-50 rounded p-2 text-[11px] leading-snug whitespace-pre-wrap break-all">
