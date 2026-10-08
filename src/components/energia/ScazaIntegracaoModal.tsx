@@ -10,6 +10,10 @@ interface EventoScaza {
   corpo?: any;
   corpoBruto?: string | null;
   assinaturaOk?: boolean | null;
+  processado?: boolean;
+  motivo?: string | null;
+  inquilino?: string | null;
+  mesesAtualizados?: string[];
 }
 
 interface RespostaScaza {
@@ -33,6 +37,30 @@ export const ScazaIntegracaoModal: React.FC<Props> = ({ onClose }) => {
   const [erro, setErro] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(false);
   const [aberto, setAberto] = useState<string | null>(null);
+  const [reprocessando, setReprocessando] = useState<string | null>(null);
+
+  const reprocessar = async (id: string) => {
+    setReprocessando(id);
+    try {
+      const user = (auth as any).currentUser;
+      if (!user) throw new Error("Faça login novamente.");
+      const token = await user.getIdToken();
+      const r = await fetch("/api/scaza/webhook", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ acao: "reprocessar", id })
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j?.error || `Erro ${r.status}`);
+      if (j.processado) toast.success(`Aviso aplicado${j.inquilino ? " em " + j.inquilino : ""}.`);
+      else toast.info(j.motivo || "Aviso sem nada para aplicar.");
+      await carregar();
+    } catch (e: any) {
+      toast.error(e?.message || "Não foi possível processar o aviso.");
+    } finally {
+      setReprocessando(null);
+    }
+  };
 
   const carregar = async () => {
     setCarregando(true);
@@ -123,6 +151,22 @@ export const ScazaIntegracaoModal: React.FC<Props> = ({ onClose }) => {
                           <span className="text-zinc-800">{ev.topico || "Aviso"}</span>
                           <span className="text-xs text-zinc-500">{fmtData(ev.recebidoEm)}</span>
                         </button>
+                        <p className={`mt-0.5 text-xs ${ev.processado ? "text-emerald-700" : "text-zinc-500"}`}>
+                          {ev.processado
+                            ? `Aplicado${ev.inquilino ? " em " + ev.inquilino : ""}${ev.mesesAtualizados?.length ? " · meses " + ev.mesesAtualizados.map(m => m.split("-").reverse().join("/")).join(", ") : ""}`
+                            : ev.motivo || "Não aplicado"}
+                          {ev.processado && ev.motivo ? ` · ${ev.motivo}` : ""}
+                        </p>
+                        {aberto === ev.id && ev.topico === "conta.atualizada" && (
+                          <button
+                            type="button"
+                            onClick={() => reprocessar(ev.id)}
+                            disabled={reprocessando === ev.id}
+                            className="mt-2 h-8 px-3 rounded-lg border border-zinc-300 text-xs font-medium hover:bg-zinc-50 disabled:opacity-50"
+                          >
+                            {reprocessando === ev.id ? "Processando…" : "Processar de novo"}
+                          </button>
+                        )}
                         {aberto === ev.id && (
                           <pre className="mt-2 max-h-64 overflow-auto bg-zinc-50 rounded p-2 text-[11px] leading-snug whitespace-pre-wrap break-all">
                             {ev.corpo ? JSON.stringify(ev.corpo, null, 2) : (ev.corpoBruto || "(vazio)")}

@@ -592,6 +592,17 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
                           </span>
                         )}
                       </div>
+                      {e.scaza && (
+                        <p className="text-xs text-zinc-600">
+                          <span className="font-medium text-zinc-800">Scaza:</span>{" "}
+                          {e.scaza.faturasEmAberto.length === 0
+                            ? "nenhuma fatura em aberto"
+                            : e.scaza.faturasEmAberto
+                                .map(f => `${formatDateBR(f.vencimento)}${f.valor != null ? " " + f.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : ""}${f.vencida ? " (vencida)" : ""}`)
+                                .join(" · ")}
+                          {" · "}atualizado {new Date(e.scaza.ultimaAtualizacao).toLocaleDateString("pt-BR")}
+                        </p>
+                      )}
                       {isAdmin && (
                         <div className="flex flex-wrap gap-1.5">
                           {(["pago", "em_aberto", "atrasado"] as StatusPagamentoEnergia[]).map(s => (
