@@ -405,15 +405,10 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
           >
             <ExternalLink className="w-4 h-4" /> Abrir Equatorial
           </a>
-          {isAdmin && (
-            <button
-              type="button"
-              onClick={buscarLocacoes}
-              disabled={buscandoLocacoes}
-              className="h-10 px-3 rounded-lg border border-zinc-300 bg-white text-sm font-medium text-zinc-800 hover:bg-zinc-50 disabled:opacity-60"
-            >
-              {buscandoLocacoes ? "Buscando…" : "Importar locações"}
-            </button>
+          {/* Importação pelos contratos/comissões desativada: a planilha é a fonte completa
+              e importar pelos dois caminhos duplicaria locações (endereços escritos diferente). */}
+          {false && isAdmin && (
+            <button type="button" onClick={buscarLocacoes} disabled={buscandoLocacoes}>Importar locações</button>
           )}
           {isAdmin && (
             <>
@@ -429,7 +424,7 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
                 onClick={() => inputCsvRef.current?.click()}
                 className="h-10 px-3 rounded-lg border border-zinc-300 bg-white text-sm font-medium text-zinc-800 hover:bg-zinc-50"
               >
-                Importar planilha
+                Importar planilha de locações
               </button>
             </>
           )}
