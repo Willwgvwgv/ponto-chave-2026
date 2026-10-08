@@ -90,9 +90,11 @@ export async function processarContaAtualizada(adminDb: any, dados: any): Promis
     return { processado: false, motivo: "conta que não é de energia" };
   }
 
+  // Só mexe nas locações da empresa ligada à Scaza. Sem a empresa definida, não aplica
+  // (evita casar UC/CPF com locação de outra empresa do sistema).
   const empresa = (process.env.SCAZA_COMPANY_ID || "").trim();
-  const ref = adminDb.collection(COLECAO_ENERGIA);
-  const snap = empresa ? await ref.where("companyId", "==", empresa).get() : await ref.get();
+  if (!empresa) return { processado: false, motivo: "falta definir SCAZA_COMPANY_ID na Vercel" };
+  const snap = await adminDb.collection(COLECAO_ENERGIA).where("companyId", "==", empresa).get();
   const { doc, motivo } = acharLocacao(snap.docs, conta, contaId);
   if (!doc) return { processado: false, motivo };
 

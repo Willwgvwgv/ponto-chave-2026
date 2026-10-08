@@ -19,12 +19,14 @@ interface EventoScaza {
 interface RespostaScaza {
   configurado: boolean;
   chaveIntegridadeConfigurada: boolean;
+  empresaConfigurada?: boolean;
   url: string | null;
   eventos: EventoScaza[];
 }
 
 interface Props {
   onClose: () => void;
+  companyId?: string;
 }
 
 const fmtData = (iso: string) => {
@@ -32,7 +34,7 @@ const fmtData = (iso: string) => {
   return isNaN(d.getTime()) ? iso : d.toLocaleString("pt-BR");
 };
 
-export const ScazaIntegracaoModal: React.FC<Props> = ({ onClose }) => {
+export const ScazaIntegracaoModal: React.FC<Props> = ({ onClose, companyId }) => {
   const [dados, setDados] = useState<RespostaScaza | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(false);
@@ -84,7 +86,7 @@ export const ScazaIntegracaoModal: React.FC<Props> = ({ onClose }) => {
   useEffect(() => { carregar(); }, []);
 
   const copiar = (txt: string) => {
-    navigator.clipboard.writeText(txt).then(() => toast.success("URL copiada"), () => toast.error("Não foi possível copiar"));
+    navigator.clipboard.writeText(txt).then(() => toast.success("Copiado"), () => toast.error("Não foi possível copiar"));
   };
 
   return (
@@ -126,6 +128,21 @@ export const ScazaIntegracaoModal: React.FC<Props> = ({ onClose }) => {
                     Crie a variável <code className="px-1 bg-zinc-100 rounded">SCAZA_WEBHOOK_TOKEN</code> nas configurações do projeto na Vercel
                     (um texto aleatório longo) e faça um novo deploy. Depois abra esta tela de novo para pegar a URL.
                   </p>
+                )}
+                {dados.configurado && dados.empresaConfigurada === false && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 space-y-1">
+                    <p>
+                      Para os avisos atualizarem as locações, crie na Vercel a variável <code className="px-1 bg-white rounded">SCAZA_COMPANY_ID</code> (tipo Config) com o valor abaixo e faça um Redeploy.
+                    </p>
+                    {companyId && (
+                      <div className="flex gap-2">
+                        <input readOnly value={companyId} className="flex-1 h-9 px-3 rounded-lg border border-amber-300 bg-white font-mono text-xs" onFocus={e => e.target.select()} />
+                        <button type="button" onClick={() => copiar(companyId)} className="h-9 px-3 rounded-lg border border-amber-300 bg-white hover:bg-amber-100 flex items-center gap-1 text-xs">
+                          <Copy className="w-3.5 h-3.5" /> Copiar
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 )}
                 {!dados.chaveIntegridadeConfigurada && dados.configurado && (
                   <p className="text-xs text-zinc-500">

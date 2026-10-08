@@ -192,6 +192,7 @@ export default async function handler(req: any, res: any) {
 
     return res.status(200).json({
       configurado: !!tokenEsperado,
+      empresaConfigurada: !!(process.env.SCAZA_COMPANY_ID || "").trim(),
       chaveIntegridadeConfigurada: !!(process.env.SCAZA_WEBHOOK_SECRET || "").trim(),
       url,
       eventos
