@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { getFirebaseAdmin } from "../_firebaseAdmin.js";
 import { verifyFirebaseIdToken } from "../_firebaseIdToken.js";
-import { processarContaAtualizada, limparCorpo, type ResultadoProcessamento } from "./_processar.js";
+import { processarAviso, vincularConta, limparCorpo, type ResultadoProcessamento } from "./_processar.js";
 
 // Receptor de webhooks da Scaza (boletos/débitos de energia).
 //
@@ -99,19 +99,19 @@ export default async function handler(req: any, res: any) {
     let corpoReq: any = req.body;
     if (typeof corpoReq === "string") { try { corpoReq = JSON.parse(corpoReq); } catch { corpoReq = {}; } }
     const id = String(corpoReq?.id || "").trim();
-    if (corpoReq?.acao !== "reprocessar" || !id || id.includes("/")) return res.status(400).json({ error: "pedido inválido" });
+    const acao = corpoReq?.acao;
+    if ((acao !== "reprocessar" && acao !== "vincular") || !id || id.includes("/")) return res.status(400).json({ error: "pedido inválido" });
     const ref = adminDb.collection(COLECAO).doc(id);
     const snap = await ref.get();
     if (!snap.exists) return res.status(404).json({ error: "aviso não encontrado" });
     const ev = snap.data() || {};
-    let resultado: ResultadoProcessamento = { processado: false, motivo: "tópico ainda não tratado" };
-    if (ev.topico === "conta.atualizada") {
-      try {
-        resultado = await processarContaAtualizada(adminDb, ev.corpo?.dados);
-      } catch (e: any) {
-        resultado = { processado: false, motivo: "erro ao processar: " + String(e?.message || e).slice(0, 200) };
-      }
+    if (acao === "vincular") {
+      const energiaId = String(corpoReq?.energiaId || "").trim();
+      if (!energiaId || energiaId.includes("/")) return res.status(400).json({ error: "escolha a locação" });
+      const erro = await vincularConta(adminDb, ev.corpo?.dados, energiaId);
+      if (erro) return res.status(400).json({ error: erro });
     }
+    const resultado: ResultadoProcessamento = await processarAviso(adminDb, ev.topico || null, ev.corpo?.dados);
     const limpo = Object.fromEntries(Object.entries(resultado).filter(([, v]) => v !== undefined));
     await ref.set({ corpo: ev.corpo ? limparCorpo(ev.corpo) : null, reprocessadoEm: new Date().toISOString(), energiaId: null, inquilino: null, mesesAtualizados: [], motivo: null, ...limpo }, { merge: true });
     return res.status(200).json(resultado);
@@ -142,17 +142,9 @@ export default async function handler(req: any, res: any) {
     }
 
     const topico = corpo?.topico || corpo?.topic || corpo?.evento || corpo?.event || null;
-    let resultado: ResultadoProcessamento = { processado: false, motivo: "tópico ainda não tratado" };
-    if (assinaturaOk === false) {
-      resultado = { processado: false, motivo: "assinatura não confere; aviso ignorado" };
-    } else if (topico === "conta.atualizada") {
-      try {
-        resultado = await processarContaAtualizada(adminDb, corpo?.dados);
-      } catch (e: any) {
-        console.error("scaza webhook: falha ao processar conta", e);
-        resultado = { processado: false, motivo: "erro ao processar: " + String(e?.message || e).slice(0, 200) };
-      }
-    }
+    const resultado: ResultadoProcessamento = assinaturaOk === false
+      ? { processado: false, motivo: "assinatura não confere; aviso ignorado" }
+      : await processarAviso(adminDb, topico, corpo?.dados);
 
     try {
       await adminDb.collection(COLECAO).add({
@@ -192,6 +184,7 @@ export default async function handler(req: any, res: any) {
 
     return res.status(200).json({
       configurado: !!tokenEsperado,
+      empresaConfigurada: !!(process.env.SCAZA_COMPANY_ID || "").trim(),
       chaveIntegridadeConfigurada: !!(process.env.SCAZA_WEBHOOK_SECRET || "").trim(),
       url,
       eventos

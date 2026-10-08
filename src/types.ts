@@ -712,13 +712,14 @@ export interface FaturaScaza {
 }
 
 export interface EnergiaScaza {
-  contaId: number;
-  imovelId: number | null;
-  imovelDescricao: string | null;
-  ultimaAtualizacao: string;
-  ultimaFatura: string | null;
-  faturasEmAberto: FaturaScaza[];
-  situacaoConfiavel: boolean;
+  contaId: number | null;
+  boletos?: Record<string, { link: string; emitidoEm: string }>; // chave = id da fatura
+  imovelId?: number | null;
+  imovelDescricao?: string | null;
+  ultimaAtualizacao?: string;
+  ultimaFatura?: string | null;
+  faturasEmAberto?: FaturaScaza[];
+  situacaoConfiavel?: boolean;
 }
 
 export interface EnergiaLocacao {

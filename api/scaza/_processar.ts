@@ -39,12 +39,23 @@ export function limparCorpo(corpo: any): any {
   const c = JSON.parse(JSON.stringify(corpo));
   if (c.dados && typeof c.dados === "object") {
     delete c.dados.Operador;
-    if (c.dados.conta && typeof c.dados.conta === "object") {
-      const tipo = c.dados.conta.Tipo;
-      c.dados.conta.Tipo = tipo ? { Id: tipo.Id, Descricao: tipo.Descricao } : tipo;
+    for (const chave of ["conta", "Conta"]) {
+      const conta = c.dados[chave];
+      if (conta && typeof conta === "object" && conta.Tipo) {
+        conta.Tipo = { Id: conta.Tipo.Id, Descricao: conta.Tipo.Descricao };
+      }
     }
   }
   return c;
+}
+
+// Só mexe nas locações da empresa ligada à Scaza. Sem a empresa definida, não aplica
+// (evita casar UC/CPF com locação de outra empresa do sistema).
+async function locacoesDaEmpresa(adminDb: any): Promise<any[] | null> {
+  const empresa = (process.env.SCAZA_COMPANY_ID || "").trim();
+  if (!empresa) return null;
+  const snap = await adminDb.collection(COLECAO_ENERGIA).where("companyId", "==", empresa).get();
+  return snap.docs;
 }
 
 function acharLocacao(docs: any[], conta: any, contaId: number): { doc: any | null; motivo?: string } {
@@ -90,10 +101,10 @@ export async function processarContaAtualizada(adminDb: any, dados: any): Promis
     return { processado: false, motivo: "conta que não é de energia" };
   }
 
-  const empresa = (process.env.SCAZA_COMPANY_ID || "").trim();
-  const ref = adminDb.collection(COLECAO_ENERGIA);
-  const snap = empresa ? await ref.where("companyId", "==", empresa).get() : await ref.get();
-  const { doc, motivo } = acharLocacao(snap.docs, conta, contaId);
+  const docs = await locacoesDaEmpresa(adminDb);
+  if (!docs) return { processado: false, motivo: "falta definir SCAZA_COMPANY_ID na Vercel" };
+  if (!docs.length) return { processado: false, motivo: "nenhuma locação na empresa definida em SCAZA_COMPANY_ID; confira o valor" };
+  const { doc, motivo } = acharLocacao(docs, conta, contaId);
   if (!doc) return { processado: false, motivo };
 
   const atual = doc.data() || {};
@@ -192,4 +203,59 @@ export async function processarContaAtualizada(adminDb: any, dados: any): Promis
     mesesAtualizados: Array.from(new Set(alterados)).sort(),
     motivo: confiavel ? undefined : "conta com falha ou inconsistência na Scaza; situação dos meses não alterada"
   };
+}
+
+// "emissao_boleto.concluida": guarda o link do PDF do boleto na locação, pela fatura.
+export async function processarBoletoConcluido(adminDb: any, dados: any): Promise<ResultadoProcessamento> {
+  const conta = dados?.Conta;
+  const contaId = Number(conta?.Id || 0);
+  const faturaId = Number(dados?.FaturaId || 0);
+  const link = String(dados?.LinkBoleto || "").trim();
+  const sucesso = String(dados?.Status?.Descricao || "").toLowerCase() === "sucesso";
+  if (!sucesso || !link) return { processado: false, motivo: "boleto não emitido pela Scaza" };
+  if (!/^https:\/\/[^\s"'<>]+$/i.test(link)) return { processado: false, motivo: "link do boleto inválido" };
+  if (!conta || !contaId || !faturaId) return { processado: false, motivo: "aviso sem conta ou fatura" };
+
+  const docs = await locacoesDaEmpresa(adminDb);
+  if (!docs) return { processado: false, motivo: "falta definir SCAZA_COMPANY_ID na Vercel" };
+  const { doc, motivo } = acharLocacao(docs, conta, contaId);
+  if (!doc) return { processado: false, motivo };
+
+  await doc.ref.set({
+    scaza: {
+      contaId,
+      boletos: { [String(faturaId)]: { link, emitidoEm: String(dados?.DataRetorno || new Date().toISOString()) } }
+    },
+    updatedAt: new Date().toISOString()
+  }, { merge: true });
+  return { processado: true, energiaId: doc.id, inquilino: doc.data()?.inquilino || null };
+}
+
+export async function processarAviso(adminDb: any, topico: string | null, dados: any): Promise<ResultadoProcessamento> {
+  try {
+    if (topico === "conta.atualizada") return await processarContaAtualizada(adminDb, dados);
+    if (topico === "emissao_boleto.concluida") return await processarBoletoConcluido(adminDb, dados);
+    if (topico === "emissao_boleto.criada") return { processado: false, motivo: "pedido de boleto registrado; aguardando conclusão" };
+    return { processado: false, motivo: "tópico ainda não tratado" };
+  } catch (e: any) {
+    console.error("scaza: falha ao processar aviso", e);
+    return { processado: false, motivo: "erro ao processar: " + String(e?.message || e).slice(0, 200) };
+  }
+}
+
+// Vínculo manual pelo painel: liga a conta da Scaza do aviso a uma locação escolhida.
+export async function vincularConta(adminDb: any, dados: any, energiaId: string): Promise<string | null> {
+  const contaId = Number(dados?.idConta || dados?.conta?.Id || dados?.Conta?.Id || 0);
+  if (!contaId) return "aviso sem conta da Scaza";
+  const docs = await locacoesDaEmpresa(adminDb);
+  if (!docs) return "falta definir SCAZA_COMPANY_ID na Vercel";
+  const alvo = docs.find(d => d.id === energiaId);
+  if (!alvo) return "locação não encontrada";
+  for (const d of docs) {
+    if (d.id !== energiaId && d.data().scaza?.contaId === contaId) {
+      await d.ref.set({ scaza: { contaId: null } }, { merge: true });
+    }
+  }
+  await alvo.ref.set({ scaza: { contaId } }, { merge: true });
+  return null;
 }
