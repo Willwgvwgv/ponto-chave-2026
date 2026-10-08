@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { getFirebaseAdmin } from "../_firebaseAdmin.js";
 import { verifyFirebaseIdToken } from "../_firebaseIdToken.js";
+import { processarContaAtualizada, limparCorpo, type ResultadoProcessamento } from "./_processar.js";
 
 // Receptor de webhooks da Scaza (boletos/débitos de energia).
 //
@@ -90,6 +91,32 @@ export default async function handler(req: any, res: any) {
   const tokenEsperado = (process.env.SCAZA_WEBHOOK_TOKEN || "").trim();
   const { adminDb } = getFirebaseAdmin();
 
+  // Ação do painel (admin logado): reprocessar um aviso já recebido.
+  const authHeader = req.headers.authorization || req.headers.Authorization;
+  if (req.method === "POST" && !req.query?.k && authHeader) {
+    if (!adminDb) return res.status(503).json({ error: "banco indisponível" });
+    if (!(await usuarioPodeVer(authHeader, adminDb))) return res.status(401).json({ error: "acesso não autorizado" });
+    let corpoReq: any = req.body;
+    if (typeof corpoReq === "string") { try { corpoReq = JSON.parse(corpoReq); } catch { corpoReq = {}; } }
+    const id = String(corpoReq?.id || "").trim();
+    if (corpoReq?.acao !== "reprocessar" || !id || id.includes("/")) return res.status(400).json({ error: "pedido inválido" });
+    const ref = adminDb.collection(COLECAO).doc(id);
+    const snap = await ref.get();
+    if (!snap.exists) return res.status(404).json({ error: "aviso não encontrado" });
+    const ev = snap.data() || {};
+    let resultado: ResultadoProcessamento = { processado: false, motivo: "tópico ainda não tratado" };
+    if (ev.topico === "conta.atualizada") {
+      try {
+        resultado = await processarContaAtualizada(adminDb, ev.corpo?.dados);
+      } catch (e: any) {
+        resultado = { processado: false, motivo: "erro ao processar: " + String(e?.message || e).slice(0, 200) };
+      }
+    }
+    const limpo = Object.fromEntries(Object.entries(resultado).filter(([, v]) => v !== undefined));
+    await ref.set({ corpo: ev.corpo ? limparCorpo(ev.corpo) : null, reprocessadoEm: new Date().toISOString(), energiaId: null, inquilino: null, mesesAtualizados: [], motivo: null, ...limpo }, { merge: true });
+    return res.status(200).json(resultado);
+  }
+
   if (req.method === "POST") {
     const k = String(req.query?.k || "").trim();
     if (!tokenEsperado || !k || !iguais(k, tokenEsperado)) {
@@ -114,15 +141,28 @@ export default async function handler(req: any, res: any) {
       assinaturaOk = enviados.length ? enviados.some((s) => s === hex || s === b64) : null;
     }
 
+    const topico = corpo?.topico || corpo?.topic || corpo?.evento || corpo?.event || null;
+    let resultado: ResultadoProcessamento = { processado: false, motivo: "tópico ainda não tratado" };
+    if (assinaturaOk === false) {
+      resultado = { processado: false, motivo: "assinatura não confere; aviso ignorado" };
+    } else if (topico === "conta.atualizada") {
+      try {
+        resultado = await processarContaAtualizada(adminDb, corpo?.dados);
+      } catch (e: any) {
+        console.error("scaza webhook: falha ao processar conta", e);
+        resultado = { processado: false, motivo: "erro ao processar: " + String(e?.message || e).slice(0, 200) };
+      }
+    }
+
     try {
       await adminDb.collection(COLECAO).add({
         recebidoEm: new Date().toISOString(),
-        topico: corpo?.topico || corpo?.topic || corpo?.evento || corpo?.event || null,
+        topico,
         headers: filtrarHeaders(req.headers),
-        corpo: corpo ?? null,
+        corpo: corpo ? limparCorpo(corpo) : null,
         corpoBruto: corpo ? null : bruto.slice(0, 20000),
         assinaturaOk,
-        processado: false
+        ...Object.fromEntries(Object.entries(resultado).filter(([, v]) => v !== undefined))
       });
     } catch (e) {
       console.error("scaza webhook: falha ao gravar", e);
@@ -133,7 +173,7 @@ export default async function handler(req: any, res: any) {
 
   if (req.method === "GET") {
     if (!adminDb) return res.status(503).json({ error: "banco indisponível" });
-    const pode = await usuarioPodeVer(req.headers.authorization || req.headers.Authorization, adminDb);
+    const pode = await usuarioPodeVer(authHeader, adminDb);
     if (!pode) return res.status(401).json({ error: "acesso não autorizado" });
 
     const host = req.headers["x-forwarded-host"] || req.headers.host || "";
@@ -142,7 +182,10 @@ export default async function handler(req: any, res: any) {
     let eventos: any[] = [];
     try {
       const snap = await adminDb.collection(COLECAO).orderBy("recebidoEm", "desc").limit(20).get();
-      eventos = snap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
+      eventos = snap.docs.map((d: any) => {
+        const ev = d.data() || {};
+        return { id: d.id, ...ev, corpo: ev.corpo ? limparCorpo(ev.corpo) : null };
+      });
     } catch (e) {
       console.error("scaza webhook: falha ao listar", e);
     }

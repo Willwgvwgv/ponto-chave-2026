@@ -698,6 +698,27 @@ export interface PagamentoEnergiaMes {
   status: StatusPagamentoEnergia;
   verificadoEm: string; // ISO
   verificadoPorNome: string;
+  origem?: "scaza"; // marcado automaticamente pela integração
+  valor?: number | null;
+  vencimento?: string; // YYYY-MM-DD
+}
+
+export interface FaturaScaza {
+  id: number | null;
+  vencimento: string; // YYYY-MM-DD
+  valor: number | null;
+  vencida: boolean;
+  referencia: string | null;
+}
+
+export interface EnergiaScaza {
+  contaId: number;
+  imovelId: number | null;
+  imovelDescricao: string | null;
+  ultimaAtualizacao: string;
+  ultimaFatura: string | null;
+  faturasEmAberto: FaturaScaza[];
+  situacaoConfiavel: boolean;
 }
 
 export interface EnergiaLocacao {
@@ -715,6 +736,7 @@ export interface EnergiaLocacao {
   telefone?: string; // celular do inquilino
   // Conferência mensal do pagamento da conta (chave = "YYYY-MM")
   pagamentos?: Record<string, PagamentoEnergiaMes>;
+  scaza?: EnergiaScaza; // preenchido pela integração com a Scaza
   observacoes?: string;
   criadoPor: string;
   criadoPorNome: string;
