@@ -14,6 +14,7 @@ const STATUS_OPTIONS: { value: StatusEnergiaLocacao; label: string }[] = [
   { value: "em_processo", label: "Em processo" },
   { value: "transferida", label: "Transferida" }
 ];
+// Módulo acompanha principalmente locações já transferidas: novo cadastro começa como "Transferida".
 
 export const EnergiaFormModal: React.FC<EnergiaFormModalProps> = ({ initial, onSave, onClose }) => {
   const [imovel, setImovel] = useState(initial?.imovel || "");
@@ -22,7 +23,8 @@ export const EnergiaFormModal: React.FC<EnergiaFormModalProps> = ({ initial, onS
   const [cpf, setCpf] = useState(initial?.cpf ? maskCPF(initial.cpf) : "");
   const [dataNascimento, setDataNascimento] = useState(initial?.dataNascimento || "");
   const [dataVencimento, setDataVencimento] = useState(initial?.dataVencimento || "");
-  const [status, setStatus] = useState<StatusEnergiaLocacao>(initial?.status || "pendente");
+  const [status, setStatus] = useState<StatusEnergiaLocacao>(initial?.status || "transferida");
+  const [diaVencimentoConta, setDiaVencimentoConta] = useState<string>(initial?.diaVencimentoConta ? String(initial.diaVencimentoConta) : "");
   const [observacoes, setObservacoes] = useState(initial?.observacoes || "");
   const [error, setError] = useState("");
 
@@ -46,6 +48,7 @@ export const EnergiaFormModal: React.FC<EnergiaFormModalProps> = ({ initial, onS
       dataNascimento: dataNascimento || undefined,
       dataVencimento: dataVencimento || undefined,
       status,
+      diaVencimentoConta: diaVencimentoConta ? Math.min(31, Math.max(1, parseInt(diaVencimentoConta) || 0)) || undefined : undefined,
       observacoes: observacoes.trim() || undefined
     });
   };
@@ -144,7 +147,7 @@ export const EnergiaFormModal: React.FC<EnergiaFormModalProps> = ({ initial, onS
             </div>
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                Data de vencimento <span className="text-red-500">*</span>
+                Prazo para transferir
               </label>
               <input
                 type="date"
@@ -156,7 +159,21 @@ export const EnergiaFormModal: React.FC<EnergiaFormModalProps> = ({ initial, onS
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1.5">Status</label>
+            <label htmlFor="energia-dia-conta" className="block text-xs font-bold text-slate-700 mb-1.5">Dia de vencimento da conta de energia</label>
+            <input
+              id="energia-dia-conta"
+              type="number"
+              min={1}
+              max={31}
+              value={diaVencimentoConta}
+              onChange={e => setDiaVencimentoConta(e.target.value)}
+              placeholder="Ex.: 15"
+              className="w-32 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1.5">Transferência da conta para o inquilino</label>
             <div className="flex items-center gap-2">
               {STATUS_OPTIONS.map(opt => (
                 <button

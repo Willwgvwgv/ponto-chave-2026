@@ -3901,7 +3901,7 @@ function AppContent() {
 
     const permEnergia = isUserAdmin || profile?.permEnergia === true || profile?.perm_energia === true || profile?.permissions?.includes("energia");
     if (permEnergia) {
-      items.push({ id: "energia" as const, label: "Acompanhamento de Energia", icon: Zap });
+      items.push({ id: "energia" as const, label: "Energia das Locações", icon: Zap });
     }
 
     if (permPonto) {
