@@ -307,7 +307,8 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
 
   const contagem = useMemo(() => {
     const c = { pago: 0, em_aberto: 0, atrasado: 0, a_verificar: 0 };
-    transferidas.forEach(e => { c[situacaoDoMes(e, mes)]++; });
+    // Conta de luz vencida (de qualquer mês, segundo a Scaza) conta como atrasada.
+    transferidas.forEach(e => { c[temContaVencida(e) ? "atrasado" : situacaoDoMes(e, mes)]++; });
     return c;
   }, [transferidas, mes]);
 
@@ -318,7 +319,7 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
       .filter(e => {
         if (termo && ![e.imovel, e.inquilino, e.unidadeConsumidora, e.cpf].some(v => (v || "").toLowerCase().includes(termo))) return false;
         if (filtro === "TODAS" || filtro === "NAO_TRANSFERIDAS" || filtro === "CONTA_VENCIDA") return true;
-        return situacaoDoMes(e, mes) === filtro;
+        return (temContaVencida(e) ? "atrasado" : situacaoDoMes(e, mes)) === filtro;
       })
       .sort((a, b) => (a.inquilino || "").localeCompare(b.inquilino || "", "pt-BR"));
   }, [transferidas, naoTransferidas, comContaVencida, searchTerm, filtro, mes]);
