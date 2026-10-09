@@ -26,6 +26,7 @@ import { formatPersonName, maskDoc } from "../../lib/utils";
 import { toast } from "sonner";
 import { EnergiaFormModal } from "./EnergiaFormModal";
 import { ScazaIntegracaoModal } from "./ScazaIntegracaoModal";
+import { CadastroScazaModal } from "./CadastroScazaModal";
 import { ConfirmModal } from "../ui/ConfirmModal";
 import { db, collection, getDocs, query, where } from "../../firebase";
 
@@ -299,6 +300,7 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [salvandoId, setSalvandoId] = useState<string | null>(null);
   const [scazaAberto, setScazaAberto] = useState(false);
+  const [cadastroScaza, setCadastroScaza] = useState<EnergiaLocacao | null>(null);
 
   const mesAtual = chaveMes(new Date());
   const transferidas = useMemo(() => energias.filter(e => e.status === "transferida"), [energias]);
@@ -603,6 +605,12 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
                     {e.scaza?.ultimaAtualizacao && (e.scaza?.faturasEmAberto || []).length === 0 && (
                       <p className="mt-1 text-xs text-emerald-700">Scaza: nenhuma conta de luz em aberto · {new Date(e.scaza.ultimaAtualizacao).toLocaleDateString("pt-BR")}</p>
                     )}
+                    {isAdmin && !e.scaza?.contaId && (
+                      <button type="button" onClick={() => setCadastroScaza(e)}
+                        className="mt-2 h-8 px-3 rounded-lg border border-zinc-300 bg-white text-xs font-medium text-zinc-800 hover:bg-zinc-50">
+                        Cadastrar na Scaza
+                      </button>
+                    )}
                     {e.scaza?.titularCpf && e.scaza.titularCpf !== (e.cpf || "").replace(/\D/g, "") && (
                       <p className="mt-1 text-xs text-zinc-600">
                         Conta de luz no CPF/CNPJ <span className="font-mono text-zinc-900">{maskDoc(e.scaza.titularCpf)}</span>
@@ -689,6 +697,8 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
           </ul>
         )}
       </div>
+
+      {cadastroScaza && <CadastroScazaModal energia={cadastroScaza} onClose={() => setCadastroScaza(null)} />}
 
       {scazaAberto && <ScazaIntegracaoModal
           companyId={companyId}

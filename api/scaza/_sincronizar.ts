@@ -79,6 +79,54 @@ const ehEnergia = (conta: any) => {
   return tipoId === 1 || tipoId === 0; // 1 = Energia - Equatorial (GO); sem tipo: tenta mesmo assim
 };
 
+// Consulta débitos na Scaza e agrupa por conta. "filtro" pode limitar por imoveisId.
+async function consultarDebitos(token: string, filtro: { imoveisId?: number[] }): Promise<Map<number, FaturaAberta[]>> {
+  const hoje = new Date().toISOString().slice(0, 10);
+  const deb = await chamar("consultar-debitos", {
+    method: "POST",
+    token,
+    body: JSON.stringify({
+      imoveisIdIntegracao: [], imoveisId: filtro.imoveisId || [], tiposDeContaId: [],
+      somenteInadimplentes: false, vencimentoInicio: null, vencimentoFim: null
+    })
+  });
+  if (deb.status !== 200 || !Array.isArray(deb.json?.resultado)) {
+    throw new Error("A Scaza não devolveu os débitos agora. Tente de novo em alguns minutos.");
+  }
+  const porConta = new Map<number, FaturaAberta[]>();
+  for (const d of deb.json.resultado) {
+    const contaId = Number(campo(d, "contaId") || 0);
+    const venc = dataIso(campo(d, "vencimento"));
+    if (!contaId || !venc) continue;
+    const valor = Number(campo(d, "valor"));
+    const lista = porConta.get(contaId) || [];
+    lista.push({
+      id: null,
+      vencimento: venc,
+      valor: Number.isFinite(valor) ? valor : null,
+      vencida: venc < hoje,
+      referencia: campo(d, "informacoesAdicionais") ? String(campo(d, "informacoesAdicionais")) : null
+    });
+    porConta.set(contaId, lista);
+  }
+  return porConta;
+}
+
+// Aplica as faturas em aberto na locação (em memória). Devolve a lista gravada.
+function aplicarDebitos(atual: any, novas: FaturaAberta[], agora: string): FaturaAberta[] {
+  const anteriores: FaturaAberta[] = atual.scaza?.faturasEmAberto || [];
+  // Mantém o id da fatura (usado para achar o boleto) quando vencimento e valor batem.
+  const faturas = novas.map(f => {
+    const igual = anteriores.find(a => a.vencimento === f.vencimento && a.valor === f.valor);
+    return igual?.id ? { ...f, id: igual.id } : f;
+  });
+  const pagamentos = { ...(atual.pagamentos || {}) };
+  aplicarFaturasEmAberto(pagamentos, faturas, agora);
+  atual.pagamentos = pagamentos;
+  atual.scaza = { ...(atual.scaza || {}), faturasEmAberto: faturas, ultimaAtualizacao: agora, situacaoConfiavel: true };
+  return faturas;
+}
+
 export interface ResumoSincronizacao {
   contasEnergia: number;
   vinculadasAgora: number;
@@ -94,7 +142,6 @@ export async function sincronizarScaza(adminDb: any): Promise<ResumoSincronizaca
   if (!docs) throw new Error("Falta definir SCAZA_COMPANY_ID na Vercel.");
   const token = await logarScaza();
   const agora = new Date().toISOString();
-  const hoje = agora.slice(0, 10);
 
   // Estado em memória das locações (para a ligação e os débitos usarem o mesmo dado).
   const estado = new Map<string, any>(docs.map(d => [d.id, { ...(d.data() || {}) }]));
@@ -156,47 +203,11 @@ export async function sincronizarScaza(adminDb: any): Promise<ResumoSincronizaca
   }
 
   // 3) Débitos de todas as contas
-  const deb = await chamar("consultar-debitos", {
-    method: "POST",
-    token,
-    body: JSON.stringify({
-      imoveisIdIntegracao: [], imoveisId: [], tiposDeContaId: [],
-      somenteInadimplentes: false, vencimentoInicio: null, vencimentoFim: null
-    })
-  });
-  if (deb.status !== 200 || !Array.isArray(deb.json?.resultado)) {
-    throw new Error("A Scaza não devolveu os débitos agora. Tente de novo em alguns minutos.");
-  }
-  const porConta = new Map<number, FaturaAberta[]>();
-  for (const d of deb.json.resultado) {
-    const contaId = Number(campo(d, "contaId") || 0);
-    const venc = dataIso(campo(d, "vencimento"));
-    if (!contaId || !venc) continue;
-    const valor = Number(campo(d, "valor"));
-    const lista = porConta.get(contaId) || [];
-    lista.push({
-      id: null,
-      vencimento: venc,
-      valor: Number.isFinite(valor) ? valor : null,
-      vencida: venc < hoje,
-      referencia: campo(d, "informacoesAdicionais") ? String(campo(d, "informacoesAdicionais")) : null
-    });
-    porConta.set(contaId, lista);
-  }
-
+  const porConta = await consultarDebitos(token, {});
   for (const [id, atual] of estado) {
     const contaId = Number(atual.scaza?.contaId || 0);
     if (!contaId) continue;
-    const anteriores: FaturaAberta[] = atual.scaza?.faturasEmAberto || [];
-    // Mantém o id da fatura (usado para achar o boleto) quando vencimento e valor batem.
-    const faturas = (porConta.get(contaId) || []).map(f => {
-      const igual = anteriores.find(a => a.vencimento === f.vencimento && a.valor === f.valor);
-      return igual?.id ? { ...f, id: igual.id } : f;
-    });
-    const pagamentos = { ...(atual.pagamentos || {}) };
-    aplicarFaturasEmAberto(pagamentos, faturas, agora);
-    atual.pagamentos = pagamentos;
-    atual.scaza = { ...(atual.scaza || {}), faturasEmAberto: faturas, ultimaAtualizacao: agora, situacaoConfiavel: true };
+    const faturas = aplicarDebitos(atual, porConta.get(contaId) || [], agora);
     mudou.add(id);
     if (faturas.length) resumo.comFaturaEmAberto++;
   }
@@ -215,4 +226,141 @@ export async function sincronizarScaza(adminDb: any): Promise<ResumoSincronizaca
   }
   resumo.locacoesAtualizadas = ids.length;
   return resumo;
+}
+
+// ---------------------------------------------------------------------------
+// Cadastro de uma locação na Scaza (imóvel + conta de energia Equatorial GO)
+// ---------------------------------------------------------------------------
+const TIPO_ENERGIA_EQUATORIAL_GO = 1;
+
+// idIntegracao numérico estável a partir do id da locação no Ponto Chave.
+const idIntegracaoDe = (energiaId: string) => {
+  let h = 0;
+  for (const ch of energiaId) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return 100000000 + (h % 900000000);
+};
+
+const dataBr = (iso: string | null | undefined) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ""));
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : "";
+};
+
+export interface DadosCadastroScaza {
+  unidadeConsumidora: string;
+  cpfCnpj: string;
+  nascimento?: string | null; // YYYY-MM-DD (obrigatória quando a UC está num CPF)
+}
+
+export interface ResultadoCadastroScaza {
+  jaExistia: boolean;
+  contaId: number;
+  imovelId: number | null;
+  faturasEmAberto: number;
+}
+
+export async function cadastrarNaScaza(adminDb: any, energiaId: string, dados: DadosCadastroScaza): Promise<ResultadoCadastroScaza> {
+  const docs = await locacoesDaEmpresa(adminDb);
+  if (!docs) throw new Error("Falta definir SCAZA_COMPANY_ID na Vercel.");
+  const doc = docs.find(d => d.id === energiaId);
+  if (!doc) throw new Error("Locação não encontrada.");
+  const atual: any = { ...(doc.data() || {}) };
+  if (atual.scaza?.contaId) throw new Error("Esta locação já está ligada a uma conta da Scaza.");
+
+  const uc = soDigitos(dados.unidadeConsumidora);
+  const doc_ = soDigitos(dados.cpfCnpj);
+  const nascBr = dataBr(dados.nascimento);
+  if (!uc) throw new Error("Informe a unidade consumidora.");
+  if (doc_.length !== 11 && doc_.length !== 14) throw new Error("Informe o CPF ou CNPJ do titular da conta de luz.");
+  if (doc_.length === 11 && !nascBr) throw new Error("Para conta no CPF, informe a data de nascimento do titular.");
+
+  const token = await logarScaza();
+  const agora = new Date().toISOString();
+
+  // Evita duplicar: se a UC já está cadastrada na Scaza, só liga.
+  let contaId = 0;
+  let imovelId: number | null = null;
+  let jaExistia = false;
+  try {
+    const r = await chamar("listar-imoveis", { method: "GET", token });
+    if (r.status === 200) {
+      for (const im of listaDe(r.json)) {
+        const contas = campo(im, "contas");
+        if (!Array.isArray(contas)) continue;
+        const achada = contas.find((c: any) => ehEnergia(c) && soDigitos(campo(c, "login1")).replace(/^0+/, "") === uc.replace(/^0+/, ""));
+        if (achada) {
+          contaId = Number(campo(achada, "id") || 0);
+          imovelId = Number(campo(im, "id") || 0) || null;
+          jaExistia = !!contaId;
+          break;
+        }
+      }
+    }
+  } catch {}
+
+  const idIntegracao = Number(atual.scaza?.idIntegracao) || idIntegracaoDe(energiaId);
+  if (!contaId) {
+    const conta = {
+      tipo: { id: TIPO_ENERGIA_EQUATORIAL_GO },
+      login1: uc,
+      login2: doc_,
+      login3: nascBr,
+      login4: "",
+      gerarMaloteAutomatico: false
+    };
+    const corpo = {
+      idIntegracao,
+      descricao: String(atual.imovel || "Imóvel").slice(0, 200),
+      contas: [conta],
+      nomeCobrancaInquilino: String(atual.inquilino || "").slice(0, 200)
+    };
+    let r = await chamar("adicionar-imovel", { method: "POST", token, body: JSON.stringify(corpo) });
+    let resultado = r.json?.resultado;
+    // Se o imóvel já existir com esse idIntegracao, adiciona só a conta.
+    if (r.status !== 200 || !resultado) {
+      const r2 = await chamar("adicionar-conta", {
+        method: "POST",
+        token,
+        body: JSON.stringify({
+          imovelIdIntegracao: idIntegracao, tipoId: TIPO_ENERGIA_EQUATORIAL_GO,
+          login1: uc, login2: doc_, login3: nascBr, login4: "", gerarMaloteAutomatico: false
+        })
+      });
+      if (r2.status !== 200 || !r2.json?.resultado) {
+        const msg = campo(r.json, "erro", "mensagem", "message") || campo(r2.json, "erro", "mensagem", "message");
+        throw new Error(msg ? `A Scaza recusou o cadastro: ${String(msg).slice(0, 200)}` : "A Scaza recusou o cadastro.");
+      }
+      contaId = Number(campo(r2.json.resultado, "id") || 0);
+      imovelId = Number(campo(r2.json.resultado, "idImovel") || 0) || null;
+    } else {
+      imovelId = Number(campo(resultado, "id") || 0) || null;
+      const contas = campo(resultado, "contas");
+      const c = Array.isArray(contas) ? contas[0] : null;
+      contaId = Number(campo(c, "id") || 0);
+    }
+    if (!contaId) throw new Error("A Scaza cadastrou, mas não devolveu o número da conta. Clique em Atualizar agora na Integração Scaza.");
+  }
+
+  atual.scaza = {
+    ...(atual.scaza || {}),
+    contaId,
+    imovelId,
+    idIntegracao: jaExistia ? (atual.scaza?.idIntegracao ?? null) : idIntegracao,
+    imovelDescricao: atual.scaza?.imovelDescricao || atual.imovel || null,
+    titularCpf: doc_,
+    titularNascimento: dados.nascimento || null,
+    cadastradaEm: agora
+  };
+
+  // Débitos que a Scaza já tiver (numa conta nova, costumam chegar depois, pelo aviso).
+  let faturas: FaturaAberta[] = [];
+  try {
+    const porConta = await consultarDebitos(token, imovelId ? { imoveisId: [imovelId] } : {});
+    faturas = aplicarDebitos(atual, porConta.get(contaId) || [], agora);
+  } catch {}
+
+  const gravar: Record<string, any> = { scaza: atual.scaza, pagamentos: atual.pagamentos || {}, updatedAt: agora };
+  if (!soDigitos(atual.unidadeConsumidora)) gravar.unidadeConsumidora = uc;
+  await doc.ref.set(gravar, { merge: true });
+
+  return { jaExistia, contaId, imovelId, faturasEmAberto: faturas.length };
 }

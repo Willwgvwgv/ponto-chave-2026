@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { getFirebaseAdmin } from "../_firebaseAdmin.js";
 import { verifyFirebaseIdToken } from "../_firebaseIdToken.js";
-import { sincronizarScaza } from "./_sincronizar.js";
+import { sincronizarScaza, cadastrarNaScaza } from "./_sincronizar.js";
 import { processarAviso, vincularConta, limparCorpo, type ResultadoProcessamento } from "./_processar.js";
 
 // Receptor de webhooks da Scaza (boletos/débitos de energia).
@@ -108,6 +108,21 @@ export default async function handler(req: any, res: any) {
       } catch (e: any) {
         console.error("scaza: falha ao sincronizar", e?.message || e);
         return res.status(502).json({ error: String(e?.message || "Não foi possível falar com a Scaza.").slice(0, 300) });
+      }
+    }
+    if (acao === "cadastrar") {
+      const energiaId = String(corpoReq?.energiaId || "").trim();
+      if (!energiaId || energiaId.includes("/")) return res.status(400).json({ error: "locação inválida" });
+      try {
+        const r = await cadastrarNaScaza(adminDb, energiaId, {
+          unidadeConsumidora: String(corpoReq?.unidadeConsumidora || ""),
+          cpfCnpj: String(corpoReq?.cpfCnpj || ""),
+          nascimento: corpoReq?.nascimento ? String(corpoReq.nascimento) : null
+        });
+        return res.status(200).json({ ok: true, ...r });
+      } catch (e: any) {
+        console.error("scaza: falha ao cadastrar", e?.message || e);
+        return res.status(400).json({ error: String(e?.message || "Não foi possível cadastrar na Scaza.").slice(0, 300) });
       }
     }
     if ((acao !== "reprocessar" && acao !== "vincular") || !id || id.includes("/")) return res.status(400).json({ error: "pedido inválido" });
