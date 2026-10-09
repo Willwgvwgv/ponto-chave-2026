@@ -720,6 +720,8 @@ export interface EnergiaScaza {
   ultimaFatura?: string | null;
   faturasEmAberto?: FaturaScaza[];
   situacaoConfiavel?: boolean;
+  titularCpf?: string | null; // CPF/CNPJ em que a conta de luz está (pode ser o proprietário)
+  titularNascimento?: string | null; // YYYY-MM-DD
 }
 
 export interface EnergiaLocacao {

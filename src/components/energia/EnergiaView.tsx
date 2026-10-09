@@ -602,6 +602,13 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
                     {e.scaza?.ultimaAtualizacao && (e.scaza?.faturasEmAberto || []).length === 0 && (
                       <p className="mt-1 text-xs text-emerald-700">Scaza: nenhuma conta de luz em aberto · {new Date(e.scaza.ultimaAtualizacao).toLocaleDateString("pt-BR")}</p>
                     )}
+                    {e.scaza?.titularCpf && e.scaza.titularCpf !== (e.cpf || "").replace(/\D/g, "") && (
+                      <p className="mt-1 text-xs text-zinc-600">
+                        Conta de luz no CPF/CNPJ <span className="font-mono text-zinc-900">{maskDoc(e.scaza.titularCpf)}</span>
+                        {e.scaza.titularNascimento && <> · nasc. <span className="font-mono text-zinc-900">{formatDateBR(e.scaza.titularNascimento)}</span></>}
+                        {" "}(não é o do inquilino)
+                      </p>
+                    )}
                     {e.status !== "transferida" && (
                       <p className="mt-1 text-xs text-amber-800">
                         Transferência {e.status === "em_processo" ? "em processo" : "pendente"}

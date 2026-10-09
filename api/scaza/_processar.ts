@@ -189,10 +189,13 @@ export async function processarContaAtualizada(adminDb: any, dados: any): Promis
   // Completa dados que estiverem faltando na locação.
   const uc = soDigitos(conta.Login1);
   if (!soDigitos(atual.unidadeConsumidora) && uc) atualizacao.unidadeConsumidora = uc;
+  // CPF e nascimento da Scaza são do TITULAR da conta de luz, que pode ser o proprietário.
+  // Ficam guardados à parte; só completam a locação quando o CPF é o do próprio inquilino.
   const cpf = soDigitos(conta.Login2);
-  if (!soDigitos(atual.cpf) && cpf) atualizacao.cpf = cpf;
   const nasc = nascimentoIso(conta.Login3);
-  if (!atual.dataNascimento && nasc) atualizacao.dataNascimento = nasc;
+  atualizacao.scaza.titularCpf = cpf || null;
+  atualizacao.scaza.titularNascimento = nasc;
+  if (cpf && soDigitos(atual.cpf) === cpf && !atual.dataNascimento && nasc) atualizacao.dataNascimento = nasc;
 
   await doc.ref.set(atualizacao, { merge: true });
 
