@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { getFirebaseAdmin } from "../_firebaseAdmin.js";
 import { verifyFirebaseIdToken } from "../_firebaseIdToken.js";
+import { sincronizarScaza } from "./_sincronizar.js";
 import { processarAviso, vincularConta, limparCorpo, type ResultadoProcessamento } from "./_processar.js";
 
 // Receptor de webhooks da Scaza (boletos/débitos de energia).
@@ -100,6 +101,15 @@ export default async function handler(req: any, res: any) {
     if (typeof corpoReq === "string") { try { corpoReq = JSON.parse(corpoReq); } catch { corpoReq = {}; } }
     const id = String(corpoReq?.id || "").trim();
     const acao = corpoReq?.acao;
+    if (acao === "sincronizar") {
+      try {
+        const resumo = await sincronizarScaza(adminDb);
+        return res.status(200).json({ ok: true, resumo });
+      } catch (e: any) {
+        console.error("scaza: falha ao sincronizar", e?.message || e);
+        return res.status(502).json({ error: String(e?.message || "Não foi possível falar com a Scaza.").slice(0, 300) });
+      }
+    }
     if ((acao !== "reprocessar" && acao !== "vincular") || !id || id.includes("/")) return res.status(400).json({ error: "pedido inválido" });
     const ref = adminDb.collection(COLECAO).doc(id);
     const snap = await ref.get();
@@ -184,6 +194,7 @@ export default async function handler(req: any, res: any) {
 
     return res.status(200).json({
       configurado: !!tokenEsperado,
+      loginConfigurado: !!(process.env.SCAZA_LOGIN || "").trim() && !!process.env.SCAZA_SENHA,
       empresaConfigurada: !!(process.env.SCAZA_COMPANY_ID || "").trim(),
       chaveIntegridadeConfigurada: !!(process.env.SCAZA_WEBHOOK_SECRET || "").trim(),
       url,

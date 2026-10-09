@@ -9,7 +9,7 @@
 export const COLECAO_ENERGIA = "energia_locacoes";
 const NOME_SCAZA = "Scaza (automático)";
 
-const soDigitos = (v: any) => String(v ?? "").replace(/\D/g, "");
+export const soDigitos = (v: any) => String(v ?? "").replace(/\D/g, "");
 const semZerosEsq = (v: string) => v.replace(/^0+/, "");
 
 const mesDe = (iso: any): string | null => {
@@ -19,7 +19,7 @@ const mesDe = (iso: any): string | null => {
 };
 
 // "05/09/1975" → "1975-09-05"
-const nascimentoIso = (v: any): string | null => {
+export const nascimentoIso = (v: any): string | null => {
   const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(String(v || "").trim());
   return m ? `${m[3]}-${m[2]}-${m[1]}` : null;
 };
@@ -51,14 +51,59 @@ export function limparCorpo(corpo: any): any {
 
 // Só mexe nas locações da empresa ligada à Scaza. Sem a empresa definida, não aplica
 // (evita casar UC/CPF com locação de outra empresa do sistema).
-async function locacoesDaEmpresa(adminDb: any): Promise<any[] | null> {
+export async function locacoesDaEmpresa(adminDb: any): Promise<any[] | null> {
   const empresa = (process.env.SCAZA_COMPANY_ID || "").trim();
   if (!empresa) return null;
   const snap = await adminDb.collection(COLECAO_ENERGIA).where("companyId", "==", empresa).get();
   return snap.docs;
 }
 
-function acharLocacao(docs: any[], conta: any, contaId: number): { doc: any | null; motivo?: string } {
+export interface FaturaAberta {
+  id: number | null;
+  vencimento: string; // YYYY-MM-DD
+  valor: number | null;
+  vencida: boolean;
+  referencia: string | null;
+}
+
+// Atualiza "pagamentos" (por mês do vencimento) a partir da lista de faturas em aberto:
+// aberta → em aberto/atrasado; mês que a Scaza tinha marcado como aberto e sumiu → pago.
+export function aplicarFaturasEmAberto(pagamentos: Record<string, any>, emAberto: FaturaAberta[], agora: string) {
+  const alterados: string[] = [];
+  const mesesAbertos = new Set<string>();
+  const porMes = new Map<string, { vencida: boolean; valor: number | null; vencimento: string }>();
+  for (const f of emAberto) {
+    const mes = mesDe(f.vencimento);
+    if (!mes) continue;
+    const ant = porMes.get(mes);
+    porMes.set(mes, {
+      vencida: (ant?.vencida || false) || f.vencida,
+      valor: f.valor == null && ant?.valor == null ? null : (ant?.valor || 0) + (f.valor || 0),
+      vencimento: ant && ant.vencimento < f.vencimento ? ant.vencimento : f.vencimento
+    });
+  }
+  for (const [mes, f] of porMes) {
+    mesesAbertos.add(mes);
+    pagamentos[mes] = {
+      status: f.vencida ? "atrasado" : "em_aberto",
+      verificadoEm: agora,
+      verificadoPorNome: NOME_SCAZA,
+      origem: "scaza",
+      valor: f.valor,
+      vencimento: f.vencimento
+    };
+    alterados.push(mes);
+  }
+  for (const [mes, reg] of Object.entries<any>(pagamentos)) {
+    if (reg?.origem === "scaza" && reg.status !== "pago" && !mesesAbertos.has(mes)) {
+      pagamentos[mes] = { ...reg, status: "pago", verificadoEm: agora, verificadoPorNome: NOME_SCAZA };
+      alterados.push(mes);
+    }
+  }
+  return { alterados, mesesAbertos };
+}
+
+export function acharLocacao(docs: any[], conta: any, contaId: number): { doc: any | null; motivo?: string } {
   const porConta = docs.find(d => d.data().scaza?.contaId === contaId);
   if (porConta) return { doc: porConta };
 
@@ -126,38 +171,9 @@ export async function processarContaAtualizada(adminDb: any, dados: any): Promis
   const mesesAbertos = new Set<string>();
 
   if (confiavel) {
-    // Agrupa por mês do vencimento; duas faturas no mesmo mês somam e vale a pior situação.
-    const porMes = new Map<string, { vencida: boolean; valor: number | null; vencimento: string }>();
-    for (const f of emAberto) {
-      const mes = mesDe(f.vencimento);
-      if (!mes) continue;
-      const ant = porMes.get(mes);
-      porMes.set(mes, {
-        vencida: (ant?.vencida || false) || f.vencida,
-        valor: f.valor == null && ant?.valor == null ? null : (ant?.valor || 0) + (f.valor || 0),
-        vencimento: ant && ant.vencimento < f.vencimento ? ant.vencimento : f.vencimento
-      });
-    }
-    for (const [mes, f] of porMes) {
-      mesesAbertos.add(mes);
-      pagamentos[mes] = {
-        status: f.vencida ? "atrasado" : "em_aberto",
-        verificadoEm: agora,
-        verificadoPorNome: NOME_SCAZA,
-        origem: "scaza",
-        valor: f.valor,
-        vencimento: f.vencimento
-      };
-      alterados.push(mes);
-    }
-
-    // Mês que a própria Scaza tinha marcado como aberto e não aparece mais → pago.
-    for (const [mes, reg] of Object.entries<any>(pagamentos)) {
-      if (reg?.origem === "scaza" && reg.status !== "pago" && !mesesAbertos.has(mes)) {
-        pagamentos[mes] = { ...reg, status: "pago", verificadoEm: agora, verificadoPorNome: NOME_SCAZA };
-        alterados.push(mes);
-      }
-    }
+    const r = aplicarFaturasEmAberto(pagamentos, emAberto, agora);
+    r.alterados.forEach(m => alterados.push(m));
+    r.mesesAbertos.forEach(m => mesesAbertos.add(m));
 
     // Última fatura encontrada pela Scaza que não está em aberto → paga.
     const mesUltima = mesDe(conta.UltimaFatura);

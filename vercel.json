@@ -43,5 +43,10 @@
       "source": "/((?!api/|uploads/).*)",
       "destination": "/index.html"
     }
-  ]
+  ],
+  "functions": {
+    "api/scaza/webhook.ts": {
+      "maxDuration": 60
+    }
+  }
 }
