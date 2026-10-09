@@ -140,7 +140,15 @@ const ESTILO_SITUACAO: Record<SituacaoMes, { label: string; classe: string; pont
   a_verificar: { label: "A verificar", classe: "bg-zinc-100 text-zinc-700 border-zinc-200", ponto: "bg-zinc-300" }
 };
 
-type Filtro = "TODAS" | "pago" | "em_aberto" | "atrasado" | "a_verificar" | "NAO_TRANSFERIDAS" | "CONTA_VENCIDA";
+type Filtro = "TODAS" | "pago" | "em_aberto" | "atrasado" | "a_verificar" | "NAO_TRANSFERIDAS" | "CONTA_VENCIDA" | "FORA_DO_INQUILINO";
+
+// A Scaza informou um titular da conta de luz diferente do CPF do inquilino:
+// a conta ainda não foi transferida para ele.
+const contaForaDoInquilino = (e: EnergiaLocacao) => {
+  const titular = (e.scaza?.titularCpf || "").replace(/\D/g, "");
+  const inquilino = (e.cpf || "").replace(/\D/g, "");
+  return !!titular && !!inquilino && titular !== inquilino;
+};
 
 const temContaVencida = (e: EnergiaLocacao) => (e.scaza?.faturasEmAberto || []).some(f => f.vencida);
 const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -357,6 +365,7 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
   const transferidas = useMemo(() => energias.filter(e => e.status === "transferida"), [energias]);
   const naoTransferidas = useMemo(() => energias.filter(e => e.status !== "transferida"), [energias]);
   const comContaVencida = useMemo(() => energias.filter(temContaVencida), [energias]);
+  const foraDoInquilino = useMemo(() => energias.filter(contaForaDoInquilino), [energias]);
 
   const contagem = useMemo(() => {
     const c = { pago: 0, em_aberto: 0, atrasado: 0, a_verificar: 0 };
@@ -367,15 +376,15 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
 
   const lista = useMemo(() => {
     const termo = searchTerm.trim().toLowerCase();
-    const base = filtro === "NAO_TRANSFERIDAS" ? naoTransferidas : filtro === "CONTA_VENCIDA" ? comContaVencida : transferidas;
+    const base = filtro === "NAO_TRANSFERIDAS" ? naoTransferidas : filtro === "CONTA_VENCIDA" ? comContaVencida : filtro === "FORA_DO_INQUILINO" ? foraDoInquilino : transferidas;
     return base
       .filter(e => {
         if (termo && ![e.imovel, e.inquilino, e.unidadeConsumidora, e.cpf].some(v => (v || "").toLowerCase().includes(termo))) return false;
-        if (filtro === "TODAS" || filtro === "NAO_TRANSFERIDAS" || filtro === "CONTA_VENCIDA") return true;
+        if (filtro === "TODAS" || filtro === "NAO_TRANSFERIDAS" || filtro === "CONTA_VENCIDA" || filtro === "FORA_DO_INQUILINO") return true;
         return (temContaVencida(e) ? "atrasado" : situacaoDoMes(e, mes)) === filtro;
       })
       .sort((a, b) => (a.inquilino || "").localeCompare(b.inquilino || "", "pt-BR"));
-  }, [transferidas, naoTransferidas, comContaVencida, searchTerm, filtro, mes]);
+  }, [transferidas, naoTransferidas, comContaVencida, foraDoInquilino, searchTerm, filtro, mes]);
 
   const registrar = (e: EnergiaLocacao, status: StatusPagamentoEnergia | null) => {
     const pagamentos: Record<string, PagamentoEnergiaMes> = { ...(e.pagamentos || {}) };
@@ -587,6 +596,12 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
               Conta vencida (Scaza) <span className="opacity-80 tabular-nums">{comContaVencida.length}</span>
             </button>
           )}
+          {foraDoInquilino.length > 0 && (
+            <button type="button" onClick={() => setFiltro(filtro === "FORA_DO_INQUILINO" ? "TODAS" : "FORA_DO_INQUILINO")}
+              className={`h-8 px-3 rounded-full text-[13px] font-medium border ${filtro === "FORA_DO_INQUILINO" ? "bg-amber-600 text-white border-amber-600" : "bg-amber-50 text-amber-900 border-amber-200 hover:bg-amber-100"}`}>
+              Conta fora do nome do inquilino <span className="opacity-80 tabular-nums">{foraDoInquilino.length}</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -699,12 +714,12 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
                         Cadastrar na Scaza
                       </button>
                     )}
-                    {e.scaza?.titularCpf && e.scaza.titularCpf !== (e.cpf || "").replace(/\D/g, "") && (
-                      <p className="mt-1 text-xs text-zinc-600">
-                        Conta de luz no CPF/CNPJ <span className="font-mono text-zinc-900">{maskDoc(e.scaza.titularCpf)}</span>
-                        {e.scaza.titularNascimento && <> · nasc. <span className="font-mono text-zinc-900">{formatDateBR(e.scaza.titularNascimento)}</span></>}
-                        {" "}(não é o do inquilino)
-                      </p>
+                    {contaForaDoInquilino(e) && (
+                      <div className="mt-2 self-start inline-flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs text-amber-900">
+                        <span className="font-semibold">Conta de luz ainda não está no nome do inquilino</span>
+                        <span>titular CPF/CNPJ <span className="font-mono">{maskDoc(e.scaza!.titularCpf!)}</span>
+                          {e.scaza?.titularNascimento && <> · nasc. <span className="font-mono">{formatDateBR(e.scaza.titularNascimento)}</span></>}</span>
+                      </div>
                     )}
                     {e.status !== "transferida" && (
                       <p className="mt-1 text-xs text-amber-800">
