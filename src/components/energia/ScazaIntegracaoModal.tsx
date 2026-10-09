@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { X, Copy, RefreshCw, CheckCircle2, AlertTriangle, Search } from "lucide-react";
 import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
 import { auth } from "../../firebase";
 
 interface EventoScaza {
@@ -20,6 +21,7 @@ interface RespostaScaza {
   configurado: boolean;
   chaveIntegridadeConfigurada: boolean;
   empresaConfigurada?: boolean;
+  loginConfigurado?: boolean;
   url: string | null;
   eventos: EventoScaza[];
 }
@@ -47,6 +49,33 @@ export const ScazaIntegracaoModal: React.FC<Props> = ({ onClose, companyId, loca
   const [reprocessando, setReprocessando] = useState<string | null>(null);
 
   const [escolha, setEscolha] = useState<Record<string, string>>({});
+  const queryClient = useQueryClient();
+  const [sincronizando, setSincronizando] = useState(false);
+  const [resumo, setResumo] = useState<any | null>(null);
+
+  const sincronizar = async () => {
+    setSincronizando(true);
+    setResumo(null);
+    try {
+      const user = (auth as any).currentUser;
+      if (!user) throw new Error("Faça login novamente.");
+      const token = await user.getIdToken();
+      const r = await fetch("/api/scaza/webhook", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ acao: "sincronizar" })
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j?.error || `Erro ${r.status}`);
+      setResumo(j.resumo);
+      toast.success("Locações atualizadas com a Scaza.");
+      queryClient.invalidateQueries({ queryKey: ["energia_locacoes"] });
+    } catch (e: any) {
+      toast.error(e?.message || "Não foi possível atualizar com a Scaza.");
+    } finally {
+      setSincronizando(false);
+    }
+  };
   const [termo, setTermo] = useState<Record<string, string>>({});
   const filtrarLocacoes = (txt: string) => {
     const partes = normalizar(txt).split(/\s+/).filter(Boolean);
@@ -168,6 +197,47 @@ export const ScazaIntegracaoModal: React.FC<Props> = ({ onClose, companyId, loca
                   <p className="text-xs text-zinc-500">
                     Opcional: a chave de autenticação que a Scaza mostra para verificar os webhooks pode ser salva na Vercel como <code className="px-1 bg-zinc-100 rounded">SCAZA_WEBHOOK_SECRET</code>.
                   </p>
+                )}
+              </section>
+
+              <section className="space-y-2 rounded-lg border border-zinc-200 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h4 className="font-medium text-zinc-900">Atualizar com a Scaza agora</h4>
+                    <p className="text-xs text-zinc-600">Liga as contas de luz da Scaza às locações (pela UC/CPF) e traz as faturas em aberto de todas.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={sincronizar}
+                    disabled={sincronizando || !dados.loginConfigurado || dados.empresaConfigurada === false}
+                    className="h-9 px-3 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white text-sm font-medium flex items-center gap-1.5 disabled:opacity-40"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${sincronizando ? "animate-spin" : ""}`} />
+                    {sincronizando ? "Atualizando…" : "Atualizar agora"}
+                  </button>
+                </div>
+                {!dados.loginConfigurado && (
+                  <p className="text-xs text-amber-800">Para usar, crie na Vercel as variáveis <code className="px-1 bg-zinc-100 rounded">SCAZA_LOGIN</code> e <code className="px-1 bg-zinc-100 rounded">SCAZA_SENHA</code> e faça um Redeploy.</p>
+                )}
+                {resumo && (
+                  <div className="text-xs text-zinc-700 space-y-1">
+                    <p>
+                      {resumo.contasEnergia} contas de luz na Scaza · {resumo.vinculadasAgora} ligadas agora · {resumo.jaVinculadas} já estavam ligadas ·{" "}
+                      {resumo.comFaturaEmAberto} com fatura em aberto
+                    </p>
+                    {resumo.listagemImoveis === "falhou" && (
+                      <p className="text-amber-800">Não consegui listar os imóveis da Scaza; só as contas já ligadas foram atualizadas.</p>
+                    )}
+                    {resumo.semLocacao?.length > 0 && (
+                      <details>
+                        <summary className="cursor-pointer text-zinc-900">{resumo.semLocacao.length} contas sem locação encontrada</summary>
+                        <ul className="mt-1 list-disc pl-5 space-y-0.5">
+                          {resumo.semLocacao.map((x: any, i: number) => <li key={i}>{x.imovel} — {x.motivo}</li>)}
+                        </ul>
+                        <p className="mt-1 text-zinc-500">Essas você liga pelo aviso da conta, em "Vincular a uma locação", ou preenchendo a UC na locação.</p>
+                      </details>
+                    )}
+                  </div>
                 )}
               </section>
 
