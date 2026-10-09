@@ -114,6 +114,7 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
     imovelComplemento: "",
     imovelEstado: "GO",
     imovelCep: "",
+    imovelUc: "",
     imovelTipo: "Casa",
     indiceReajuste: "IGP-M" as ContratoLocacao["condicoes"]["indiceReajuste"],
     seguroIncendio: 0,
@@ -260,6 +261,7 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
       imovelComplemento: "",
       imovelEstado: "GO",
       imovelCep: "",
+    imovelUc: "",
       imovelTipo: "Casa",
       indiceReajuste: "IGP-M" as const,
       seguroIncendio: 0,
@@ -352,6 +354,7 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
         cidade: novoContratoForm.imovelCidade || "Goiânia",
         estado: novoContratoForm.imovelEstado.trim() || "GO",
         cep: novoContratoForm.imovelCep.trim(),
+        energiaMedidor: novoContratoForm.imovelUc.trim() || undefined,
         tipoImovel: ehVenda
           ? (novoContratoForm.tipoLocacao === "comercial" ? "Sala Comercial" : "Apartamento Residencial")
           : (novoContratoForm.imovelTipo.trim() || "Casa"),
@@ -1184,6 +1187,12 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
                     <input id="nc-im-cep" type="text" value={novoContratoForm.imovelCep}
                       onChange={(e) => setNovoContratoForm({ ...novoContratoForm, imovelCep: e.target.value })}
                       placeholder="00000-000" className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                  </div>
+                  <div>
+                    <label htmlFor="nc-im-uc" className="block text-slate-800 font-bold mb-1">UC de energia</label>
+                    <input id="nc-im-uc" type="text" inputMode="numeric" value={novoContratoForm.imovelUc}
+                      onChange={(e) => setNovoContratoForm({ ...novoContratoForm, imovelUc: e.target.value })}
+                      placeholder="Unidade consumidora" className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
                   </div>
                   <div className="col-span-2 md:col-span-3">
                     <label htmlFor="nc-im-cid" className="block text-slate-800 font-bold mb-1">Cidade</label>

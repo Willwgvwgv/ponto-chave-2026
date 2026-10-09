@@ -613,6 +613,63 @@ export const LOCACAO_COMERCIAL_LOFT_BLOCKS: ContractBlock[] = locacaoModeloImobi
   "comercial"
 );
 
+// Procuração do locatário para a imobiliária transferir a conta de luz (e água) para o nome dele.
+export const PROCURACAO_TITULARIDADE_BLOCKS: ContractBlock[] = [
+  {
+    id: "block-title",
+    type: "title",
+    content: "PROCURAÇÃO",
+    isLocked: true
+  },
+  {
+    id: "block-parties-procuracao",
+    type: "parties",
+    clauseTitle: "OUTORGANTE E OUTORGADA",
+    sectionCategory: "Identificação das partes",
+    content: `<p><strong>OUTORGANTE:</strong> {{qualificacao_completa_locatario}}.</p>
+<p class="mt-2"><strong>OUTORGADA:</strong> <strong>{{nome_imobiliaria}}</strong>, inscrita no CNPJ sob o nº {{cnpj_imobiliaria}}, CRECI {{creci_imobiliaria}}, com sede em {{endereco_imobiliaria}}, que poderá agir por seus sócios ou por colaboradores por eles indicados.</p>`
+  },
+  {
+    id: "block-imovel-procuracao",
+    type: "paragraph",
+    sectionCategory: "Imóvel",
+    content: `<p><strong>IMÓVEL:</strong> {{endereco_imovel}}, locado pelo(a) OUTORGANTE. Unidade Consumidora (UC) de energia nº {{uc_energia_imovel}}.</p>`
+  },
+  {
+    id: "clause-poderes",
+    type: "clause",
+    clauseTitle: "PODERES",
+    sectionCategory: "Poderes",
+    content: `<p>O(A) OUTORGANTE nomeia e constitui como sua bastante procuradora a OUTORGADA acima qualificada, concedendo-lhe poderes para tratar dos assuntos relacionados ao imóvel acima, especialmente para:</p>
+<p><strong>1.</strong> Representar o(a) OUTORGANTE perante a Equatorial Goiás Distribuidora de Energia S.A., a Saneago – Saneamento de Goiás S.A. e a Prefeitura Municipal;</p>
+<p><strong>2.</strong> Solicitar a transferência da titularidade das unidades consumidoras de energia elétrica e de água do imóvel para o nome do(a) OUTORGANTE, bem como solicitar ligação, desligamento e religação;</p>
+<p><strong>3.</strong> Cadastrar, alterar e recuperar logins, senhas e acessos junto às referidas concessionárias;</p>
+<p><strong>4.</strong> Consultar, emitir e negociar faturas, boletos e débitos em aberto ou atrasados, bem como solicitar segunda via de contas;</p>
+<p><strong>5.</strong> Assinar requerimentos, formulários, declarações e quaisquer documentos necessários ao fiel cumprimento deste mandato;</p>
+<p><strong>6.</strong> Praticar todos os demais atos necessários ao bom e fiel desempenho deste mandato, podendo inclusive substabelecer, no todo ou em parte, com ou sem reserva de poderes.</p>`
+  },
+  {
+    id: "clause-validade",
+    type: "clause",
+    clauseTitle: "VALIDADE",
+    sectionCategory: "Validade",
+    content: `<p>Esta procuração terá validade de 1 (um) ano, a contar da data de sua assinatura, podendo ser revogada a qualquer tempo pelo(a) OUTORGANTE.</p>`
+  },
+  {
+    id: "block-signatures",
+    type: "signatures",
+    clauseTitle: "LOCAL, DATA E ASSINATURA",
+    sectionCategory: "Assinaturas e testemunhas",
+    content: `<p class="text-center italic text-slate-600 my-6">{{cidade_imovel}}/{{estado_imovel}}, {{data_atual_extenso}}</p>`,
+    metadata: {
+      assinaturas: {
+        linhas: [{ nome: "{{nome_locatario}}", papel: "OUTORGANTE", doc: "CPF/CNPJ: {{cpf_locatario}}" }],
+        testemunhas: 0
+      }
+    }
+  }
+];
+
 export const INITIAL_PREDEFINED_TEMPLATES: ContratoModelo[] = [
   {
     id: "modelo-padrao-caucao",
@@ -717,6 +774,21 @@ export const INITIAL_PREDEFINED_TEMPLATES: ContratoModelo[] = [
       ...DEFAULT_STYLE_SETTINGS,
       primaryColor: "#0f766e" // teal
     },
+    criadoPorUid: "system",
+    criadoPorNome: "Ponto Chave",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+  {
+    id: "modelo-procuracao-titularidade",
+    companyId: "global",
+    nome: "Procuração – Troca de Titularidade (Equatorial)",
+    descricao: "Procuração do locatário para a imobiliária transferir a conta de energia (e água) para o nome dele. Basta preencher os dados do locatário, o endereço e a UC do imóvel.",
+    tipoLocacao: "residencial",
+    isPadrao: false,
+    categoria: "Procurações",
+    blocks: PROCURACAO_TITULARIDADE_BLOCKS,
+    styleSettings: DEFAULT_STYLE_SETTINGS,
     criadoPorUid: "system",
     criadoPorNome: "Ponto Chave",
     createdAt: new Date().toISOString(),

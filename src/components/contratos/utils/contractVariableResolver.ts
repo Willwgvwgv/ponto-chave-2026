@@ -283,6 +283,7 @@ export function buildVariableMap(
     cidade_imovel: im.cidade || "Goiânia",
     estado_imovel: im.estado || "GO",
     cep_imovel: im.cep || "{{cep_imovel}}",
+    uc_energia_imovel: im.energiaMedidor || "______________",
     tipo_imovel: im.tipoImovel || "Imóvel Urbano",
     destinacao_imovel: im.destinacao === "comercial" ? "estritamente comercial e não residencial" : "estritamente residencial familiar",
     matricula_imovel: im.matricula || "conforme certidão de registro",

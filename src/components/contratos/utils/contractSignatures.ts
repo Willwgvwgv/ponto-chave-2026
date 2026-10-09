@@ -45,7 +45,12 @@ export function assinaturasDoBloco(
 ): ConfigAssinaturas {
   const salvo = block.metadata?.assinaturas;
   if (salvo && Array.isArray(salvo.linhas)) {
-    return { linhas: salvo.linhas, testemunhas: typeof salvo.testemunhas === "number" ? salvo.testemunhas : 2 };
+    // Modelos podem trazer variáveis nos assinantes (ex.: {{nome_locatario}}).
+    const resolver = (t: string) => String(t || "").replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (m, k) => variableMap[k] ?? m);
+    return {
+      linhas: salvo.linhas.map((l: LinhaAssinatura) => ({ nome: resolver(l.nome), papel: resolver(l.papel), doc: resolver(l.doc) })),
+      testemunhas: typeof salvo.testemunhas === "number" ? salvo.testemunhas : 2
+    };
   }
   return assinaturasPadrao(contract, variableMap);
 }
