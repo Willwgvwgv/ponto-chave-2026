@@ -12,7 +12,8 @@ import {
   ChevronRight,
   Copy,
   ExternalLink,
-  HelpCircle
+  HelpCircle,
+  RefreshCw
 } from "lucide-react";
 import { EnergiaLocacao, PagamentoEnergiaMes, StatusPagamentoEnergia } from "../../types";
 import {
@@ -28,7 +29,8 @@ import { EnergiaFormModal } from "./EnergiaFormModal";
 import { ScazaIntegracaoModal } from "./ScazaIntegracaoModal";
 import { CadastroScazaModal } from "./CadastroScazaModal";
 import { ConfirmModal } from "../ui/ConfirmModal";
-import { db, collection, getDocs, query, where } from "../../firebase";
+import { db, collection, getDocs, query, where, doc, deleteDoc, auth } from "../../firebase";
+import { useQueryClient } from "@tanstack/react-query";
 
 // Locação encontrada nas comissões/contratos que ainda não está na energia
 interface CandidatoImportacao {
@@ -301,6 +303,55 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
   const [salvandoId, setSalvandoId] = useState<string | null>(null);
   const [scazaAberto, setScazaAberto] = useState(false);
   const [cadastroScaza, setCadastroScaza] = useState<EnergiaLocacao | null>(null);
+  const queryClient = useQueryClient();
+  const [sincronizando, setSincronizando] = useState(false);
+  const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
+  const [confirmarLote, setConfirmarLote] = useState(false);
+  const [excluindoLote, setExcluindoLote] = useState(false);
+
+  const alternarSelecao = (id: string) => setSelecionados(prev => {
+    const n = new Set(prev);
+    if (n.has(id)) n.delete(id); else n.add(id);
+    return n;
+  });
+
+  const excluirSelecionados = async () => {
+    const ids: string[] = Array.from(selecionados);
+    setConfirmarLote(false);
+    setExcluindoLote(true);
+    let falhas = 0;
+    for (const id of ids) {
+      try { await deleteDoc(doc(db, "energia_locacoes", id)); } catch { falhas++; }
+    }
+    setExcluindoLote(false);
+    setSelecionados(new Set());
+    queryClient.invalidateQueries({ queryKey: ["energia_locacoes"] });
+    if (falhas) toast.error(`${ids.length - falhas} excluída(s); ${falhas} não puderam ser excluídas.`);
+    else toast.success(`${ids.length} locação(ões) excluída(s) do acompanhamento.`);
+  };
+
+  const atualizarComScaza = async () => {
+    setSincronizando(true);
+    try {
+      const user = (auth as any).currentUser;
+      if (!user) throw new Error("Faça login novamente.");
+      const token = await user.getIdToken();
+      const r = await fetch("/api/scaza/webhook", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ acao: "sincronizar" })
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j?.error || `Erro ${r.status}`);
+      const x = j.resumo || {};
+      toast.success(`Atualizado com a Scaza: ${x.comFaturaEmAberto ?? 0} com fatura em aberto${x.vinculadasAgora ? ` · ${x.vinculadasAgora} ligadas agora` : ""}${x.semLocacao?.length ? ` · ${x.semLocacao.length} contas sem locação (ver em Integração Scaza)` : ""}.`);
+      queryClient.invalidateQueries({ queryKey: ["energia_locacoes"] });
+    } catch (e: any) {
+      toast.error(e?.message || "Não foi possível atualizar com a Scaza.");
+    } finally {
+      setSincronizando(false);
+    }
+  };
 
   const mesAtual = chaveMes(new Date());
   const transferidas = useMemo(() => energias.filter(e => e.status === "transferida"), [energias]);
@@ -417,6 +468,17 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
           {isAdmin && (
             <button
               type="button"
+              onClick={atualizarComScaza}
+              disabled={sincronizando}
+              className="h-10 px-3 rounded-lg border border-zinc-300 bg-white text-sm font-medium text-zinc-800 hover:bg-zinc-50 flex items-center gap-2 disabled:opacity-60"
+            >
+              <RefreshCw className={`w-4 h-4 ${sincronizando ? "animate-spin" : ""}`} />
+              {sincronizando ? "Atualizando…" : "Atualizar com Scaza"}
+            </button>
+          )}
+          {isAdmin && (
+            <button
+              type="button"
               onClick={() => setScazaAberto(true)}
               className="h-10 px-3 rounded-lg border border-zinc-300 bg-white text-sm font-medium text-zinc-800 hover:bg-zinc-50"
             >
@@ -528,6 +590,27 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
         </div>
       </div>
 
+      {isAdmin && lista.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3 px-1 text-sm">
+          <label className="inline-flex items-center gap-2 text-zinc-700">
+            <input type="checkbox" className="w-4 h-4 accent-zinc-900"
+              checked={lista.length > 0 && lista.every(e => selecionados.has(e.id))}
+              onChange={ev => setSelecionados(ev.target.checked ? new Set(lista.map(e => e.id)) : new Set())} />
+            Selecionar todas desta lista ({lista.length})
+          </label>
+          {selecionados.size > 0 && (
+            <>
+              <span className="text-zinc-500">{selecionados.size} selecionada(s)</span>
+              <button type="button" onClick={() => setConfirmarLote(true)} disabled={excluindoLote}
+                className="h-8 px-3 rounded-lg bg-red-600 hover:bg-red-700 text-white text-[13px] font-medium disabled:opacity-50 flex items-center gap-1.5">
+                <Trash2 className="w-3.5 h-3.5" /> {excluindoLote ? "Excluindo…" : "Excluir selecionadas"}
+              </button>
+              <button type="button" onClick={() => setSelecionados(new Set())} className="text-[13px] text-zinc-600 hover:text-zinc-900 underline">Limpar seleção</button>
+            </>
+          )}
+        </div>
+      )}
+
       {/* Lista */}
       <div className="bg-white border border-zinc-200 rounded-xl overflow-hidden">
         {isLoading ? (
@@ -548,9 +631,14 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
                 e.dataNascimento ? `Nascimento: ${formatDateBR(e.dataNascimento)}` : ""
               ].filter(Boolean).join(" · ");
               return (
-                <li key={e.id} className="p-4 flex flex-col xl:flex-row xl:items-center gap-4">
+                <li key={e.id} className={`p-4 flex flex-col xl:flex-row xl:items-center gap-4 ${selecionados.has(e.id) ? "bg-blue-50/60" : ""}`}>
                   {/* Quem e onde */}
-                  <div className="flex-1 min-w-0">
+                  <div className="flex-1 min-w-0 flex gap-3">
+                    {isAdmin && (
+                      <input type="checkbox" checked={selecionados.has(e.id)} onChange={() => alternarSelecao(e.id)}
+                        aria-label={`Selecionar ${e.inquilino || e.imovel}`} className="mt-1 w-4 h-4 shrink-0 accent-zinc-900" />
+                    )}
+                    <div className="flex-1 min-w-0">
                     <p className="font-semibold text-zinc-900">{e.inquilino ? formatPersonName(e.inquilino) : "Locatário não informado"}</p>
                     <p className="text-sm text-zinc-600 truncate">{e.imovel}</p>
                     <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-600">
@@ -624,6 +712,7 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
                         {e.dataVencimento ? ` · prazo ${formatDateBR(e.dataVencimento)}` : ""}
                       </p>
                     )}
+                    </div>
                   </div>
 
                   {/* Histórico dos últimos 6 meses */}
@@ -775,6 +864,17 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={confirmarLote}
+        title={`Excluir ${selecionados.size} locação(ões) do acompanhamento?`}
+        message="As locações selecionadas e o histórico de conferência da energia delas serão excluídos do Ponto Chave. Nada é apagado na Scaza. Essa ação não pode ser desfeita."
+        confirmText="Excluir"
+        cancelText="Manter"
+        confirmColor="red"
+        onConfirm={excluirSelecionados}
+        onCancel={() => setConfirmarLote(false)}
+      />
 
       <ConfirmModal
         isOpen={!!deleteTargetId}
