@@ -12,7 +12,8 @@ import {
   Circle, 
   LayoutDashboard, 
   BarChart3, 
-  Plus, 
+  Plus,
+  RefreshCw, 
   AlertCircle, 
   ExternalLink, 
   Upload, 
@@ -3338,13 +3339,30 @@ function AppContent() {
     }
   };
 
-  // Fetch Tasks
+  // Fetch Tasks — escuta em tempo real. Se a conexão cair (erro, aba em segundo plano,
+  // celular que dormiu, internet que voltou), a escuta é refeita sozinha; também dá
+  // para forçar pelo botão "Atualizar" da lista.
+  const [tasksReload, setTasksReload] = useState(0);
+  const tarefasConhecidas = React.useRef<Set<string> | null>(null);
+
+  useEffect(() => {
+    const recarregar = () => setTasksReload(n => n + 1);
+    const aoVoltar = () => { if (document.visibilityState === "visible") recarregar(); };
+    document.addEventListener("visibilitychange", aoVoltar);
+    window.addEventListener("online", recarregar);
+    const intervalo = window.setInterval(recarregar, 3 * 60 * 1000);
+    return () => {
+      document.removeEventListener("visibilitychange", aoVoltar);
+      window.removeEventListener("online", recarregar);
+      window.clearInterval(intervalo);
+    };
+  }, []);
+
   useEffect(() => {
     if (!user || !profile) return;
     
     // Isolation: Only fetch company tasks.
     // Restriction: Non-admins only see THEIR tasks.
-    // Optimization: Only fetch tasks from the last 60 days
     let q;
     const cid = profile.companyId || "company";
     
@@ -3353,39 +3371,39 @@ function AppContent() {
     } else {
       q = query(collection(db, "tasks"), where("companyId", "==", cid), where("uid", "==", user.uid));
     }
-    
+
+    let tentativa: number | undefined;
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const tasksData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Task));
       
-      // Detectar tarefas novas ou transferidas para notificação sonora e avisos no destinatário
-      if (!isInitialLoad.current) {
+      // Avisa só de tarefas que ainda não tinham aparecido (enviadas/transferidas por outra pessoa).
+      // Assim, refazer a escuta não repete avisos antigos e não perde as que chegaram no intervalo.
+      const conhecidas = tarefasConhecidas.current;
+      if (conhecidas) {
         snapshot.docChanges().forEach((change) => {
           const task = change.doc.data() as Task;
-          
-          // Notificar apenas se a tarefa pertencer ao usuário logado
-          if (task.uid === user.uid) {
-            const isTransferredByMe = task.transferredFrom === user.uid;
-            const isCreatedByMe = task.authorId === user.uid && !task.transferredFrom;
-            
-            // Se foi enviada ou transferida por OUTRO colaborador para mim:
-            if (!isTransferredByMe && !isCreatedByMe) {
-              if (change.type === "added" || change.type === "modified") {
-                const senderName = task.transferredFromName || allUsers.find(u => u.uid === task.authorId)?.displayName || "um colaborador";
-                
-                playNotificationSound();
-                toast.info(`Nova tarefa recebida!`, {
-                  description: `"${task.title}" (enviada por ${senderName})`,
-                  duration: 8000,
-                  action: {
-                    label: "Ver na Agenda",
-                    onClick: () => setActiveTab("calendar"),
-                  },
-                });
-              }
-            }
+          const nova = !conhecidas.has(change.doc.id);
+          if (task.uid !== user.uid) return;
+          const isTransferredByMe = task.transferredFrom === user.uid;
+          const isCreatedByMe = task.authorId === user.uid && !task.transferredFrom;
+          if (isTransferredByMe || isCreatedByMe) return;
+          if ((change.type === "added" && nova) || change.type === "modified" && nova) {
+            const senderName = task.transferredFromName || allUsers.find(u => u.uid === task.authorId)?.displayName || "um colaborador";
+            playNotificationSound();
+            toast.info(`Nova tarefa recebida!`, {
+              description: `"${task.title}" (enviada por ${senderName})`,
+              duration: 8000,
+              action: {
+                label: "Ver na Agenda",
+                onClick: () => setActiveTab("calendar"),
+              },
+            });
           }
         });
       }
+      const ids = new Set(conhecidas || []);
+      snapshot.docs.forEach(d => ids.add(d.id));
+      tarefasConhecidas.current = ids;
 
       setTasks(tasksData);
       setLoading(false);
@@ -3394,10 +3412,15 @@ function AppContent() {
       console.error("Error fetching tasks:", error);
       setLoading(false);
       handleFirestoreError(error, OperationType.LIST, "tasks");
+      // Tenta de novo em alguns segundos em vez de ficar parado até recarregar a página.
+      tentativa = window.setTimeout(() => setTasksReload(n => n + 1), 8000);
     });
     
-    return () => unsubscribe();
-  }, [user, profile]);
+    return () => {
+      unsubscribe();
+      if (tentativa) window.clearTimeout(tentativa);
+    };
+  }, [user, profile, isAdmin, adminTaskView, tasksReload]);
 
   // Fetch Tools
   useEffect(() => {
@@ -4171,6 +4194,15 @@ function AppContent() {
                     </span>
                   </div>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => { setTasksReload(n => n + 1); toast.success("Tarefas atualizadas."); }}
+                  title="Atualizar tarefas"
+                  aria-label="Atualizar tarefas"
+                  className="w-11 h-11 rounded-2xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 flex items-center justify-center"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                </button>
                 <button 
                   onClick={() => setIsModalOpen(true)}
                   className="flex items-center gap-2 px-8 py-3.5 bg-[#3B82F6] text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-blue-500/30 hover:scale-[1.02] active:scale-95 transition-all"
