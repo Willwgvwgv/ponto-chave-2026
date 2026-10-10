@@ -141,3 +141,29 @@ export function getStatusDetalhado(doc: Comissao, hoje: string = hojeLocal()): S
     valorAtrasado: atrasadas.reduce((s, p) => s + p.saldo, 0)
   };
 }
+
+/** Comissão encerrada (marcada como paga/concluída): não tem mais nada a repassar. */
+export const comissaoEncerrada = (doc: Comissao): boolean =>
+  doc.statusFinanceiro === "concluida" || doc.status === "pago";
+
+/**
+ * Devido, pago e saldo de cada corretor numa comissão, somando todos os papéis dele
+ * (captador + locação, por exemplo) e usando os pagamentos registrados.
+ * Comissão encerrada conta como tudo pago — a mesma regra do status da linha.
+ */
+export function saldosPorCorretor(doc: Comissao): Map<string, { devido: number; pago: number; saldo: number }> {
+  const mapa = new Map<string, { devido: number; pago: number; saldo: number }>();
+  const encerrada = comissaoEncerrada(doc);
+  for (const rt of doc.rateio || []) {
+    if (!rt.corretorId) continue;
+    const atual = mapa.get(rt.corretorId) || { devido: 0, pago: 0, saldo: 0 };
+    atual.devido += Number(rt.valor || 0);
+    mapa.set(rt.corretorId, atual);
+  }
+  for (const [id, v] of mapa) {
+    const pago = encerrada ? v.devido : Math.max(0, totalPagoPara(doc.pagamentosCorretores, id));
+    v.pago = Number(pago.toFixed(2));
+    v.saldo = Number(Math.max(0, v.devido - pago).toFixed(2));
+  }
+  return mapa;
+}
