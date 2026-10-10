@@ -21,6 +21,7 @@ import {
   useRentals,
   useCreateRentalMutation,
   useUpdateRentalMutation,
+  useUpdateRentalsBulkMutation,
   useDeleteRentalMutation,
   useUpdateSaleNfMutation,
   useDeleteSaleMutation,
@@ -86,6 +87,7 @@ export const ComissoesView: React.FC<ComissoesViewProps> = ({
 
   const createRentalMutation = useCreateRentalMutation();
   const updateRentalMutation = useUpdateRentalMutation();
+  const updateRentalsBulkMutation = useUpdateRentalsBulkMutation();
   const deleteRentalMutation = useDeleteRentalMutation();
   const deleteSaleMutation = useDeleteSaleMutation();
   const updateSaleStatusMutation = useUpdateSaleStatusMutation();
@@ -560,6 +562,7 @@ export const ComissoesView: React.FC<ComissoesViewProps> = ({
               onClearInitialData={onClearInitialData}
               onCreateRental={handleCreateRental}
               onUpdateRental={handleUpdateRental}
+              onUpdateRentalsBulk={(lista) => updateRentalsBulkMutation.mutateAsync(lista)}
               onDeleteRental={handleDeleteRental}
             />
           )}

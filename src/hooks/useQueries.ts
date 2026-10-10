@@ -1081,6 +1081,39 @@ export function useUpdateRentalMutation() {
   });
 }
 
+// Atualiza várias comissões de locação de uma vez (ex.: quitar em massa os repasses de um corretor).
+export function useUpdateRentalsBulkMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (rentals: Comissao[]) => {
+      for (const rental of rentals) {
+        try {
+          const q = query(collection(db, "comissoes"), where("id", "==", rental.id));
+          const snap = await getDocs(q);
+          if (!snap.empty) {
+            await Promise.all(snap.docs.map(d => updateDoc(doc(db, "comissoes", d.id), { ...rental })));
+          } else {
+            await updateDoc(doc(db, "comissoes", rental.id), { ...rental });
+          }
+        } catch (err) {
+          handleFirestoreError(err, OperationType.UPDATE, `comissoes/${rental.id}`);
+          throw err;
+        }
+      }
+    },
+    onSuccess: (data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["rentals", variables[0]?.companyId || "default_agency"] });
+      toast.success(`${variables.length} comissão(ões) quitada(s).`);
+    },
+    onError: (err) => {
+      console.error(err);
+      toast.error("Erro ao quitar as comissões. Parte delas pode não ter sido gravada; confira a lista.");
+      queryClient.invalidateQueries({ queryKey: ["rentals"] });
+    }
+  });
+}
+
 export function useDeleteRentalMutation() {
   const queryClient = useQueryClient();
 
