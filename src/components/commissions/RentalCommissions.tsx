@@ -54,7 +54,8 @@ import {
   getDataPrevista,
   getDataPrevistaPadrao,
   formatDiaMes,
-  hojeLocal
+  hojeLocal,
+  saldosPorCorretor
 } from "../../lib/rentalPaymentSchedule";
 
 export const formatCurrency = (val: number) => {
@@ -162,11 +163,6 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
   const [quitarDesmarcadas, setQuitarDesmarcadas] = useState<Set<string>>(new Set());
   const [quitando, setQuitando] = useState(false);
 
-  const pagoLiquido = (doc: Comissao, corretorId: string) =>
-    (doc.pagamentosCorretores || [])
-      .filter(p => p.corretorId === corretorId)
-      .reduce((acc, p) => (p.tipo === "pagamento" || p.tipo === "adiantamento" ? acc + p.valor : acc - p.valor), 0);
-
   const abrirQuitar = () => {
     setQuitarCorretor(filterCorretorId || "");
     setQuitarMeses(new Set(selectedMonthFilter !== "TODOS" ? [selectedMonthFilter] : []));
@@ -185,8 +181,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
       })
       .map(r => {
         const doc = r.legacyDoc as Comissao;
-        const devido = (doc.rateio || []).filter(rt => rt.corretorId === quitarCorretor).reduce((a, rt) => a + Number(rt.valor || 0), 0);
-        const saldo = Number((devido - pagoLiquido(doc, quitarCorretor)).toFixed(2));
+        const saldo = saldosPorCorretor(doc).get(quitarCorretor)?.saldo || 0;
         return { r, doc, saldo };
       })
       .filter(x => x.saldo > 0.009)
@@ -951,10 +946,18 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
   const card4Data = useMemo(() => {
     let pagos = 0;
     let aPagar = 0;
+    // Mesma regra do status da linha: pagamentos registrados por corretor e comissão
+    // encerrada = tudo pago. Antes usava o "totalPago" gravado em cada linha do rateio,
+    // que fica desatualizado em comissões antigas/encerradas e mostrava valor em aberto
+    // sem nenhuma locação em aberto.
     currentFiltered.forEach(r => {
-      getRelevantDistribuicoes(r).forEach((d: any) => {
-        pagos += (d.totalPago || 0);
-        aPagar += Math.max(0, (d.valor || 0) - (d.totalPago || 0));
+      const saldos = saldosPorCorretor(r.legacyDoc);
+      const ids = new Set<string>(getRelevantDistribuicoes(r).map((d: any) => d.corretorId));
+      ids.forEach(id => {
+        const v = saldos.get(id);
+        if (!v) return;
+        pagos += v.pago;
+        aPagar += v.saldo;
       });
     });
     return { pagos, aPagar };
