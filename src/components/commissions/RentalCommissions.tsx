@@ -28,7 +28,9 @@ import {
   Users,
   Landmark,
   SlidersHorizontal,
-  Download
+  Download,
+  CheckCheck,
+  X
 } from "lucide-react";
 import { Comissao, RateioComissao, PagamentoCorretor, ComissoneUser, UserProfile } from "../../types";
 import { ConfirmModal } from "../ui/ConfirmModal";
@@ -87,6 +89,8 @@ interface RentalCommissionsProps {
   onCreateRental: (rental: Omit<Comissao, "id"> & { id?: string; processId?: string }) => void;
   onUpdateRental: (rental: Comissao) => void;
   onDeleteRental: (id: string) => void;
+  // Grava várias comissões de uma vez (quitação em massa). Sem ele, grava uma a uma.
+  onUpdateRentalsBulk?: (rentals: Comissao[]) => Promise<unknown>;
 }
 
 export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
@@ -97,7 +101,8 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
   onClearInitialData,
   onCreateRental,
   onUpdateRental,
-  onDeleteRental
+  onDeleteRental,
+  onUpdateRentalsBulk
 }) => {
   const [activeTab, setActiveTab] = useState<"dashboard" | "list" | "create">(() => {
     return initialData?.imovel ? "create" : "dashboard";
@@ -147,6 +152,98 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
     return Array.from(porId, ([id, nome]) => ({ id, nome })).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
   }, [convertedModels]);
   const nomeCorretorFiltro = listaCorretores.find(c => c.id === filterCorretorId)?.nome || "";
+
+  // ---- Quitação em massa: pagar de uma vez o saldo de um corretor em várias locações ----
+  const [quitarAberto, setQuitarAberto] = useState(false);
+  const [quitarCorretor, setQuitarCorretor] = useState("");
+  const [quitarMeses, setQuitarMeses] = useState<Set<string>>(new Set());
+  const [quitarData, setQuitarData] = useState(() => new Date().toISOString().split("T")[0]);
+  const [quitarObs, setQuitarObs] = useState("");
+  const [quitarDesmarcadas, setQuitarDesmarcadas] = useState<Set<string>>(new Set());
+  const [quitando, setQuitando] = useState(false);
+
+  const pagoLiquido = (doc: Comissao, corretorId: string) =>
+    (doc.pagamentosCorretores || [])
+      .filter(p => p.corretorId === corretorId)
+      .reduce((acc, p) => (p.tipo === "pagamento" || p.tipo === "adiantamento" ? acc + p.valor : acc - p.valor), 0);
+
+  const abrirQuitar = () => {
+    setQuitarCorretor(filterCorretorId || "");
+    setQuitarMeses(new Set(selectedMonthFilter !== "TODOS" ? [selectedMonthFilter] : []));
+    setQuitarData(new Date().toISOString().split("T")[0]);
+    setQuitarObs("");
+    setQuitarDesmarcadas(new Set());
+    setQuitarAberto(true);
+  };
+
+  const quitarCandidatos = useMemo(() => {
+    if (!quitarCorretor) return [];
+    return convertedModels
+      .filter(r => {
+        const comp = `${r.competencia.ano}-${String(r.competencia.mes).padStart(2, "0")}`;
+        return quitarMeses.size === 0 || quitarMeses.has(comp);
+      })
+      .map(r => {
+        const doc = r.legacyDoc as Comissao;
+        const devido = (doc.rateio || []).filter(rt => rt.corretorId === quitarCorretor).reduce((a, rt) => a + Number(rt.valor || 0), 0);
+        const saldo = Number((devido - pagoLiquido(doc, quitarCorretor)).toFixed(2));
+        return { r, doc, saldo };
+      })
+      .filter(x => x.saldo > 0.009)
+      .sort((a, b) => (a.r.competencia.ano * 100 + a.r.competencia.mes) - (b.r.competencia.ano * 100 + b.r.competencia.mes) || (a.r.imovel || "").localeCompare(b.r.imovel || "", "pt-BR"));
+  }, [convertedModels, quitarCorretor, quitarMeses]);
+
+  const quitarSelecionados = quitarCandidatos.filter(x => !quitarDesmarcadas.has(x.doc.id));
+  const quitarTotal = quitarSelecionados.reduce((a, x) => a + x.saldo, 0);
+  const nomeQuitar = listaCorretores.find(c => c.id === quitarCorretor)?.nome || "";
+
+  const confirmarQuitacao = async () => {
+    if (!quitarSelecionados.length || !quitarCorretor) return;
+    const corretorNome = (quitarSelecionados[0].doc.rateio || []).find(rt => rt.corretorId === quitarCorretor)?.corretorNome || nomeQuitar;
+    const agoraIso = new Date().toISOString();
+    const atualizadas: Comissao[] = quitarSelecionados.map(({ doc, saldo }, i) => {
+      const novo: PagamentoCorretor = {
+        id: "pay-" + Date.now() + "-" + i + "-" + Math.random().toString(36).substring(2, 5),
+        corretorId: quitarCorretor,
+        corretorNome,
+        tipo: "pagamento",
+        valor: saldo,
+        data: quitarData,
+        observacao: quitarObs.trim() || "Quitação em massa",
+        registradoPorUid: userProfile.uid,
+        registradoPorNome: userProfile.displayName || "Administrador",
+        registradoEm: Date.now()
+      };
+      const pagamentos = [...(doc.pagamentosCorretores || []), novo];
+      const rateio = (doc.rateio || []).map(rt => {
+        if (rt.corretorId !== quitarCorretor) return rt;
+        const pago = pagamentos
+          .filter(p => p.corretorId === rt.corretorId)
+          .reduce((acc, p) => (p.tipo === "pagamento" || p.tipo === "adiantamento" ? acc + p.valor : acc - p.valor), 0);
+        return { ...rt, totalPago: Number(pago.toFixed(2)), status: pago >= rt.valor ? ("pago" as const) : ("pendente" as const) };
+      });
+      const todosPagos = rateio.every(rt => (rt.totalPago || 0) >= rt.valor);
+      return {
+        ...doc,
+        pagamentosCorretores: pagamentos,
+        rateio,
+        jaPagoCorretores: todosPagos,
+        status: todosPagos ? "pago" : doc.status,
+        statusFinanceiro: todosPagos ? "concluida" : (doc as any).statusFinanceiro,
+        updatedAt: agoraIso
+      } as Comissao;
+    });
+    setQuitando(true);
+    try {
+      if (onUpdateRentalsBulk) await onUpdateRentalsBulk(atualizadas);
+      else atualizadas.forEach(c => onUpdateRental(c));
+      setQuitarAberto(false);
+    } catch {
+      // o aviso de erro já é mostrado pela gravação
+    } finally {
+      setQuitando(false);
+    }
+  };
 
   const monthlyModels = useMemo(() => {
     if (selectedMonthFilter === "TODOS") return convertedModels;
@@ -1403,6 +1500,16 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                 </select>
               </div>
             </div>
+
+            <button
+              type="button"
+              onClick={abrirQuitar}
+              title="Pagar de uma vez o saldo de um corretor nas comissões dos meses escolhidos"
+              className="flex items-center gap-2 px-5 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-2xl text-xs font-bold tracking-wide cursor-pointer transition-all shrink-0"
+            >
+              <CheckCheck className="w-4 h-4" />
+              <span>Quitar em massa</span>
+            </button>
 
             {/* Exportar (respeita o filtro de competência/status/busca atual) */}
             <button
@@ -2846,6 +2953,115 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
       )}
 
       {/* MODAL DE REGISTRO DE REPASSE (INTUITIVO E ELEGANTE) */}
+      {quitarAberto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/50" onClick={() => !quitando && setQuitarAberto(false)} />
+          <div className="relative bg-white w-full max-w-2xl max-h-[90vh] rounded-3xl shadow-2xl flex flex-col text-left border border-slate-100">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Quitar comissões em massa</h3>
+                <p className="text-xs text-slate-500">Registra o pagamento do saldo de um corretor em todas as locações escolhidas.</p>
+              </div>
+              <button type="button" onClick={() => setQuitarAberto(false)} disabled={quitando} className="p-1.5 rounded-lg hover:bg-slate-100" aria-label="Fechar">
+                <X className="w-5 h-5 text-slate-500" />
+              </button>
+            </div>
+
+            <div className="px-6 py-4 space-y-4 overflow-y-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="block text-xs">
+                  <span className="font-bold text-slate-700">Corretor / usuário</span>
+                  <select value={quitarCorretor} onChange={e => { setQuitarCorretor(e.target.value); setQuitarDesmarcadas(new Set()); }}
+                    className="mt-1 w-full h-10 px-3 border border-slate-300 rounded-xl text-sm bg-white">
+                    <option value="">Escolha…</option>
+                    {listaCorretores.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                  </select>
+                </label>
+                <label className="block text-xs">
+                  <span className="font-bold text-slate-700">Data do pagamento</span>
+                  <input type="date" value={quitarData} onChange={e => setQuitarData(e.target.value)}
+                    className="mt-1 w-full h-10 px-3 border border-slate-300 rounded-xl text-sm" />
+                </label>
+              </div>
+
+              <div className="text-xs">
+                <span className="font-bold text-slate-700">Competências</span>
+                <span className="text-slate-500"> — nenhuma marcada = todas</span>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {uniqueMonths.map(m => {
+                    const ativo = quitarMeses.has(m);
+                    return (
+                      <button key={m} type="button"
+                        onClick={() => { setQuitarMeses(prev => { const n = new Set(prev); if (n.has(m)) n.delete(m); else n.add(m); return n; }); setQuitarDesmarcadas(new Set()); }}
+                        aria-pressed={ativo}
+                        className={`h-8 px-3 rounded-full border text-xs font-medium ${ativo ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50"}`}>
+                        {formatMesReferencia(m)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <label className="block text-xs">
+                <span className="font-bold text-slate-700">Observação (opcional)</span>
+                <input type="text" value={quitarObs} onChange={e => setQuitarObs(e.target.value)} placeholder="Ex.: PIX 10/10"
+                  className="mt-1 w-full h-10 px-3 border border-slate-300 rounded-xl text-sm" />
+              </label>
+
+              {!quitarCorretor ? (
+                <p className="text-sm text-slate-500">Escolha o corretor para ver o que está em aberto.</p>
+              ) : quitarCandidatos.length === 0 ? (
+                <p className="text-sm text-slate-500">{nomeQuitar} não tem saldo em aberto nas competências escolhidas.</p>
+              ) : (
+                <div className="border border-slate-200 rounded-2xl overflow-hidden">
+                  <label className="flex items-center gap-2 px-3 py-2 bg-slate-50 text-xs font-bold text-slate-700 border-b border-slate-200">
+                    <input type="checkbox" className="w-4 h-4 accent-slate-900"
+                      checked={quitarDesmarcadas.size === 0}
+                      onChange={e => setQuitarDesmarcadas(e.target.checked ? new Set() : new Set(quitarCandidatos.map(x => x.doc.id)))} />
+                    {quitarCandidatos.length} comissão(ões) com saldo de {nomeQuitar}
+                  </label>
+                  <ul className="divide-y divide-slate-100 max-h-72 overflow-y-auto">
+                    {quitarCandidatos.map(({ r, doc, saldo }) => {
+                      const marcado = !quitarDesmarcadas.has(doc.id);
+                      return (
+                        <li key={doc.id}>
+                          <label className="flex items-center gap-3 px-3 py-2 text-sm cursor-pointer hover:bg-slate-50">
+                            <input type="checkbox" className="w-4 h-4 accent-slate-900" checked={marcado}
+                              onChange={() => setQuitarDesmarcadas(prev => { const n = new Set(prev); if (n.has(doc.id)) n.delete(doc.id); else n.add(doc.id); return n; })} />
+                            <span className="flex-1 min-w-0">
+                              <span className="block truncate text-slate-900">{r.imovel || "Imóvel"}</span>
+                              <span className="block text-xs text-slate-500 truncate">
+                                {r.competencia.label}{r.inquilino ? ` · ${formatPersonName(r.inquilino)}` : ""}
+                                {doc.clientePagou === false && <span className="text-amber-700"> · cliente ainda não pagou</span>}
+                              </span>
+                            </span>
+                            <span className="font-bold tabular-nums text-slate-900">{formatCurrency(saldo)}</span>
+                          </label>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
+            </div>
+
+            <div className="px-6 py-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
+              <span className="text-sm text-slate-600">
+                Total: <b className="text-slate-900 tabular-nums">{formatCurrency(quitarTotal)}</b>
+              </span>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setQuitarAberto(false)} disabled={quitando}
+                  className="h-10 px-4 rounded-xl border border-slate-300 text-sm font-medium hover:bg-slate-50">Cancelar</button>
+                <button type="button" onClick={confirmarQuitacao} disabled={quitando || quitarSelecionados.length === 0}
+                  className="h-10 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold disabled:opacity-40">
+                  {quitando ? "Registrando…" : `Quitar ${quitarSelecionados.length} — ${formatCurrency(quitarTotal)}`}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {isPayModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div 
