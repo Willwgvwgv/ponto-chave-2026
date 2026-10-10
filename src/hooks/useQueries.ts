@@ -1559,14 +1559,17 @@ export function usePontoMes(userId: string | undefined, ano: number, mes: number
     queryKey: ["ponto_mes", userId, monthStr],
     queryFn: async (): Promise<PontoRegistro[]> => {
       if (!userId) return [];
+      // Só o filtro por userId: userId + intervalo de datas exige um índice composto no
+      // Firestore, e sem ele a consulta falhava — o espelho do colaborador ficava vazio
+      // (a gestão do admin usa outra consulta e funcionava). O mês é filtrado aqui.
       const q = query(
         collection(db, "ponto_registros"),
-        where("userId", "==", userId),
-        where("date", ">=", monthStr),
-        where("date", "<=", monthStr + "\uf8ff")
+        where("userId", "==", userId)
       );
       const snap = await getDocs(q);
-      const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }) as PontoRegistro);
+      const list = snap.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }) as PontoRegistro)
+        .filter(r => typeof r.date === "string" && r.date.startsWith(monthStr));
       list.sort((a, b) => a.date.localeCompare(b.date));
       return list;
     },
