@@ -15,6 +15,7 @@ interface EventoScaza {
   motivo?: string | null;
   inquilino?: string | null;
   mesesAtualizados?: string[];
+  contaResumo?: { imovel?: string | null; endereco?: string | null; uc?: string | null; tipo?: string | null } | null;
 }
 
 interface RespostaScaza {
@@ -263,6 +264,11 @@ export const ScazaIntegracaoModal: React.FC<Props> = ({ onClose, companyId, loca
                             ? `Aplicado${ev.inquilino ? " em " + ev.inquilino : ""}${ev.mesesAtualizados?.length ? " · meses " + ev.mesesAtualizados.map(m => m.split("-").reverse().join("/")).join(", ") : ""}`
                             : ev.motivo || "Não aplicado"}
                           {ev.processado && ev.motivo ? ` · ${ev.motivo}` : ""}
+                        {ev.contaResumo && (ev.contaResumo.imovel || ev.contaResumo.uc) && (
+                            <span className="block text-zinc-500">
+                              {[ev.contaResumo.imovel, ev.contaResumo.endereco, ev.contaResumo.uc ? `UC ${ev.contaResumo.uc}` : "", ev.contaResumo.tipo].filter(Boolean).join(" · ")}
+                            </span>
+                          )}
                         </p>
                         {aberto === ev.id && TOPICOS_COM_CONTA.includes(ev.topico || "") && (
                           <div className="mt-2 flex flex-wrap items-center gap-2">

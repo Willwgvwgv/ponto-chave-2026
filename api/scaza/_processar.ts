@@ -118,7 +118,10 @@ export function acharLocacao(docs: any[], conta: any, contaId: number): { doc: a
   if (ucs.size) {
     const porUc = docs.filter(d => ucs.has(semZerosEsq(soDigitos(d.data().unidadeConsumidora))));
     if (porUc.length === 1) return { doc: porUc[0] };
-    if (porUc.length > 1) return { doc: null, motivo: "mais de uma locação com a mesma UC" };
+    if (porUc.length > 1) {
+      const nomes = porUc.slice(0, 3).map(d => String(d.data().inquilino || "sem nome").trim()).join(", ");
+      return { doc: null, motivo: `mais de uma locação com a mesma UC (${nomes}); corrija a UC ou vincule manualmente` };
+    }
   }
 
   const cpf = soDigitos(conta?.Login2);

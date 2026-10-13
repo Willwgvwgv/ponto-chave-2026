@@ -72,6 +72,20 @@ const filtrarHeaders = (h: Record<string, any>) => {
 // "energia" (usuário ativo da mesma empresa com a permissão Energia) só pode a
 // sincronização. O painel (URL com a chave secreta), reprocessar, vincular e cadastrar
 // na Scaza continuam só com admin.
+// Identificação curta da conta do aviso, para achar a locação no painel
+// (imóvel e UC como estão na Scaza; sem CPF nem nascimento).
+function resumoDaConta(dados: any) {
+  const conta = dados?.conta || dados?.Conta;
+  if (!conta || typeof conta !== "object") return null;
+  const tipo = conta?.Tipo?.TipoConta?.Descricao || conta?.Tipo?.Descricao || null;
+  return {
+    imovel: conta?.Imovel?.Descricao ? String(conta.Imovel.Descricao).trim().slice(0, 120) : null,
+    endereco: conta?.Imovel?.Endereco ? String(conta.Imovel.Endereco).trim().slice(0, 160) : null,
+    uc: conta?.Login1 ? String(conta.Login1).replace(/\D/g, "").slice(0, 20) : null,
+    tipo: tipo ? String(tipo).slice(0, 60) : null
+  };
+}
+
 async function papelNaIntegracao(authHeader: string | undefined, adminDb: any): Promise<"admin" | "energia" | null> {
   if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
   const decoded = await verifyFirebaseIdToken(authHeader.slice(7));
@@ -157,7 +171,7 @@ export default async function handler(req: any, res: any) {
     }
     const resultado: ResultadoProcessamento = await processarAviso(adminDb, ev.topico || null, ev.corpo?.dados);
     const limpo = Object.fromEntries(Object.entries(resultado).filter(([, v]) => v !== undefined));
-    await ref.set({ corpo: ev.corpo ? limparCorpo(ev.corpo) : null, reprocessadoEm: new Date().toISOString(), energiaId: null, inquilino: null, mesesAtualizados: [], motivo: null, ...limpo }, { merge: true });
+    await ref.set({ corpo: ev.corpo ? limparCorpo(ev.corpo) : null, contaResumo: resumoDaConta(ev.corpo?.dados), reprocessadoEm: new Date().toISOString(), energiaId: null, inquilino: null, mesesAtualizados: [], motivo: null, ...limpo }, { merge: true });
     return res.status(200).json(resultado);
   }
 
@@ -198,6 +212,7 @@ export default async function handler(req: any, res: any) {
         corpo: corpo ? limparCorpo(corpo) : null,
         corpoBruto: corpo ? null : bruto.slice(0, 20000),
         assinaturaOk,
+        contaResumo: resumoDaConta(corpo?.dados),
         ...Object.fromEntries(Object.entries(resultado).filter(([, v]) => v !== undefined))
       });
     } catch (e) {
@@ -220,7 +235,7 @@ export default async function handler(req: any, res: any) {
       const snap = await adminDb.collection(COLECAO).orderBy("recebidoEm", "desc").limit(20).get();
       eventos = snap.docs.map((d: any) => {
         const ev = d.data() || {};
-        return { id: d.id, ...ev, corpo: ev.corpo ? limparCorpo(ev.corpo) : null };
+        return { id: d.id, ...ev, contaResumo: ev.contaResumo || resumoDaConta(ev.corpo?.dados), corpo: ev.corpo ? limparCorpo(ev.corpo) : null };
       });
     } catch (e) {
       console.error("scaza webhook: falha ao listar", e);
