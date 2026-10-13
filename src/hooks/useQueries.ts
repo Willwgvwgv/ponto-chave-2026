@@ -1559,17 +1559,21 @@ export function usePontoMes(userId: string | undefined, ano: number, mes: number
     queryKey: ["ponto_mes", userId, monthStr],
     queryFn: async (): Promise<PontoRegistro[]> => {
       if (!userId) return [];
-      // Só o filtro por userId: userId + intervalo de datas exige um índice composto no
-      // Firestore, e sem ele a consulta falhava — o espelho do colaborador ficava vazio
-      // (a gestão do admin usa outra consulta e funcionava). O mês é filtrado aqui.
-      const q = query(
-        collection(db, "ponto_registros"),
-        where("userId", "==", userId)
+      // Lê dia a dia pelo ID "{uid}_{data}" — o mesmo caminho que o registro do ponto usa
+      // (e que já funciona para o colaborador). A consulta da coleção (list) depende da
+      // regra de listagem publicada no Firebase e de índice; quando ela é recusada, o
+      // espelho aparecia vazio mesmo com o ponto batido.
+      const diasNoMes = new Date(ano, mes, 0).getDate();
+      const datas = Array.from({ length: diasNoMes }, (_, i) => `${monthStr}-${String(i + 1).padStart(2, "0")}`);
+      const hoje = new Date().toLocaleDateString("en-CA");
+      const snaps = await Promise.all(
+        datas
+          .filter(d => d <= hoje)
+          .map(d => getDoc(doc(db, "ponto_registros", `${userId}_${d}`)).catch(() => null))
       );
-      const snap = await getDocs(q);
-      const list = snap.docs
-        .map(doc => ({ id: doc.id, ...doc.data() }) as PontoRegistro)
-        .filter(r => typeof r.date === "string" && r.date.startsWith(monthStr));
+      const list = snaps
+        .filter((snap): snap is NonNullable<typeof snap> => !!snap && snap.exists())
+        .map(snap => ({ id: snap.id, ...snap.data() }) as PontoRegistro);
       list.sort((a, b) => a.date.localeCompare(b.date));
       return list;
     },
