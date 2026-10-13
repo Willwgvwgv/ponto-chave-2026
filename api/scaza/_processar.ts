@@ -131,6 +131,10 @@ export function acharLocacao(docs: any[], conta: any, contaId: number): { doc: a
       if (semUc.length === 1) return { doc: semUc[0] };
       return { doc: null, motivo: "inquilino com mais de uma locação; informe a UC na locação certa" };
     }
+    // Conta no CPF do proprietário: só liga se ele tiver uma única locação aqui.
+    const porDono = docs.filter(d => soDigitos(d.data().proprietarioCpf) === cpf);
+    if (porDono.length === 1) return { doc: porDono[0] };
+    if (porDono.length > 1) return { doc: null, motivo: "conta no CPF do proprietário, que tem mais de uma locação; vincule manualmente" };
   }
   return { doc: null, motivo: "nenhuma locação com esta UC ou CPF" };
 }
@@ -211,6 +215,9 @@ export async function processarContaAtualizada(adminDb: any, dados: any): Promis
   const nasc = nascimentoIso(conta.Login3);
   atualizacao.scaza.titularCpf = cpf || null;
   atualizacao.scaza.titularNascimento = nasc;
+  // Conta no CPF do proprietário cadastrado: marca a locação assim (se ninguém marcou ainda).
+  if (cpf && !atual.titularConta && soDigitos(atual.proprietarioCpf) === cpf) atualizacao.titularConta = "proprietario";
+  if (cpf && soDigitos(atual.proprietarioCpf) === cpf && !atual.proprietarioNascimento && nasc) atualizacao.proprietarioNascimento = nasc;
   if (cpf && soDigitos(atual.cpf) === cpf && !atual.dataNascimento && nasc) atualizacao.dataNascimento = nasc;
 
   await doc.ref.set(atualizacao, { merge: true });

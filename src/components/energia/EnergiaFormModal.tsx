@@ -26,12 +26,20 @@ export const EnergiaFormModal: React.FC<EnergiaFormModalProps> = ({ initial, onS
   const [status, setStatus] = useState<StatusEnergiaLocacao>(initial?.status || "transferida");
   const [diaVencimentoConta, setDiaVencimentoConta] = useState<string>(initial?.diaVencimentoConta ? String(initial.diaVencimentoConta) : "");
   const [observacoes, setObservacoes] = useState(initial?.observacoes || "");
+  const [proprietarioNome, setProprietarioNome] = useState(initial?.proprietarioNome || "");
+  const [proprietarioCpf, setProprietarioCpf] = useState(initial?.proprietarioCpf ? maskDoc(initial.proprietarioCpf) : "");
+  const [proprietarioNascimento, setProprietarioNascimento] = useState(initial?.proprietarioNascimento || "");
+  const [titularConta, setTitularConta] = useState<"inquilino" | "proprietario">(initial?.titularConta || "inquilino");
   const [error, setError] = useState("");
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!imovel.trim() || !inquilino.trim()) {
       setError("Preencha ao menos o imóvel e o locatário.");
+      return;
+    }
+    if (titularConta === "proprietario" && !proprietarioCpf.trim()) {
+      setError("A conta está no nome do proprietário: informe o CPF/CNPJ dele.");
       return;
     }
     setError("");
@@ -49,7 +57,11 @@ export const EnergiaFormModal: React.FC<EnergiaFormModalProps> = ({ initial, onS
       dataVencimento: dataVencimento || undefined,
       status,
       diaVencimentoConta: diaVencimentoConta ? Math.min(31, Math.max(1, parseInt(diaVencimentoConta) || 0)) || undefined : undefined,
-      observacoes: observacoes.trim() || undefined
+      observacoes: observacoes.trim() || undefined,
+      proprietarioNome: proprietarioNome.trim() || undefined,
+      proprietarioCpf: proprietarioCpf ? stripDoc(proprietarioCpf) : undefined,
+      proprietarioNascimento: proprietarioNascimento || undefined,
+      titularConta
     });
   };
 
@@ -124,7 +136,7 @@ export const EnergiaFormModal: React.FC<EnergiaFormModalProps> = ({ initial, onS
               />
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1.5">CPF</label>
+              <label className="block text-xs font-bold text-slate-700 mb-1.5">CPF/CNPJ do locatário</label>
               <input
                 type="text"
                 value={cpf}
@@ -137,7 +149,7 @@ export const EnergiaFormModal: React.FC<EnergiaFormModalProps> = ({ initial, onS
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1.5">Data de nascimento</label>
+              <label className="block text-xs font-bold text-slate-700 mb-1.5">Nascimento do locatário</label>
               <input
                 type="date"
                 value={dataNascimento}
@@ -156,6 +168,42 @@ export const EnergiaFormModal: React.FC<EnergiaFormModalProps> = ({ initial, onS
                 className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all cursor-pointer"
               />
             </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 p-4 space-y-3">
+            <p className="text-xs font-bold text-slate-700">Proprietário</p>
+            <div>
+              <label htmlFor="energia-prop-nome" className="block text-xs font-medium text-slate-600 mb-1.5">Nome</label>
+              <input id="energia-prop-nome" type="text" value={proprietarioNome} onChange={e => setProprietarioNome(e.target.value)}
+                placeholder="Nome completo" className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all" />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label htmlFor="energia-prop-doc" className="block text-xs font-medium text-slate-600 mb-1.5">CPF/CNPJ</label>
+                <input id="energia-prop-doc" type="text" inputMode="numeric" value={proprietarioCpf} onChange={e => setProprietarioCpf(maskDoc(e.target.value))}
+                  placeholder="000.000.000-00" className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all font-mono" />
+              </div>
+              <div>
+                <label htmlFor="energia-prop-nasc" className="block text-xs font-medium text-slate-600 mb-1.5">Nascimento</label>
+                <input id="energia-prop-nasc" type="date" value={proprietarioNascimento} onChange={e => setProprietarioNascimento(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all cursor-pointer" />
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <p className="block text-xs font-bold text-slate-700 mb-1.5">A conta de luz está no nome de</p>
+            <div className="flex items-center gap-2" role="radiogroup" aria-label="Titular da conta de luz">
+              {(["inquilino", "proprietario"] as const).map(t => (
+                <button key={t} type="button" role="radio" aria-checked={titularConta === t} onClick={() => setTitularConta(t)}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold cursor-pointer transition-all ${
+                    titularConta === t ? "bg-amber-500 text-white shadow-sm" : "bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200/60"
+                  }`}>
+                  {t === "inquilino" ? "Locatário" : "Proprietário"}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1 text-xs text-slate-500">Os dados usados para consultar na Equatorial e na Scaza seguem essa escolha.</p>
           </div>
 
           <div>

@@ -739,6 +739,11 @@ export interface EnergiaLocacao {
   telefone?: string; // celular do inquilino
   // Conferência mensal do pagamento da conta (chave = "YYYY-MM")
   pagamentos?: Record<string, PagamentoEnergiaMes>;
+  // Proprietário do imóvel — a conta de luz às vezes continua no nome dele
+  proprietarioNome?: string;
+  proprietarioCpf?: string; // só dígitos (CPF ou CNPJ)
+  proprietarioNascimento?: string; // YYYY-MM-DD
+  titularConta?: "inquilino" | "proprietario"; // em nome de quem a conta de luz está hoje
   scaza?: EnergiaScaza; // preenchido pela integração com a Scaza
   // Arquivada = tirada do acompanhamento sem apagar o histórico (só admin exclui de vez)
   arquivada?: boolean;
