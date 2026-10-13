@@ -1985,9 +1985,16 @@ export function useUpdateEnergiaMutation() {
       queryClient.invalidateQueries({ queryKey: ["energia_locacoes", variables.companyId || "default_agency"] });
       toast.success("Acompanhamento de energia atualizado.");
     },
-    onError: (err) => {
+    onError: (err: any) => {
       console.error(err);
-      toast.error("Erro ao atualizar acompanhamento de energia.");
+      const msg = String(err?.code || err?.message || "");
+      if (/permission|insufficient/i.test(msg)) {
+        toast.error("Sem permissão para salvar esta energia. Confira se o usuário tem a permissão Energia e se as regras do Firebase estão publicadas.");
+      } else if (/sem conexão|unavailable|offline/i.test(msg)) {
+        toast.error("Sem conexão com o servidor. Reconecte e tente de novo; nada foi alterado.");
+      } else {
+        toast.error("Erro ao atualizar acompanhamento de energia.");
+      }
     }
   });
 }
