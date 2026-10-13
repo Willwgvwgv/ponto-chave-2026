@@ -29,7 +29,7 @@ import { EnergiaFormModal } from "./EnergiaFormModal";
 import { ScazaIntegracaoModal } from "./ScazaIntegracaoModal";
 import { CadastroScazaModal } from "./CadastroScazaModal";
 import { ConfirmModal } from "../ui/ConfirmModal";
-import { db, collection, getDocs, query, where, doc, deleteDoc, auth } from "../../firebase";
+import { db, collection, getDocs, query, where, doc, deleteDoc, updateDoc, auth } from "../../firebase";
 import { useQueryClient } from "@tanstack/react-query";
 
 // Locação encontrada nas comissões/contratos que ainda não está na energia
@@ -140,7 +140,7 @@ const ESTILO_SITUACAO: Record<SituacaoMes, { label: string; classe: string; pont
   a_verificar: { label: "A verificar", classe: "bg-zinc-100 text-zinc-700 border-zinc-200", ponto: "bg-zinc-300" }
 };
 
-type Filtro = "TODAS" | "pago" | "em_aberto" | "atrasado" | "a_verificar" | "NAO_TRANSFERIDAS" | "CONTA_VENCIDA" | "FORA_DO_INQUILINO";
+type Filtro = "TODAS" | "pago" | "em_aberto" | "atrasado" | "a_verificar" | "NAO_TRANSFERIDAS" | "CONTA_VENCIDA" | "FORA_DO_INQUILINO" | "ARQUIVADAS";
 
 // A Scaza informou um titular da conta de luz diferente do CPF do inquilino:
 // a conta ainda não foi transferida para ele.
@@ -156,7 +156,14 @@ const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", curren
 export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, companySettings }) => {
   const companyId = profile?.companyId || companySettings?.id || "default_agency";
 
-  const { data: energias = [], isLoading } = useEnergiaLocacoes(companyId);
+  const { data: energiasTodas = [], isLoading } = useEnergiaLocacoes(companyId);
+  const energias = useMemo(() => energiasTodas.filter(e => !e.arquivada), [energiasTodas]);
+  const arquivadas = useMemo(() => energiasTodas.filter(e => e.arquivada), [energiasTodas]);
+  // Quem tem a permissão "Energia" trabalha no módulo (editar, marcar meses, importar,
+  // arquivar). Excluir de vez, Integração Scaza e cadastro na Scaza ficam só com admin.
+  // As mesmas regras valem no banco (firestore.rules) e na API da Scaza.
+  const podeEditar = isAdmin || profile?.role === "admin" || profile?.role === "manager" ||
+    profile?.permEnergia === true || profile?.perm_energia === true || !!profile?.permissions?.includes("energia");
   const createMutation = useCreateEnergiaMutation();
   const updateMutation = useUpdateEnergiaMutation();
   const deleteMutation = useDeleteEnergiaMutation();
@@ -174,8 +181,8 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
         getDocs(query(collection(db, "contratos_locacao"), where("companyId", "==", companyId))).catch(() => null),
         getDocs(query(collection(db, "comissoes"), where("companyId", "==", companyId))).catch(() => null)
       ]);
-      const imoveisVistos = new Set(energias.map(e => normalizar(e.imovel)).filter(Boolean));
-      const inquilinosVistos = new Set(energias.map(e => normalizar(e.inquilino)).filter(Boolean));
+      const imoveisVistos = new Set(energiasTodas.map(e => normalizar(e.imovel)).filter(Boolean));
+      const inquilinosVistos = new Set(energiasTodas.map(e => normalizar(e.inquilino)).filter(Boolean));
       const lista: CandidatoImportacao[] = [];
       const adicionar = (c: CandidatoImportacao) => {
         const ni = normalizar(c.imovel);
@@ -235,8 +242,8 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
         toast.error("Planilha não reconhecida. Use a exportação de Locações (com a coluna inquilino_nome).");
         return;
       }
-      const codigosVistos = new Set(energias.map(e => e.codigoContrato).filter(Boolean) as string[]);
-      const paresVistos = new Set(energias.map(e => `${normalizar(e.imovel)}|${normalizar(e.inquilino)}`));
+      const codigosVistos = new Set(energiasTodas.map(e => e.codigoContrato).filter(Boolean) as string[]);
+      const paresVistos = new Set(energiasTodas.map(e => `${normalizar(e.imovel)}|${normalizar(e.inquilino)}`));
       const lista: CandidatoImportacao[] = [];
       let ignoradas = 0;
       linhas.forEach(l => {
@@ -328,14 +335,19 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
     setConfirmarLote(false);
     setExcluindoLote(true);
     let falhas = 0;
-    for (const id of ids) {
-      try { await deleteDoc(doc(db, "energia_locacoes", id)); } catch { falhas++; }
+    if (isAdmin) {
+      for (const id of ids) {
+        try { await deleteDoc(doc(db, "energia_locacoes", id)); } catch { falhas++; }
+      }
+      queryClient.invalidateQueries({ queryKey: ["energia_locacoes"] });
+    } else {
+      falhas = await marcarArquivo(ids, true);
     }
     setExcluindoLote(false);
     setSelecionados(new Set());
-    queryClient.invalidateQueries({ queryKey: ["energia_locacoes"] });
-    if (falhas) toast.error(`${ids.length - falhas} excluída(s); ${falhas} não puderam ser excluídas.`);
-    else toast.success(`${ids.length} locação(ões) excluída(s) do acompanhamento.`);
+    const verbo = isAdmin ? "excluída(s)" : "arquivada(s)";
+    if (falhas) toast.error(`${ids.length - falhas} ${verbo}; ${falhas} não puderam ser alteradas.`);
+    else toast.success(`${ids.length} locação(ões) ${verbo}.`);
   };
 
   const atualizarComScaza = async () => {
@@ -376,15 +388,15 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
 
   const lista = useMemo(() => {
     const termo = searchTerm.trim().toLowerCase();
-    const base = filtro === "NAO_TRANSFERIDAS" ? naoTransferidas : filtro === "CONTA_VENCIDA" ? comContaVencida : filtro === "FORA_DO_INQUILINO" ? foraDoInquilino : transferidas;
+    const base = filtro === "NAO_TRANSFERIDAS" ? naoTransferidas : filtro === "CONTA_VENCIDA" ? comContaVencida : filtro === "FORA_DO_INQUILINO" ? foraDoInquilino : filtro === "ARQUIVADAS" ? arquivadas : transferidas;
     return base
       .filter(e => {
         if (termo && ![e.imovel, e.inquilino, e.unidadeConsumidora, e.cpf].some(v => (v || "").toLowerCase().includes(termo))) return false;
-        if (filtro === "TODAS" || filtro === "NAO_TRANSFERIDAS" || filtro === "CONTA_VENCIDA" || filtro === "FORA_DO_INQUILINO") return true;
+        if (filtro === "TODAS" || filtro === "NAO_TRANSFERIDAS" || filtro === "CONTA_VENCIDA" || filtro === "FORA_DO_INQUILINO" || filtro === "ARQUIVADAS") return true;
         return (temContaVencida(e) ? "atrasado" : situacaoDoMes(e, mes)) === filtro;
       })
       .sort((a, b) => (a.inquilino || "").localeCompare(b.inquilino || "", "pt-BR"));
-  }, [transferidas, naoTransferidas, comContaVencida, foraDoInquilino, searchTerm, filtro, mes]);
+  }, [transferidas, naoTransferidas, comContaVencida, foraDoInquilino, arquivadas, searchTerm, filtro, mes]);
 
   const registrar = (e: EnergiaLocacao, status: StatusPagamentoEnergia | null) => {
     const pagamentos: Record<string, PagamentoEnergiaMes> = { ...(e.pagamentos || {}) };
@@ -429,13 +441,42 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
     setEditingEnergia(null);
   };
 
-  const handleConfirmDelete = () => {
-    if (!deleteTargetId) return;
-    deleteMutation.mutate({ id: deleteTargetId, companyId });
-    setDeleteTargetId(null);
+  // Arquivar: tira do acompanhamento sem apagar nada (histórico, pagamentos, Scaza).
+  const marcarArquivo = async (ids: string[], arquivar: boolean) => {
+    let falhas = 0;
+    for (const id of ids) {
+      try {
+        await updateDoc(doc(db, "energia_locacoes", id), arquivar
+          ? { arquivada: true, arquivadaEm: new Date().toISOString(), arquivadaPorNome: profile?.displayName || "Usuário", updatedAt: new Date().toISOString() }
+          : { arquivada: false, updatedAt: new Date().toISOString() });
+      } catch { falhas++; }
+    }
+    queryClient.invalidateQueries({ queryKey: ["energia_locacoes"] });
+    return falhas;
   };
 
-  const deleteTarget = deleteTargetId ? energias.find(e => e.id === deleteTargetId) : null;
+  const restaurar = async (e: EnergiaLocacao) => {
+    const falhas = await marcarArquivo([e.id], false);
+    if (falhas) toast.error("Não foi possível restaurar.");
+    else toast.success("Locação de volta ao acompanhamento.");
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTargetId) return;
+    const alvo = energiasTodas.find(x => x.id === deleteTargetId);
+    const id = deleteTargetId;
+    setDeleteTargetId(null);
+    // Só admin exclui de vez; para os demais o botão arquiva.
+    if (isAdmin) {
+      deleteMutation.mutate({ id, companyId });
+    } else if (alvo && !alvo.arquivada) {
+      const falhas = await marcarArquivo([id], true);
+      if (falhas) toast.error("Não foi possível arquivar.");
+      else toast.success("Locação arquivada. Ela continua em \"Arquivadas\".");
+    }
+  };
+
+  const deleteTarget = deleteTargetId ? energiasTodas.find(e => e.id === deleteTargetId) : null;
   const ultimosMeses = [5, 4, 3, 2, 1, 0].map(n => somarMeses(mes, -n));
 
   const Card = ({ id, label, valor, icone, cor }: { id: Filtro; label: string; valor: number; icone: React.ReactNode; cor: string }) => (
@@ -474,7 +515,7 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
           >
             <ExternalLink className="w-4 h-4" /> Abrir Equatorial
           </a>
-          {isAdmin && (
+          {podeEditar && (
             <button
               type="button"
               onClick={atualizarComScaza}
@@ -499,7 +540,7 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
           {false && isAdmin && (
             <button type="button" onClick={buscarLocacoes} disabled={buscandoLocacoes}>Importar locações</button>
           )}
-          {isAdmin && (
+          {podeEditar && (
             <>
               <input
                 ref={inputCsvRef}
@@ -602,10 +643,16 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
               Conta fora do nome do inquilino <span className="opacity-80 tabular-nums">{foraDoInquilino.length}</span>
             </button>
           )}
+          {arquivadas.length > 0 && (
+            <button type="button" onClick={() => setFiltro(filtro === "ARQUIVADAS" ? "TODAS" : "ARQUIVADAS")}
+              className={`h-8 px-3 rounded-full text-[13px] font-medium border ${filtro === "ARQUIVADAS" ? "bg-zinc-700 text-white border-zinc-700" : "bg-white text-zinc-600 border-zinc-300 hover:bg-zinc-50"}`}>
+              Arquivadas <span className="opacity-70 tabular-nums">{arquivadas.length}</span>
+            </button>
+          )}
         </div>
       </div>
 
-      {isAdmin && lista.length > 0 && (
+      {podeEditar && lista.length > 0 && filtro !== "ARQUIVADAS" && (
         <div className="flex flex-wrap items-center gap-3 px-1 text-sm">
           <label className="inline-flex items-center gap-2 text-zinc-700">
             <input type="checkbox" className="w-4 h-4 accent-zinc-900"
@@ -618,7 +665,7 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
               <span className="text-zinc-500">{selecionados.size} selecionada(s)</span>
               <button type="button" onClick={() => setConfirmarLote(true)} disabled={excluindoLote}
                 className="h-8 px-3 rounded-lg bg-red-600 hover:bg-red-700 text-white text-[13px] font-medium disabled:opacity-50 flex items-center gap-1.5">
-                <Trash2 className="w-3.5 h-3.5" /> {excluindoLote ? "Excluindo…" : "Excluir selecionadas"}
+                <Trash2 className="w-3.5 h-3.5" /> {excluindoLote ? (isAdmin ? "Excluindo…" : "Arquivando…") : (isAdmin ? "Excluir selecionadas" : "Arquivar selecionadas")}
               </button>
               <button type="button" onClick={() => setSelecionados(new Set())} className="text-[13px] text-zinc-600 hover:text-zinc-900 underline">Limpar seleção</button>
             </>
@@ -649,7 +696,7 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
                 <li key={e.id} className={`p-4 flex flex-col xl:flex-row xl:items-center gap-4 ${selecionados.has(e.id) ? "bg-blue-50/60" : ""}`}>
                   {/* Quem e onde */}
                   <div className="flex-1 min-w-0 flex gap-3">
-                    {isAdmin && (
+                    {podeEditar && filtro !== "ARQUIVADAS" && (
                       <input type="checkbox" checked={selecionados.has(e.id)} onChange={() => alternarSelecao(e.id)}
                         aria-label={`Selecionar ${e.inquilino || e.imovel}`} className="mt-1 w-4 h-4 shrink-0 accent-zinc-900" />
                     )}
@@ -761,7 +808,7 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
                           </span>
                         )}
                       </div>
-                      {isAdmin && (
+                      {podeEditar && (
                         <div className="flex flex-wrap gap-1.5">
                           {(["pago", "em_aberto", "atrasado"] as StatusPagamentoEnergia[]).map(s => (
                             <button
@@ -783,16 +830,33 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
                   )}
 
                   {/* Ações */}
-                  {isAdmin && (
+                  {podeEditar && (
                     <div className="flex items-center gap-1 xl:self-center">
-                      <button type="button" onClick={() => { setEditingEnergia(e); setIsFormOpen(true); }} title="Editar" aria-label={`Editar ${e.imovel}`}
-                        className="w-9 h-9 rounded-lg text-zinc-600 hover:bg-zinc-100 flex items-center justify-center">
-                        <Edit className="w-4 h-4" />
-                      </button>
-                      <button type="button" onClick={() => setDeleteTargetId(e.id)} title="Excluir" aria-label={`Excluir ${e.imovel}`}
-                        className="w-9 h-9 rounded-lg text-red-600 hover:bg-red-50 flex items-center justify-center">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      {e.arquivada ? (
+                        <>
+                          <button type="button" onClick={() => restaurar(e)} title="Restaurar" aria-label={`Restaurar ${e.imovel}`}
+                            className="h-9 px-3 rounded-lg border border-zinc-300 text-sm text-zinc-800 hover:bg-zinc-50">
+                            Restaurar
+                          </button>
+                          {isAdmin && (
+                            <button type="button" onClick={() => setDeleteTargetId(e.id)} title="Excluir de vez" aria-label={`Excluir de vez ${e.imovel}`}
+                              className="w-9 h-9 rounded-lg text-red-600 hover:bg-red-50 flex items-center justify-center">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <button type="button" onClick={() => { setEditingEnergia(e); setIsFormOpen(true); }} title="Editar" aria-label={`Editar ${e.imovel}`}
+                            className="w-9 h-9 rounded-lg text-zinc-600 hover:bg-zinc-100 flex items-center justify-center">
+                            <Edit className="w-4 h-4" />
+                          </button>
+                          <button type="button" onClick={() => setDeleteTargetId(e.id)} title={isAdmin ? "Excluir" : "Arquivar"} aria-label={`${isAdmin ? "Excluir" : "Arquivar"} ${e.imovel}`}
+                            className="w-9 h-9 rounded-lg text-red-600 hover:bg-red-50 flex items-center justify-center">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </>
+                      )}
                     </div>
                   )}
                 </li>
@@ -882,9 +946,11 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
 
       <ConfirmModal
         isOpen={confirmarLote}
-        title={`Excluir ${selecionados.size} locação(ões) do acompanhamento?`}
-        message="As locações selecionadas e o histórico de conferência da energia delas serão excluídos do Ponto Chave. Nada é apagado na Scaza. Essa ação não pode ser desfeita."
-        confirmText="Excluir"
+        title={isAdmin ? `Excluir ${selecionados.size} locação(ões) do acompanhamento?` : `Arquivar ${selecionados.size} locação(ões)?`}
+        message={isAdmin
+          ? "As locações selecionadas e o histórico de conferência da energia delas serão excluídos do Ponto Chave. Nada é apagado na Scaza. Essa ação não pode ser desfeita."
+          : "As locações saem da lista, mas nada é apagado: ficam em \"Arquivadas\" e podem ser restauradas."}
+        confirmText={isAdmin ? "Excluir" : "Arquivar"}
         cancelText="Manter"
         confirmColor="red"
         onConfirm={excluirSelecionados}
@@ -893,9 +959,11 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
 
       <ConfirmModal
         isOpen={!!deleteTargetId}
-        title="Excluir locação do acompanhamento?"
-        message={`Excluir "${deleteTarget?.imovel || "este imóvel"}" e todo o histórico de conferência da energia? Essa ação não pode ser desfeita.`}
-        confirmText="Excluir"
+        title={isAdmin ? "Excluir locação do acompanhamento?" : "Arquivar locação?"}
+        message={isAdmin
+          ? `Excluir "${deleteTarget?.imovel || "este imóvel"}" e todo o histórico de conferência da energia? Essa ação não pode ser desfeita.`
+          : `"${deleteTarget?.imovel || "Este imóvel"}" sai da lista, mas nada é apagado: fica em "Arquivadas" e pode ser restaurado.`}
+        confirmText={isAdmin ? "Excluir" : "Arquivar"}
         cancelText="Manter"
         confirmColor="red"
         onConfirm={handleConfirmDelete}

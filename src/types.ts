@@ -740,6 +740,10 @@ export interface EnergiaLocacao {
   // Conferência mensal do pagamento da conta (chave = "YYYY-MM")
   pagamentos?: Record<string, PagamentoEnergiaMes>;
   scaza?: EnergiaScaza; // preenchido pela integração com a Scaza
+  // Arquivada = tirada do acompanhamento sem apagar o histórico (só admin exclui de vez)
+  arquivada?: boolean;
+  arquivadaEm?: string;
+  arquivadaPorNome?: string;
   observacoes?: string;
   criadoPor: string;
   criadoPorNome: string;

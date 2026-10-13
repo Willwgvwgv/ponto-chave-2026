@@ -177,8 +177,9 @@ service cloud.firestore {
     }
 
     // Collection: energia_locacoes (Acompanhamento de Energia)
-    // Ver e cadastrar: admin/gerente da empresa ou quem tem a permissão "Energia".
-    // Editar e excluir: só admin/gerente, sem trocar o registro de empresa.
+    // Ver, cadastrar, editar e arquivar: admin/gerente da empresa ou quem tem a
+    // permissão "Energia" — sem trocar a empresa nem o autor do registro.
+    // Excluir de vez: só admin/gerente.
     function canEnergia(companyId) {
       return belongsToCompany(companyId) &&
         (isCompanyAdmin(companyId) || hasModulePerm('energia', 'permEnergia', 'perm_energia'));
@@ -186,8 +187,9 @@ service cloud.firestore {
     match /energia_locacoes/{id} {
       allow read: if isSuperAdmin() || (isActiveUser() && canEnergia(resource.data.companyId));
       allow create: if isSuperAdmin() || (isActiveUser() && canEnergia(request.resource.data.companyId));
-      allow update: if isSuperAdmin() || (isActiveUser() && isCompanyAdmin(resource.data.companyId) &&
-        request.resource.data.companyId == resource.data.companyId);
+      allow update: if isSuperAdmin() || (isActiveUser() && canEnergia(resource.data.companyId) &&
+        request.resource.data.companyId == resource.data.companyId &&
+        request.resource.data.get('criadoPor', null) == resource.data.get('criadoPor', null));
       allow delete: if isSuperAdmin() || (isActiveUser() && isCompanyAdmin(resource.data.companyId));
     }
 
