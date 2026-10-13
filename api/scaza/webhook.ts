@@ -68,21 +68,38 @@ const filtrarHeaders = (h: Record<string, any>) => {
   return out;
 };
 
-async function usuarioPodeVer(authHeader: string | undefined, adminDb: any): Promise<boolean> {
-  if (!authHeader || !authHeader.startsWith("Bearer ")) return false;
+// Quem está pedindo: "admin" (dono, superadmin ou admin da empresa da Scaza) pode tudo;
+// "energia" (usuário ativo da mesma empresa com a permissão Energia) só pode a
+// sincronização. O painel (URL com a chave secreta), reprocessar, vincular e cadastrar
+// na Scaza continuam só com admin.
+async function papelNaIntegracao(authHeader: string | undefined, adminDb: any): Promise<"admin" | "energia" | null> {
+  if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
   const decoded = await verifyFirebaseIdToken(authHeader.slice(7));
-  if (!decoded) return false;
-  if ((decoded.email || "").toLowerCase() === "williangyn10@gmail.com") return true;
+  if (!decoded) return null;
+  if ((decoded.email || "").toLowerCase() === "williangyn10@gmail.com") return "admin";
   try {
-    const snap = await adminDb.collection("users").doc(decoded.uid).get();
-    if (!snap.exists) return false;
+    const [snap, excluido] = await Promise.all([
+      adminDb.collection("users").doc(decoded.uid).get(),
+      adminDb.collection("deleted_users").doc(decoded.uid).get()
+    ]);
+    if (!snap.exists || excluido.exists) return null;
     const u = snap.data() || {};
-    if (u.role === "superadmin") return true;
+    if (u.role === "superadmin") return "admin";
     const empresa = (process.env.SCAZA_COMPANY_ID || "").trim();
-    return u.role === "admin" && !!empresa && u.companyId === empresa;
+    if (!empresa || u.companyId !== empresa) return null;
+    const ativo = ["active", "APPROVED", "APPROVED_BY_ADMIN"].includes(u.status) && !!u.role && u.role !== "none";
+    if (!ativo) return null;
+    if (u.role === "admin") return "admin";
+    const temEnergia = u.role === "manager" || u.permEnergia === true || u.perm_energia === true ||
+      (Array.isArray(u.permissions) && u.permissions.includes("energia"));
+    return temEnergia ? "energia" : null;
   } catch {
-    return false;
+    return null;
   }
+}
+
+async function usuarioPodeVer(authHeader: string | undefined, adminDb: any): Promise<boolean> {
+  return (await papelNaIntegracao(authHeader, adminDb)) === "admin";
 }
 
 export default async function handler(req: any, res: any) {
@@ -96,11 +113,13 @@ export default async function handler(req: any, res: any) {
   const authHeader = req.headers.authorization || req.headers.Authorization;
   if (req.method === "POST" && !req.query?.k && authHeader) {
     if (!adminDb) return res.status(503).json({ error: "banco indisponível" });
-    if (!(await usuarioPodeVer(authHeader, adminDb))) return res.status(401).json({ error: "acesso não autorizado" });
+    const papel = await papelNaIntegracao(authHeader, adminDb);
+    if (!papel) return res.status(401).json({ error: "acesso não autorizado" });
     let corpoReq: any = req.body;
     if (typeof corpoReq === "string") { try { corpoReq = JSON.parse(corpoReq); } catch { corpoReq = {}; } }
     const id = String(corpoReq?.id || "").trim();
     const acao = corpoReq?.acao;
+    if (acao !== "sincronizar" && papel !== "admin") return res.status(403).json({ error: "só o administrador pode fazer isso" });
     if (acao === "sincronizar") {
       try {
         const resumo = await sincronizarScaza(adminDb);
