@@ -43,6 +43,8 @@ interface CandidatoImportacao {
   codigoContrato?: string;
   telefone?: string;
   observacao?: string;
+  proprietarioNome?: string;
+  proprietarioCpf?: string;
 }
 
 // Lê CSV (vírgula ou ponto e vírgula, com aspas) e devolve linhas como objetos pelo cabeçalho
@@ -144,10 +146,21 @@ type Filtro = "TODAS" | "pago" | "em_aberto" | "atrasado" | "a_verificar" | "NAO
 
 // A Scaza informou um titular da conta de luz diferente do CPF do inquilino:
 // a conta ainda não foi transferida para ele.
+// Conta de luz fora do nome do inquilino: marcada assim no cadastro, ou a Scaza
+// informou um titular diferente do CPF do inquilino.
 const contaForaDoInquilino = (e: EnergiaLocacao) => {
+  if (e.titularConta === "proprietario") return true;
   const titular = (e.scaza?.titularCpf || "").replace(/\D/g, "");
   const inquilino = (e.cpf || "").replace(/\D/g, "");
   return !!titular && !!inquilino && titular !== inquilino;
+};
+
+// Dados de quem é o titular da conta (é com eles que se consulta na Equatorial).
+const titularDaConta = (e: EnergiaLocacao) => {
+  if (e.titularConta === "proprietario") {
+    return { nome: e.proprietarioNome || "Proprietário", doc: e.proprietarioCpf || e.scaza?.titularCpf || "", nasc: e.proprietarioNascimento || e.scaza?.titularNascimento || "" };
+  }
+  return { nome: e.inquilino, doc: e.cpf || "", nasc: e.dataNascimento || "" };
 };
 
 const temContaVencida = (e: EnergiaLocacao) => (e.scaza?.faturasEmAberto || []).some(f => f.vencida);
@@ -246,6 +259,33 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
       const paresVistos = new Set(energiasTodas.map(e => `${normalizar(e.imovel)}|${normalizar(e.inquilino)}`));
       const lista: CandidatoImportacao[] = [];
       let ignoradas = 0;
+      // Locações que já estão aqui sem os dados do proprietário: completa pela planilha.
+      const porCodigo = new Map(energiasTodas.filter(e => e.codigoContrato).map(e => [e.codigoContrato as string, e]));
+      const completar: { id: string; nome?: string; doc?: string }[] = [];
+      linhas.forEach(l => {
+        const existente = porCodigo.get(l.codigo || l.id || "");
+        if (existente && !existente.proprietarioCpf) {
+          const d = (l.cpf_cnpj_proprietario || "").replace(/\D/g, "");
+          if (d.length === 11 || d.length === 14) completar.push({ id: existente.id, nome: (l.proprietario_nome || "").trim() || undefined, doc: d });
+        }
+      });
+      if (completar.length) {
+        let ok = 0;
+        for (const c of completar) {
+          try {
+            await updateDoc(doc(db, "energia_locacoes", c.id), {
+              proprietarioCpf: c.doc,
+              ...(c.nome ? { proprietarioNome: c.nome } : {}),
+              updatedAt: new Date().toISOString()
+            });
+            ok++;
+          } catch {}
+        }
+        if (ok) {
+          queryClient.invalidateQueries({ queryKey: ["energia_locacoes"] });
+          toast.success(`Dados do proprietário completados em ${ok} locação(ões).`);
+        }
+      }
       linhas.forEach(l => {
         if (l.status && !/^ativ/i.test(l.status)) { ignoradas++; return; }
         const inquilino = l.inquilino_nome || "";
@@ -263,6 +303,7 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
         if (codigo) codigosVistos.add(codigo);
         paresVistos.add(par);
         const doc = (l.cpf_cnpj_inquilino || "").replace(/\D/g, "");
+        const docProp = (l.cpf_cnpj_proprietario || "").replace(/\D/g, "");
         lista.push({
           chave: `csv-${codigo || par}`,
           imovel,
@@ -271,6 +312,8 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
           origem: `Planilha · contrato ${codigo}`,
           codigoContrato: codigo || undefined,
           telefone: (l.celular_inquilino || "").replace(/\D/g, "") || undefined,
+          proprietarioNome: (l.proprietario_nome || "").trim() || undefined,
+          proprietarioCpf: docProp.length === 11 || docProp.length === 14 ? docProp : undefined,
           observacao: [l.nome_imovel ? `Imóvel: ${l.nome_imovel}` : "", l.tipo ? `Tipo: ${l.tipo}` : "", l.data_inicio_contrato ? `Início: ${l.data_inicio_contrato}` : ""].filter(Boolean).join(" · ")
         });
       });
@@ -300,6 +343,8 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
         cpf: c.cpf,
         codigoContrato: c.codigoContrato,
         telefone: c.telefone,
+        proprietarioNome: c.proprietarioNome,
+        proprietarioCpf: c.proprietarioCpf,
         status: "transferida" as const,
         observacoes: [`Importado de: ${c.origem}`, c.observacao].filter(Boolean).join(" · "),
         criadoPor: profile.uid,
@@ -640,7 +685,7 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
           {foraDoInquilino.length > 0 && (
             <button type="button" onClick={() => setFiltro(filtro === "FORA_DO_INQUILINO" ? "TODAS" : "FORA_DO_INQUILINO")}
               className={`h-8 px-3 rounded-full text-[13px] font-medium border ${filtro === "FORA_DO_INQUILINO" ? "bg-amber-600 text-white border-amber-600" : "bg-amber-50 text-amber-900 border-amber-200 hover:bg-amber-100"}`}>
-              Conta fora do nome do inquilino <span className="opacity-80 tabular-nums">{foraDoInquilino.length}</span>
+              Conta no nome do proprietário <span className="opacity-80 tabular-nums">{foraDoInquilino.length}</span>
             </button>
           )}
           {arquivadas.length > 0 && (
@@ -687,10 +732,11 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
               const situacao = situacaoDoMes(e, mes);
               const registro = e.pagamentos?.[mes];
               const atrasoSemConferir = venceuSemConferir(e, mes);
+              const tit = titularDaConta(e);
               const dadosEquatorial = [
                 e.unidadeConsumidora ? `UC: ${e.unidadeConsumidora}` : "",
-                e.cpf ? `CPF: ${maskDoc(e.cpf)}` : "",
-                e.dataNascimento ? `Nascimento: ${formatDateBR(e.dataNascimento)}` : ""
+                tit.doc ? `${tit.doc.replace(/\D/g, "").length === 14 ? "CNPJ" : "CPF"}: ${maskDoc(tit.doc)}` : "",
+                tit.nasc ? `Nascimento: ${formatDateBR(tit.nasc)}` : ""
               ].filter(Boolean).join(" · ");
               return (
                 <li key={e.id} className={`p-4 flex flex-col xl:flex-row xl:items-center gap-4 ${selecionados.has(e.id) ? "bg-blue-50/60" : ""}`}>
@@ -761,13 +807,21 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
                         Cadastrar na Scaza
                       </button>
                     )}
-                    {contaForaDoInquilino(e) && (
-                      <div className="mt-2 self-start inline-flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs text-amber-900">
-                        <span className="font-semibold">Conta de luz ainda não está no nome do inquilino</span>
-                        <span>titular CPF/CNPJ <span className="font-mono">{maskDoc(e.scaza!.titularCpf!)}</span>
-                          {e.scaza?.titularNascimento && <> · nasc. <span className="font-mono">{formatDateBR(e.scaza.titularNascimento)}</span></>}</span>
-                      </div>
-                    )}
+                    {contaForaDoInquilino(e) && (() => {
+                      const t = e.titularConta === "proprietario"
+                        ? titularDaConta(e)
+                        : { nome: e.scaza?.titularCpf && e.scaza.titularCpf === (e.proprietarioCpf || "") ? (e.proprietarioNome || "proprietário") : "", doc: e.scaza?.titularCpf || "", nasc: e.scaza?.titularNascimento || "" };
+                      return (
+                        <div className="mt-2 self-start inline-flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs text-amber-900">
+                          <span className="font-semibold">Conta de luz no nome {e.titularConta === "proprietario" || t.nome ? "do proprietário" : "de outra pessoa"}</span>
+                          <span>
+                            {t.nome && <>{formatPersonName(t.nome)} · </>}
+                            {t.doc && <><span className="font-mono">{maskDoc(t.doc)}</span></>}
+                            {t.nasc && <> · nasc. <span className="font-mono">{formatDateBR(t.nasc)}</span></>}
+                          </span>
+                        </div>
+                      );
+                    })()}
                     {e.status !== "transferida" && (
                       <p className="mt-1 text-xs text-amber-800">
                         Transferência {e.status === "em_processo" ? "em processo" : "pendente"}

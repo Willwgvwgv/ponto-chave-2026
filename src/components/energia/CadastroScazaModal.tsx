@@ -16,8 +16,10 @@ const soDigitos = (v?: string | null) => String(v || "").replace(/\D/g, "");
 export const CadastroScazaModal: React.FC<Props> = ({ energia, onClose }) => {
   const queryClient = useQueryClient();
   const [uc, setUc] = useState(energia.unidadeConsumidora || "");
-  const [doc, setDoc] = useState(maskDoc(energia.cpf || energia.scaza?.titularCpf || ""));
-  const [nasc, setNasc] = useState(energia.cpf ? energia.dataNascimento || "" : energia.scaza?.titularNascimento || "");
+  // Vem com o titular da conta: o proprietário quando a locação está marcada assim, senão o inquilino.
+  const ehProp = energia.titularConta === "proprietario";
+  const [doc, setDoc] = useState(maskDoc(ehProp ? (energia.proprietarioCpf || energia.scaza?.titularCpf || "") : (energia.cpf || energia.scaza?.titularCpf || "")));
+  const [nasc, setNasc] = useState(ehProp ? (energia.proprietarioNascimento || energia.scaza?.titularNascimento || "") : (energia.cpf ? energia.dataNascimento || "" : energia.scaza?.titularNascimento || ""));
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
@@ -82,7 +84,7 @@ export const CadastroScazaModal: React.FC<Props> = ({ energia, onClose }) => {
             <span className="text-xs font-medium text-zinc-700">CPF/CNPJ do titular da conta de luz</span>
             <input value={doc} onChange={e => setDoc(maskDoc(e.target.value))} required inputMode="numeric"
               className="w-full h-10 px-3 rounded-lg border border-zinc-300 font-mono focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600" />
-            <span className="text-xs text-zinc-500">Vem com o CPF do inquilino, que é em nome de quem a conta deve estar. Se a conta ainda não foi transferida, a Scaza vai marcar como inconsistente.</span>
+            <span className="text-xs text-zinc-500">Vem com o titular marcado na locação (locatário ou proprietário). Tem que ser o CPF/CNPJ em que a conta de luz está hoje, senão a Scaza marca como inconsistente.</span>
           </label>
 
           {ehCpf && (

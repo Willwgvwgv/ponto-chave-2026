@@ -196,6 +196,7 @@ export async function sincronizarScaza(adminDb: any): Promise<ResumoSincronizaca
       if (cpf) scaza.titularCpf = cpf;
       if (nasc) scaza.titularNascimento = nasc;
       atual.scaza = scaza;
+      if (cpf && !atual.titularConta && soDigitos(atual.proprietarioCpf) === cpf) atual.titularConta = "proprietario";
       const uc = soDigitos(contaNorm.Login1);
       if (!soDigitos(atual.unidadeConsumidora) && uc) atual.unidadeConsumidora = uc;
       mudou.add(doc.id);
@@ -220,6 +221,7 @@ export async function sincronizarScaza(adminDb: any): Promise<ResumoSincronizaca
       const atual = estado.get(id);
       const dados: Record<string, any> = { scaza: atual.scaza, pagamentos: atual.pagamentos || {}, updatedAt: agora };
       if (atual.unidadeConsumidora) dados.unidadeConsumidora = atual.unidadeConsumidora;
+      if (atual.titularConta) dados.titularConta = atual.titularConta;
       lote.set(refs.get(id), dados, { merge: true });
     }
     await lote.commit();
