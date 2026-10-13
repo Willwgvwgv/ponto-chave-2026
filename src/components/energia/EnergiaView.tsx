@@ -356,6 +356,11 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
 
   const [mes, setMes] = useState(() => chaveMes(new Date()));
   const [searchTerm, setSearchTerm] = useState("");
+  // Filtros extras para achar a locação rápido
+  const [fTitular, setFTitular] = useState<"" | "inquilino" | "proprietario">("");
+  const [fDia, setFDia] = useState<string>(""); // "" = todos, "sem" = sem dia, "5" etc.
+  const [fScaza, setFScaza] = useState<"" | "ligada" | "nao_ligada">("");
+  const [ordem, setOrdem] = useState<"inquilino" | "proprietario" | "dia">("inquilino");
   const [filtro, setFiltro] = useState<Filtro>("TODAS");
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingEnergia, setEditingEnergia] = useState<EnergiaLocacao | null>(null);
@@ -434,14 +439,42 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
   const lista = useMemo(() => {
     const termo = searchTerm.trim().toLowerCase();
     const base = filtro === "NAO_TRANSFERIDAS" ? naoTransferidas : filtro === "CONTA_VENCIDA" ? comContaVencida : filtro === "FORA_DO_INQUILINO" ? foraDoInquilino : filtro === "ARQUIVADAS" ? arquivadas : transferidas;
+    const termoDigitos = termo.replace(/\D/g, "");
     return base
       .filter(e => {
-        if (termo && ![e.imovel, e.inquilino, e.unidadeConsumidora, e.cpf].some(v => (v || "").toLowerCase().includes(termo))) return false;
+        if (termo) {
+          const textos = [e.imovel, e.inquilino, e.proprietarioNome, e.unidadeConsumidora, e.codigoContrato].map(v => normalizar(v || ""));
+          const docs = [e.cpf, e.proprietarioCpf, e.unidadeConsumidora, e.telefone].map(v => (v || "").replace(/\D/g, ""));
+          const achouTexto = textos.some(t => t.includes(normalizar(termo)));
+          const achouDoc = termoDigitos.length >= 3 && docs.some(d => d.includes(termoDigitos));
+          if (!achouTexto && !achouDoc) return false;
+        }
+        if (fTitular && (e.titularConta === "proprietario" ? "proprietario" : "inquilino") !== fTitular) return false;
+        if (fDia === "sem" && e.diaVencimentoConta) return false;
+        if (fDia && fDia !== "sem" && String(e.diaVencimentoConta || "") !== fDia) return false;
+        if (fScaza === "ligada" && !e.scaza?.contaId) return false;
+        if (fScaza === "nao_ligada" && e.scaza?.contaId) return false;
         if (filtro === "TODAS" || filtro === "NAO_TRANSFERIDAS" || filtro === "CONTA_VENCIDA" || filtro === "FORA_DO_INQUILINO" || filtro === "ARQUIVADAS") return true;
         return (temContaVencida(e) ? "atrasado" : situacaoDoMes(e, mes)) === filtro;
       })
-      .sort((a, b) => (a.inquilino || "").localeCompare(b.inquilino || "", "pt-BR"));
-  }, [transferidas, naoTransferidas, comContaVencida, foraDoInquilino, arquivadas, searchTerm, filtro, mes]);
+      .sort((a, b) => {
+        if (ordem === "dia") return (a.diaVencimentoConta || 99) - (b.diaVencimentoConta || 99) || (a.inquilino || "").localeCompare(b.inquilino || "", "pt-BR");
+        if (ordem === "proprietario") return (a.proprietarioNome || "~").localeCompare(b.proprietarioNome || "~", "pt-BR") || (a.inquilino || "").localeCompare(b.inquilino || "", "pt-BR");
+        return (a.inquilino || "").localeCompare(b.inquilino || "", "pt-BR");
+      });
+  }, [transferidas, naoTransferidas, comContaVencida, foraDoInquilino, arquivadas, searchTerm, filtro, mes, fTitular, fDia, fScaza, ordem]);
+
+  const diasDeVencimento = useMemo(
+    () => Array.from(new Set(energias.map(e => e.diaVencimentoConta).filter((d): d is number => !!d))).sort((a: number, b: number) => a - b),
+    [energias]
+  );
+  const filtrosExtrasAtivos = !!(fTitular || fDia || fScaza);
+  // Última vez que a Scaza atualizou alguma locação (aviso automático ou "Atualizar com Scaza").
+  const ultimaScaza = useMemo(() => {
+    const datas = energiasTodas.map(e => e.scaza?.ultimaAtualizacao).filter(Boolean) as string[];
+    return datas.length ? datas.sort().slice(-1)[0] : null;
+  }, [energiasTodas]);
+  const ligadasScaza = useMemo(() => energias.filter(e => e.scaza?.contaId).length, [energias]);
 
   const registrar = (e: EnergiaLocacao, status: StatusPagamentoEnergia | null) => {
     const pagamentos: Record<string, PagamentoEnergiaMes> = { ...(e.pagamentos || {}) };
@@ -662,7 +695,7 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
             type="text"
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
-            placeholder="Buscar por inquilino, imóvel, unidade consumidora ou CPF"
+            placeholder="Buscar por inquilino, proprietário, imóvel, UC, CPF ou código"
             aria-label="Buscar"
             className="w-full h-10 pl-9 pr-3 border border-zinc-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600"
           />
@@ -695,6 +728,49 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
             </button>
           )}
         </div>
+      </div>
+
+      <div className="flex flex-wrap items-end gap-3 -mt-2 px-1">
+        <label className="text-xs text-zinc-600">
+          <span className="block mb-1">Conta de luz no nome de</span>
+          <select value={fTitular} onChange={e => setFTitular(e.target.value as any)} className="h-9 px-2 rounded-lg border border-zinc-300 bg-white text-sm text-zinc-800">
+            <option value="">Todos</option>
+            <option value="inquilino">Locatário</option>
+            <option value="proprietario">Proprietário</option>
+          </select>
+        </label>
+        <label className="text-xs text-zinc-600">
+          <span className="block mb-1">Vencimento da conta</span>
+          <select value={fDia} onChange={e => setFDia(e.target.value)} className="h-9 px-2 rounded-lg border border-zinc-300 bg-white text-sm text-zinc-800">
+            <option value="">Todos os dias</option>
+            {diasDeVencimento.map(d => <option key={d} value={String(d)}>Dia {d}</option>)}
+            <option value="sem">Sem dia informado</option>
+          </select>
+        </label>
+        <label className="text-xs text-zinc-600">
+          <span className="block mb-1">Scaza</span>
+          <select value={fScaza} onChange={e => setFScaza(e.target.value as any)} className="h-9 px-2 rounded-lg border border-zinc-300 bg-white text-sm text-zinc-800">
+            <option value="">Todas</option>
+            <option value="ligada">Ligadas à Scaza</option>
+            <option value="nao_ligada">Ainda não ligadas</option>
+          </select>
+        </label>
+        <label className="text-xs text-zinc-600">
+          <span className="block mb-1">Ordenar por</span>
+          <select value={ordem} onChange={e => setOrdem(e.target.value as any)} className="h-9 px-2 rounded-lg border border-zinc-300 bg-white text-sm text-zinc-800">
+            <option value="inquilino">Inquilino (A–Z)</option>
+            <option value="proprietario">Proprietário (A–Z)</option>
+            <option value="dia">Dia de vencimento</option>
+          </select>
+        </label>
+        {(filtrosExtrasAtivos || searchTerm) && (
+          <button type="button" onClick={() => { setFTitular(""); setFDia(""); setFScaza(""); setSearchTerm(""); }}
+            className="h-9 px-3 text-sm text-zinc-600 hover:text-zinc-900 underline">Limpar filtros</button>
+        )}
+        <span className="ml-auto text-xs text-zinc-500 pb-2">
+          {lista.length} locação(ões) · Scaza: {ligadasScaza} ligada(s)
+          {ultimaScaza ? ` · última atualização ${new Date(ultimaScaza).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}` : " · ainda sem atualização"}
+        </span>
       </div>
 
       {podeEditar && lista.length > 0 && filtro !== "ARQUIVADAS" && (
