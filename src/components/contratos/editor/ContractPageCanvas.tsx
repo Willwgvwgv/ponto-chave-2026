@@ -26,7 +26,7 @@ import {
   BlockPartsMeasure
 } from "../utils/contractPagination";
 import { RichHtmlBlockEditor } from "./RichHtmlBlockEditor";
-import { assinaturasDoBloco, assinaturasPadrao, ConfigAssinaturas } from "../utils/contractSignatures";
+import { assinaturasDoBloco, assinaturasPadrao, ConfigAssinaturas, espacosAssinatura, ASSINATURA_PADRAO } from "../utils/contractSignatures";
 
 // Divide o HTML em trechos de nível superior (parágrafo, lista, tabela...).
 // Texto solto entre eles vira um trecho próprio.
@@ -1046,7 +1046,9 @@ export const ContractPageCanvas: React.FC<ContractPageCanvasProps> = ({
                               onUpdateBlock?.(block.id, { metadata: { ...(block.metadata || {}), assinaturas: nova } });
                             const alterarLinha = (idx: number, campo: "nome" | "papel" | "doc", valor: string) =>
                               salvarAssin({ ...assin, linhas: assin.linhas.map((l, k) => (k === idx ? { ...l, [campo]: valor } : l)) });
-                            const impar = assin.linhas.length % 2 === 1;
+                            const esp = espacosAssinatura(assin);
+                            const duasColunas = esp.colunas === 2;
+                            const impar = duasColunas && assin.linhas.length % 2 === 1;
                             return (
                             <div className="pt-2">
                               {isActive ? (
@@ -1069,24 +1071,30 @@ export const ContractPageCanvas: React.FC<ContractPageCanvasProps> = ({
                                 />
                               )}
 
-                              <div className="grid grid-cols-2 gap-x-8 gap-y-6 mt-4">
+                              <div className={`grid gap-x-8 mt-2 ${duasColunas ? "grid-cols-2" : "grid-cols-1"}`} style={{ rowGap: esp.espacoEntrePx }}>
                                 {assin.linhas.map((l, idx) => (
-                                  <div key={`ass-${idx}`} className={`text-center ${impar && idx === assin.linhas.length - 1 ? "col-span-2 max-w-sm w-full mx-auto" : ""}`}>
+                                  <div key={`ass-${idx}`} className={`text-center ${impar && idx === assin.linhas.length - 1 ? "col-span-2 max-w-sm w-full mx-auto" : ""} ${!duasColunas ? "max-w-sm w-full mx-auto" : ""}`}
+                                    style={{ paddingTop: esp.espacoAssinarPx }}>
                                     <div className="border-t-2 border-slate-900 w-4/5 mx-auto mb-1"></div>
                                     <div className="text-xs font-bold text-slate-900">{l.nome}</div>
                                     {l.papel && <div className="text-[10px] text-slate-500 uppercase font-semibold">{l.papel}</div>}
                                     {l.doc && <div className="text-[10px] text-slate-400">{l.doc}</div>}
                                   </div>
                                 ))}
-                                {Array.from({ length: assin.testemunhas }).map((_, idx) => (
-                                  <div key={`test-${idx}`} className="text-center mt-4">
-                                    <div className="border-t border-dashed border-slate-400 w-4/5 mx-auto mb-1"></div>
-                                    <div className="text-[11px] font-semibold text-slate-700">{idx + 1}ª Testemunha</div>
-                                    <div className="text-[10px] text-slate-400">Nome: ___________________________</div>
-                                    <div className="text-[10px] text-slate-400">CPF: ____________________________</div>
-                                  </div>
-                                ))}
                               </div>
+                              {assin.testemunhas > 0 && (
+                                <div className={`grid gap-x-8 ${duasColunas ? "grid-cols-2" : "grid-cols-1"}`} style={{ marginTop: esp.espacoEntrePx, rowGap: esp.espacoEntrePx }}>
+                                  {Array.from({ length: assin.testemunhas }).map((_, idx) => (
+                                    <div key={`test-${idx}`} className={`text-left text-[11px] text-slate-700 ${!duasColunas ? "max-w-sm w-full mx-auto" : ""}`}
+                                      style={{ paddingTop: esp.espacoAssinarPx }}>
+                                      <div className="border-t border-slate-500 w-full mb-1"></div>
+                                      <div className="font-semibold text-center mb-2">{idx + 1}ª Testemunha</div>
+                                      <div className="flex items-end gap-1 mb-2"><span>Nome:</span><span className="flex-1 border-b border-slate-400 h-4"></span></div>
+                                      <div className="flex items-end gap-1"><span>CPF:</span><span className="flex-1 border-b border-slate-400 h-4"></span></div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
 
                               {isActive && onUpdateBlock && (
                                 <div className="mt-6 p-3 border border-slate-200 rounded-lg bg-slate-50 text-xs space-y-2" onClick={(e) => e.stopPropagation()}>
@@ -1129,6 +1137,46 @@ export const ContractPageCanvas: React.FC<ContractPageCanvasProps> = ({
                                         {[0, 1, 2, 3, 4].map((n) => <option key={n} value={n}>{n}</option>)}
                                       </select>
                                     </label>
+                                  </div>
+                                  <div className="flex flex-wrap items-center gap-x-5 gap-y-2 pt-2 border-t border-slate-200">
+                                    {([
+                                      ["Espaço para assinar", "espacoAssinarPx", 8, 16, 140],
+                                      ["Espaço entre assinaturas", "espacoEntrePx", 8, 8, 120]
+                                    ] as const).map(([rotulo, campo, passo, min, max]) => (
+                                      <div key={campo} className="flex items-center gap-1.5 text-slate-700">
+                                        <span>{rotulo}</span>
+                                        <button type="button" aria-label={`Diminuir ${rotulo.toLowerCase()}`}
+                                          disabled={esp[campo] <= min}
+                                          onClick={() => salvarAssin({ ...assin, [campo]: Math.max(min, esp[campo] - passo) })}
+                                          className="w-7 h-7 rounded-md border border-slate-300 bg-white hover:bg-slate-50 disabled:opacity-40 flex items-center justify-center">
+                                          <Minus className="w-3 h-3" />
+                                        </button>
+                                        <span className="w-10 text-center font-mono">{esp[campo]}px</span>
+                                        <button type="button" aria-label={`Aumentar ${rotulo.toLowerCase()}`}
+                                          disabled={esp[campo] >= max}
+                                          onClick={() => salvarAssin({ ...assin, [campo]: Math.min(max, esp[campo] + passo) })}
+                                          className="w-7 h-7 rounded-md border border-slate-300 bg-white hover:bg-slate-50 disabled:opacity-40 flex items-center justify-center">
+                                          <Plus className="w-3 h-3" />
+                                        </button>
+                                      </div>
+                                    ))}
+                                    <label className="flex items-center gap-2 text-slate-700">
+                                      Por linha
+                                      <select value={esp.colunas}
+                                        onChange={(e) => salvarAssin({ ...assin, colunas: e.target.value === "1" ? 1 : 2 })}
+                                        className="h-8 px-2 border border-slate-300 rounded-md bg-white">
+                                        <option value={2}>2 lado a lado</option>
+                                        <option value={1}>1 embaixo da outra</option>
+                                      </select>
+                                    </label>
+                                    {(assin.espacoAssinarPx !== undefined || assin.espacoEntrePx !== undefined || assin.colunas !== undefined) && (
+                                      <button type="button"
+                                        onClick={() => salvarAssin({ linhas: assin.linhas, testemunhas: assin.testemunhas })}
+                                        className="h-8 px-3 rounded-md text-slate-600 hover:bg-slate-100"
+                                        title={`Volta para ${ASSINATURA_PADRAO.espacoAssinarPx}px / ${ASSINATURA_PADRAO.espacoEntrePx}px, 2 por linha`}>
+                                        Espaço padrão
+                                      </button>
+                                    )}
                                     {block.metadata?.assinaturas && (
                                       <button type="button"
                                         onClick={() => onUpdateBlock(block.id, { metadata: { ...(block.metadata || {}), assinaturas: undefined } })}

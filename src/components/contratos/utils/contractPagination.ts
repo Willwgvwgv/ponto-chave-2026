@@ -1,3 +1,4 @@
+import { espacosAssinatura } from "./contractSignatures";
 import { ContractBlock, ContractStyleSettings } from "../types/contractTypes";
 
 /**
@@ -131,10 +132,17 @@ export function estimateBlockHeight(
     const rawText = stripHtml(block.content || "");
     const introLines = Math.max(1, Math.ceil(rawText.length / 80));
     const introHeight = introLines * lineHeightPx + 16;
-    const baseGridHeight = 130; // Locador + Locatário
-    const fiadorHeight = hasFiador ? 75 : 0;
-    const witnessesHeight = 90; // 2 Testemunhas
-    return introHeight + baseGridHeight + fiadorHeight + witnessesHeight + 20;
+    // Altura conforme quantos assinam, quantas testemunhas e o espaçamento escolhido
+    const cfg = block.metadata?.assinaturas;
+    const esp = espacosAssinatura(cfg || { linhas: [], testemunhas: 2 });
+    const assinantes = cfg?.linhas?.length ?? (hasFiador ? 3 : 2);
+    const testemunhas = typeof cfg?.testemunhas === "number" ? cfg.testemunhas : 2;
+    const porLinha = esp.colunas;
+    const filasAssin = Math.ceil(assinantes / porLinha);
+    const filasTest = Math.ceil(testemunhas / porLinha);
+    const alturaAssin = filasAssin * (esp.espacoAssinarPx + 46) + Math.max(0, filasAssin - 1) * esp.espacoEntrePx;
+    const alturaTest = filasTest ? esp.espacoEntrePx + filasTest * (esp.espacoAssinarPx + 62) + (filasTest - 1) * esp.espacoEntrePx : 0;
+    return introHeight + alturaAssin + alturaTest + 20;
   }
 
   if (block.type === "clause") {
