@@ -775,6 +775,13 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
     return Number(rateios.filter(r => r.papel === "captador").reduce((sum, r) => sum + (r.porcentagem || 0), 0).toFixed(2));
   }, [rateios]);
 
+  // Quanto do aluguel já tem dono: imobiliária (o auxiliar sai da parte dela),
+  // corretor locador e os captadores incluídos. Fecha 100% quando tudo foi distribuído.
+  const rateioAlocadoPct = useMemo(
+    () => Number((porcentagemFidelite + porcentagemLocador + sumCaptadoresPct).toFixed(2)),
+    [porcentagemFidelite, porcentagemLocador, sumCaptadoresPct]
+  );
+
   const computedRateios = useMemo(() => {
     return rateios.map(r => {
       if (r.papel === "locacao" || r.papel === "locador") {
@@ -1659,7 +1666,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                     <span className="font-bold text-slate-800 font-mono">{formatCurrency(aluguelMensal)}</span>
                   </div>
                   <div className="flex justify-between items-center text-slate-600">
-                    <span>Taxa Retida Imobiliária ({porcentagemFideliteLiquida}%):</span>
+                    <span>Taxa Retida Imobiliária ({porcentagemFideliteLiquida}%{sumAuxiliarPct > 0 ? ` = ${porcentagemFidelite}% − auxiliar` : ""}):</span>
                     <span className="font-bold text-indigo-600 font-mono">{formatCurrency(valorFidelite)}</span>
                   </div>
                   {sumAuxiliarPct > 0 && (
@@ -1749,14 +1756,14 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                 <div className="space-y-2 pt-2 border-t border-slate-100">
                   <div className="flex justify-between items-center text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                     <span>Rateio Alocado</span>
-                    <span className="text-emerald-600 font-black font-mono">
-                      {Math.min(100, porcentagemFidelite + porcentagemLocador)}% / 100%
+                    <span className={`font-black font-mono ${rateioAlocadoPct === 100 ? "text-emerald-600" : "text-amber-600"}`}>
+                      {rateioAlocadoPct}% / 100%
                     </span>
                   </div>
                   <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden border border-slate-200/40">
                     <div 
-                      className="h-full transition-all duration-300 bg-emerald-500" 
-                      style={{ width: `${Math.min(100, porcentagemFidelite + porcentagemLocador)}%` }}
+                      className={`h-full transition-all duration-300 ${rateioAlocadoPct === 100 ? "bg-emerald-500" : "bg-amber-500"}`} 
+                      style={{ width: `${Math.min(100, rateioAlocadoPct)}%` }}
                     />
                   </div>
                 </div>
