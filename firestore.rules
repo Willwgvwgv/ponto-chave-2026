@@ -170,9 +170,17 @@ service cloud.firestore {
     }
 
     // Collection: comissoes
+    // Lançar comissão de locação: admin/gerente ou quem tem a permissão "Comissões",
+    // sempre na própria empresa e em nome próprio. Editar, quitar e excluir: só admin.
     match /comissoes/{id} {
       allow read: if isSuperAdmin() || (isActiveUser() && belongsToCompany(resource.data.companyId));
-      allow create: if isSuperAdmin() || (isActiveUser() && isCompanyAdmin(request.resource.data.companyId));
+      allow create: if isSuperAdmin() || (isActiveUser() && (
+        isCompanyAdmin(request.resource.data.companyId) || (
+          belongsToCompany(request.resource.data.companyId) &&
+          hasModulePerm('comissoes', 'permComissoes', 'perm_comissoes') &&
+          request.resource.data.criadoPor == request.auth.uid
+        )
+      ));
       allow update, delete: if isSuperAdmin() || (isActiveUser() && isCompanyAdmin(resource.data.companyId));
     }
 

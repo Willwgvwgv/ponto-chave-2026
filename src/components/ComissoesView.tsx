@@ -137,8 +137,10 @@ export const ComissoesView: React.FC<ComissoesViewProps> = ({
     if (isUserAdmin) {
       return rentals;
     }
+    // Quem não é admin vê as locações em que participa do rateio e as que ele mesmo lançou.
     return rentals.filter(rental => 
-      rental.rateio && rental.rateio.some(rat => rat.corretorId === userId)
+      rental.criadoPor === userId ||
+      (rental.rateio && rental.rateio.some(rat => rat.corretorId === userId))
     );
   }, [rentals, isUserAdmin, userId]);
 

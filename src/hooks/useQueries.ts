@@ -1041,9 +1041,16 @@ export function useCreateRentalMutation() {
       queryClient.invalidateQueries({ queryKey: ["processes"] });
       toast.success("Comissão de locação lançada com sucesso!");
     },
-    onError: (err) => {
+    onError: (err: any) => {
       console.error(err);
-      toast.error("Erro ao lançar comissão de locação.");
+      const msg = String(err?.code || err?.message || "");
+      if (/permission|insufficient/i.test(msg)) {
+        toast.error("Locação não foi salva: sem permissão. Confira se o usuário tem a permissão Comissões e se as regras do Firebase estão publicadas.");
+      } else if (/offline|unavailable/i.test(msg)) {
+        toast.error("Locação não foi salva: sem conexão. Reconecte e lance de novo.");
+      } else {
+        toast.error("Erro ao lançar comissão de locação. Ela não foi salva.");
+      }
     }
   });
 }
