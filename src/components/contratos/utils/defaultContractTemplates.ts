@@ -633,7 +633,9 @@ export const PROCURACAO_TITULARIDADE_BLOCKS: ContractBlock[] = [
     id: "block-imovel-procuracao",
     type: "paragraph",
     sectionCategory: "Imóvel",
-    content: `<p><strong>IMÓVEL:</strong> {{endereco_imovel}}, locado pelo(a) OUTORGANTE. Unidade Consumidora (UC) de energia nº {{uc_energia_imovel}}.</p>`
+    content: `<p><strong>IMÓVEL:</strong> {{endereco_imovel}}, locado pelo(a) OUTORGANTE.</p>
+<p><strong>Energia (Equatorial):</strong> Unidade Consumidora (UC) nº {{uc_energia_imovel}}.</p>
+<p><strong>Água (Saneago):</strong> matrícula nº {{matricula_agua_imovel}}.</p>`
   },
   {
     id: "clause-poderes",

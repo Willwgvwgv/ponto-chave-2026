@@ -60,6 +60,27 @@ import {
 } from "../../firebase";
 import { toast } from "sonner";
 
+// Procuração de troca de titularidade (energia/água): usa um formulário próprio,
+// só com os dados do locatário (outorgante) e do imóvel — sem aluguel nem prazo.
+const TITULO_PROCURACAO = "Procuração – Troca de Titularidade";
+const TITULOS_PADRAO = ["", "Contrato de Locação Residencial", "Contrato de Compra e Venda", TITULO_PROCURACAO];
+
+const ehModeloProcuracao = (m?: ContratoModelo) =>
+  !!m && (m.categoria === "Procurações" || m.id.startsWith("modelo-procuracao"));
+
+const tituloPadraoDoModelo = (m?: ContratoModelo) =>
+  m?.tipoDocumento === "venda" ? "Contrato de Compra e Venda"
+    : ehModeloProcuracao(m) ? TITULO_PROCURACAO
+    : "Contrato de Locação Residencial";
+
+const enderecoImovelTexto = (f: { imovelEndereco: string; imovelNumero: string; imovelComplemento: string; imovelBairro: string; imovelCidade: string; imovelEstado: string }) =>
+  [
+    [f.imovelEndereco.trim(), f.imovelNumero.trim() && `nº ${f.imovelNumero.trim()}`].filter(Boolean).join(", "),
+    f.imovelComplemento.trim(),
+    f.imovelBairro.trim() && `Bairro ${f.imovelBairro.trim()}`,
+    [f.imovelCidade.trim(), f.imovelEstado.trim()].filter(Boolean).join(" - ")
+  ].filter(Boolean).join(", ");
+
 interface ContratosLocacaoViewProps {
   isAdmin: boolean;
   user: any;
@@ -115,6 +136,7 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
     imovelEstado: "GO",
     imovelCep: "",
     imovelUc: "",
+    imovelAgua: "",
     imovelTipo: "Casa",
     indiceReajuste: "IGP-M" as ContratoLocacao["condicoes"]["indiceReajuste"],
     seguroIncendio: 0,
@@ -141,6 +163,7 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
   // Modelo escolhido no assistente é de compra e venda? (muda os campos e textos do formulário)
   const modeloSelecionado = modelos.find((m) => m.id === selectedTemplateId);
   const isVenda = modeloSelecionado?.tipoDocumento === "venda";
+  const isProcuracao = ehModeloProcuracao(modeloSelecionado);
 
   // 1. Subscribe to Contratos in Firestore
   useEffect(() => {
@@ -241,11 +264,12 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
   const handleOpenNewContractWizard = (preselectedTemplateId?: string) => {
     const defaultTemplate = modelos.find((m) => m.isPadrao) || modelos[0];
     const idEscolhido = preselectedTemplateId || defaultTemplate?.id || "modelo-padrao-caucao";
-    const abrindoVenda = modelos.find((m) => m.id === idEscolhido)?.tipoDocumento === "venda";
+    const modeloAbrindo = modelos.find((m) => m.id === idEscolhido);
+    const abrindoVenda = modeloAbrindo?.tipoDocumento === "venda";
     setSelectedTemplateId(idEscolhido);
     setWizardStep(1);
     setNovoContratoForm({
-      titulo: abrindoVenda ? "Contrato de Compra e Venda" : "Contrato de Locação Residencial",
+      titulo: tituloPadraoDoModelo(modeloAbrindo),
       tipoLocacao: "residencial",
       locatarioNome: "",
       locatarioCpf: "",
@@ -261,7 +285,8 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
       imovelComplemento: "",
       imovelEstado: "GO",
       imovelCep: "",
-    imovelUc: "",
+      imovelUc: "",
+      imovelAgua: "",
       imovelTipo: "Casa",
       indiceReajuste: "IGP-M" as const,
       seguroIncendio: 0,
@@ -290,6 +315,20 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
   const handleCreateContractFromWizard = async () => {
     const chosenTemplate = modelos.find((m) => m.id === selectedTemplateId) || modelos[0];
     const ehVenda = chosenTemplate?.tipoDocumento === "venda";
+    const ehProcuracao = ehModeloProcuracao(chosenTemplate);
+
+    if (ehProcuracao) {
+      const faltando = [
+        !novoContratoForm.locatarioNome.trim() && "nome do locatário",
+        !novoContratoForm.locatarioCpf.trim() && "CPF/CNPJ do locatário",
+        !novoContratoForm.imovelEndereco.trim() && "endereço do imóvel",
+        !novoContratoForm.imovelUc.trim() && "UC de energia"
+      ].filter(Boolean);
+      if (faltando.length) {
+        toast.error(`Preencha: ${faltando.join(", ")}.`);
+        return;
+      }
+    }
 
     if (ehVenda) {
       if (!novoContratoForm.locatarioNome.trim() || !novoContratoForm.imovelEndereco.trim()) {
@@ -300,7 +339,7 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
     
     // Auto-generate number LOC-YYYY-XXXX (VEN- para compra e venda)
     const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-    const contractNumber = `${ehVenda ? "VEN" : "LOC"}-${new Date().getFullYear()}-${randomSuffix}`;
+    const contractNumber = `${ehVenda ? "VEN" : ehProcuracao ? "PRO" : "LOC"}-${new Date().getFullYear()}-${randomSuffix}`;
 
     const dataFim = (() => {
       try {
@@ -315,7 +354,9 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
     const newContractData: Omit<ContratoLocacao, "id"> = {
       companyId,
       numeroContrato: contractNumber,
-      titulo: novoContratoForm.titulo || (ehVenda ? `Compra e Venda - ${novoContratoForm.locatarioNome || "Novo Comprador"}` : `Locação - ${novoContratoForm.locatarioNome || "Novo Inquilino"}`),
+      titulo: ehProcuracao && TITULOS_PADRAO.includes(novoContratoForm.titulo.trim())
+        ? `${TITULO_PROCURACAO} – ${novoContratoForm.locatarioNome.trim()}`
+        : novoContratoForm.titulo || (ehVenda ? `Compra e Venda - ${novoContratoForm.locatarioNome || "Novo Comprador"}` : `Locação - ${novoContratoForm.locatarioNome || "Novo Inquilino"}`),
       tipoLocacao: chosenTemplate?.tipoLocacao || novoContratoForm.tipoLocacao,
       tipoDocumento: ehVenda ? "venda" : "locacao",
       status: "rascunho",
@@ -342,7 +383,8 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
           estadoCivil: ehVenda ? "" : novoContratoForm.locatarioEstadoCivil.trim(),
           profissao: ehVenda ? "" : novoContratoForm.locatarioProfissao.trim(),
           nacionalidade: ehVenda ? "" : novoContratoForm.locatarioNacionalidade.trim(),
-          endereco: ehVenda ? "" : novoContratoForm.locatarioEndereco.trim()
+          // Procuração: sem endereço informado, o locatário mora no próprio imóvel
+          endereco: ehVenda ? "" : (novoContratoForm.locatarioEndereco.trim() || (ehProcuracao ? enderecoImovelTexto(novoContratoForm) : ""))
         }
       ],
       fiadores: [],
@@ -350,18 +392,21 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
         endereco: novoContratoForm.imovelEndereco || "Rua a definir",
         numero: novoContratoForm.imovelNumero || "",
         complemento: novoContratoForm.imovelComplemento.trim(),
-        bairro: novoContratoForm.imovelBairro || "Setor Bueno",
+        // Procuração vai assinada: bairro em branco não vira um bairro de exemplo
+        bairro: ehProcuracao ? novoContratoForm.imovelBairro.trim() : (novoContratoForm.imovelBairro || "Setor Bueno"),
         cidade: novoContratoForm.imovelCidade || "Goiânia",
         estado: novoContratoForm.imovelEstado.trim() || "GO",
         cep: novoContratoForm.imovelCep.trim(),
         energiaMedidor: novoContratoForm.imovelUc.trim() || undefined,
+        hidrometroMedidor: novoContratoForm.imovelAgua.trim() || undefined,
         tipoImovel: ehVenda
           ? (novoContratoForm.tipoLocacao === "comercial" ? "Sala Comercial" : "Apartamento Residencial")
           : (novoContratoForm.imovelTipo.trim() || "Casa"),
         destinacao: (chosenTemplate?.tipoLocacao || novoContratoForm.tipoLocacao) === "comercial" ? "comercial" : "residencial"
       },
       condicoes: {
-        valorAluguel: novoContratoForm.valorAluguel,
+        // Procuração não tem aluguel: não grava o valor de exemplo do formulário
+        valorAluguel: ehProcuracao ? 0 : novoContratoForm.valorAluguel,
         diaVencimento: novoContratoForm.diaVencimento,
         dataInicio: novoContratoForm.dataInicio,
         dataTermino: dataFim,
@@ -369,7 +414,7 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
         indiceReajuste: ehVenda ? "IPCA" : novoContratoForm.indiceReajuste,
         seguroIncendioAnual: ehVenda ? 0 : (novoContratoForm.seguroIncendio || 0),
         modalidadeGarantia: novoContratoForm.modalidadeGarantia,
-        valorGarantia: novoContratoForm.valorAluguel * 3,
+        valorGarantia: ehProcuracao ? 0 : novoContratoForm.valorAluguel * 3,
         multaAtrasoPercent: 10,
         jurosMoraPercent: 1,
         multaRescisoriaMeses: 3,
@@ -826,10 +871,12 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
                 </div>
                 <div>
                   <h2 className="text-base font-black text-slate-900">
-                    {isVenda ? "Novo Contrato de Compra e Venda" : "Novo Contrato de Locação"}
+                    {isVenda ? "Novo Contrato de Compra e Venda" : isProcuracao ? "Nova Procuração – Troca de Titularidade" : "Novo Contrato de Locação"}
                   </h2>
                   <p className="text-xs text-slate-500">
-                    Selecione o modelo e informe os dados principais para carregar no Editor Visual.
+                    {isProcuracao
+                      ? "O locatário autoriza a imobiliária a passar a energia (e a água) para o nome dele. Preencha os dados dele, o endereço e a UC do imóvel."
+                      : "Selecione o modelo e informe os dados principais para carregar no Editor Visual."}
                   </p>
                 </div>
               </div>
@@ -853,14 +900,11 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
                   onChange={(e) => {
                     const novoId = e.target.value;
                     setSelectedTemplateId(novoId);
-                    const venda = modelos.find((m) => m.id === novoId)?.tipoDocumento === "venda";
-                    setNovoContratoForm((prev) => {
-                      const titulosPadrao = ["", "Contrato de Locação Residencial", "Contrato de Compra e Venda"];
-                      return {
-                        ...prev,
-                        titulo: titulosPadrao.includes(prev.titulo) ? (venda ? "Contrato de Compra e Venda" : "Contrato de Locação Residencial") : prev.titulo
-                      };
-                    });
+                    const novoModelo = modelos.find((m) => m.id === novoId);
+                    setNovoContratoForm((prev) => ({
+                      ...prev,
+                      titulo: TITULOS_PADRAO.includes(prev.titulo) ? tituloPadraoDoModelo(novoModelo) : prev.titulo
+                    }));
                   }}
                   className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 outline-none focus:bg-white focus:ring-2 focus:ring-blue-500"
                 >
@@ -886,6 +930,120 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
                 />
               </div>
 
+              {isProcuracao ? (
+              <>
+              <p className="pt-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">Locatário (outorgante)</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label htmlFor="pr-nome" className="block text-slate-800 font-bold mb-1">Nome completo*</label>
+                    <input id="pr-nome" type="text" value={novoContratoForm.locatarioNome}
+                      onChange={(e) => setNovoContratoForm({ ...novoContratoForm, locatarioNome: e.target.value })}
+                      placeholder="Nome do locatário, como no documento" className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                  </div>
+                  <div>
+                    <label htmlFor="pr-cpf" className="block text-slate-800 font-bold mb-1">CPF/CNPJ*</label>
+                    <input id="pr-cpf" type="text" inputMode="numeric" value={novoContratoForm.locatarioCpf}
+                      onChange={(e) => setNovoContratoForm({ ...novoContratoForm, locatarioCpf: e.target.value })}
+                      placeholder="000.000.000-00" className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                  </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <div>
+                    <label htmlFor="pr-rg" className="block text-slate-800 font-bold mb-1">RG</label>
+                    <input id="pr-rg" type="text" value={novoContratoForm.locatarioRg}
+                      onChange={(e) => setNovoContratoForm({ ...novoContratoForm, locatarioRg: e.target.value })}
+                      placeholder="0000000 SSP/GO" className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                  </div>
+                  <div>
+                    <label htmlFor="pr-ec" className="block text-slate-800 font-bold mb-1">Estado civil</label>
+                    <input id="pr-ec" type="text" value={novoContratoForm.locatarioEstadoCivil}
+                      onChange={(e) => setNovoContratoForm({ ...novoContratoForm, locatarioEstadoCivil: e.target.value })}
+                      placeholder="solteiro(a)" className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                  </div>
+                  <div>
+                    <label htmlFor="pr-prof" className="block text-slate-800 font-bold mb-1">Profissão</label>
+                    <input id="pr-prof" type="text" value={novoContratoForm.locatarioProfissao}
+                      onChange={(e) => setNovoContratoForm({ ...novoContratoForm, locatarioProfissao: e.target.value })}
+                      placeholder="" className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                  </div>
+                  <div>
+                    <label htmlFor="pr-nac" className="block text-slate-800 font-bold mb-1">Nacionalidade</label>
+                    <input id="pr-nac" type="text" value={novoContratoForm.locatarioNacionalidade}
+                      onChange={(e) => setNovoContratoForm({ ...novoContratoForm, locatarioNacionalidade: e.target.value })}
+                      placeholder="brasileiro(a)" className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                  </div>
+                  <div className="md:col-span-4">
+                    <label htmlFor="pr-end" className="block text-slate-800 font-bold mb-1">Endereço do locatário</label>
+                    <input id="pr-end" type="text" value={novoContratoForm.locatarioEndereco}
+                      onChange={(e) => setNovoContratoForm({ ...novoContratoForm, locatarioEndereco: e.target.value })}
+                      placeholder="Deixe vazio se ele mora no imóvel abaixo" className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                  </div>
+              </div>
+
+              <p className="pt-3 border-t border-slate-200 text-[11px] font-bold uppercase tracking-wide text-slate-500">Imóvel</p>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="col-span-2 md:col-span-3">
+                    <label htmlFor="pr-im-end" className="block text-slate-800 font-bold mb-1">Endereço*</label>
+                    <input id="pr-im-end" type="text" value={novoContratoForm.imovelEndereco}
+                      onChange={(e) => setNovoContratoForm({ ...novoContratoForm, imovelEndereco: e.target.value })}
+                      placeholder="Rua, avenida" className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                  </div>
+                  <div>
+                    <label htmlFor="pr-im-num" className="block text-slate-800 font-bold mb-1">Número</label>
+                    <input id="pr-im-num" type="text" value={novoContratoForm.imovelNumero}
+                      onChange={(e) => setNovoContratoForm({ ...novoContratoForm, imovelNumero: e.target.value })}
+                      placeholder="" className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                  </div>
+                  <div className="col-span-2">
+                    <label htmlFor="pr-im-comp" className="block text-slate-800 font-bold mb-1">Complemento</label>
+                    <input id="pr-im-comp" type="text" value={novoContratoForm.imovelComplemento}
+                      onChange={(e) => setNovoContratoForm({ ...novoContratoForm, imovelComplemento: e.target.value })}
+                      placeholder="Qd, Lt, casa, apto" className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                  </div>
+                  <div className="col-span-2">
+                    <label htmlFor="pr-im-bairro" className="block text-slate-800 font-bold mb-1">Bairro</label>
+                    <input id="pr-im-bairro" type="text" value={novoContratoForm.imovelBairro}
+                      onChange={(e) => setNovoContratoForm({ ...novoContratoForm, imovelBairro: e.target.value })}
+                      placeholder="" className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                  </div>
+                  <div className="col-span-2">
+                    <label htmlFor="pr-im-cid" className="block text-slate-800 font-bold mb-1">Cidade</label>
+                    <input id="pr-im-cid" type="text" value={novoContratoForm.imovelCidade}
+                      onChange={(e) => setNovoContratoForm({ ...novoContratoForm, imovelCidade: e.target.value })}
+                      placeholder="" className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                  </div>
+                  <div>
+                    <label htmlFor="pr-im-uf" className="block text-slate-800 font-bold mb-1">UF</label>
+                    <input id="pr-im-uf" type="text" value={novoContratoForm.imovelEstado}
+                      onChange={(e) => setNovoContratoForm({ ...novoContratoForm, imovelEstado: e.target.value })}
+                      placeholder="GO" className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                  </div>
+                  <div>
+                    <label htmlFor="pr-im-cep" className="block text-slate-800 font-bold mb-1">CEP</label>
+                    <input id="pr-im-cep" type="text" value={novoContratoForm.imovelCep}
+                      onChange={(e) => setNovoContratoForm({ ...novoContratoForm, imovelCep: e.target.value })}
+                      placeholder="00000-000" className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                  </div>
+              </div>
+
+              <p className="pt-3 border-t border-slate-200 text-[11px] font-bold uppercase tracking-wide text-slate-500">Contas do imóvel</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label htmlFor="pr-uc" className="block text-slate-800 font-bold mb-1">UC de energia (Equatorial)*</label>
+                    <input id="pr-uc" type="text" inputMode="numeric" value={novoContratoForm.imovelUc}
+                      onChange={(e) => setNovoContratoForm({ ...novoContratoForm, imovelUc: e.target.value })}
+                      placeholder="Número da unidade consumidora" className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                  </div>
+                  <div>
+                    <label htmlFor="pr-agua" className="block text-slate-800 font-bold mb-1">Matrícula de água (Saneago)</label>
+                    <input id="pr-agua" type="text" inputMode="numeric" value={novoContratoForm.imovelAgua}
+                      onChange={(e) => setNovoContratoForm({ ...novoContratoForm, imovelAgua: e.target.value })}
+                      placeholder="Se não tiver, fica em branco para preencher à mão" className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                  </div>
+              </div>
+              </>
+              ) : (
+              <>
               {/* 3. Partes */}
               {isVenda ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
@@ -1209,6 +1367,8 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
               </div>
               </>
               )}
+              </>
+              )}
             </div>
 
             {/* Modal Footer */}
@@ -1227,7 +1387,7 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
                 className="px-5 py-2.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-md rounded-xl cursor-pointer transition-all flex items-center gap-2"
               >
                 <Sparkles className="w-4 h-4" />
-                Criar e Abrir no Editor Visual
+                {isProcuracao ? "Gerar Procuração" : "Criar e Abrir no Editor Visual"}
               </button>
             </div>
           </div>
