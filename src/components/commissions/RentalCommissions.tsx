@@ -144,14 +144,40 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
     return list.sort((a, b) => b.localeCompare(a));
   }, [convertedModels, mesAtual]);
 
-  // Todos os participantes que aparecem em algum rateio (para o filtro por corretor)
+  // Usuários que existem hoje no sistema (por id/uid). Enquanto a equipe carrega, fica vazio.
+  const contasPorId = useMemo(() => {
+    const m = new Map<string, ComissoneUser>();
+    (team || []).forEach(u => { if (u.id) m.set(u.id, u); if ((u as any).uid) m.set((u as any).uid, u); });
+    return m;
+  }, [team]);
+  const temConta = (id?: string) => contasPorId.size === 0 || (!!id && contasPorId.has(id));
+
+  // Participantes de algum rateio que têm conta no sistema (para o filtro por corretor).
+  // Nomes sem conta (dados de teste ou usuário removido) ficam fora; quando dois usuários
+  // têm o mesmo nome, o e-mail aparece junto para diferenciar.
   const listaCorretores = useMemo(() => {
-    const porId = new Map<string, string>();
+    const porId = new Map<string, { nome: string; email: string }>();
     convertedModels.forEach(r => (r.distribuicao || []).forEach(d => {
-      if (d.corretorId && !porId.has(d.corretorId)) porId.set(d.corretorId, formatPersonName(d.corretorNome || ""));
+      if (!d.corretorId || porId.has(d.corretorId) || !temConta(d.corretorId)) return;
+      const conta = contasPorId.get(d.corretorId);
+      porId.set(d.corretorId, {
+        nome: formatPersonName(conta?.displayName || conta?.name || d.corretorNome || ""),
+        email: conta?.email || ""
+      });
     }));
-    return Array.from(porId, ([id, nome]) => ({ id, nome })).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
-  }, [convertedModels]);
+    const contagem = new Map<string, number>();
+    porId.forEach(v => contagem.set(v.nome, (contagem.get(v.nome) || 0) + 1));
+    return Array.from(porId, ([id, v]) => ({
+      id,
+      nome: (contagem.get(v.nome) || 0) > 1 && v.email ? `${v.nome} (${v.email.split("@")[0]})` : v.nome
+    })).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+  }, [convertedModels, contasPorId]);
+
+  // Locações com alguém no rateio que não tem conta no sistema — para revisar e excluir.
+  const [filterSemConta, setFilterSemConta] = useState(false);
+  const temParticipanteSemConta = (r: any) => contasPorId.size > 0 &&
+    (r.distribuicao || []).some((d: any) => d.corretorId && !contasPorId.has(d.corretorId));
+  const qtdSemConta = useMemo(() => convertedModels.filter(temParticipanteSemConta).length, [convertedModels, contasPorId]);
   const nomeCorretorFiltro = listaCorretores.find(c => c.id === filterCorretorId)?.nome || "";
 
   // ---- Quitação em massa: pagar de uma vez o saldo de um corretor em várias locações ----
@@ -268,6 +294,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
 
       if (!matchText) return false;
       if (filterCorretorId && !(r.distribuicao || []).some(d => d.corretorId === filterCorretorId)) return false;
+      if (filterSemConta && !temParticipanteSemConta(r)) return false;
 
       const st = getRowStatus(r);
       if (filterStatus === "TODOS" || filterStatus === "TUDO") return true;
@@ -276,7 +303,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
       if (filterStatus === "ATRASADO" || filterStatus === "ATRASO") return st === "atrasado";
       return true;
     });
-  }, [monthlyModels, filterText, filterStatus, filterCorretorId]);
+  }, [monthlyModels, filterText, filterStatus, filterCorretorId, filterSemConta, contasPorId]);
 
   // Quando a busca combina com o nome de um corretor específico, os valores em dinheiro (pago/a
   // receber) passam a considerar só a parte dele no rateio — não a locação inteira — para que
@@ -2157,6 +2184,18 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                 ))}
               </select>
             </label>
+            {(qtdSemConta > 0 || filterSemConta) && (
+              <button
+                type="button"
+                onClick={() => setFilterSemConta(v => !v)}
+                title="Locações com nomes no rateio que não são usuários do sistema (dados de teste ou usuário excluído). Revise e exclua as que forem de teste."
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold border cursor-pointer shrink-0 ${
+                  filterSemConta ? "bg-amber-100 text-amber-900 border-amber-300" : "bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100"
+                }`}
+              >
+                {qtdSemConta} com nome sem conta
+              </button>
+            )}
 
             {/* Status Pills */}
             <div className="flex items-center gap-2 flex-wrap">
@@ -2220,13 +2259,14 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
               </button>
 
               {/* Reset filter */}
-              {(filterText || filterStatus !== "TODOS" || filterCorretorId) && (
+              {(filterText || filterStatus !== "TODOS" || filterCorretorId || filterSemConta) && (
                 <button
                   type="button"
                   onClick={() => {
                     setFilterText("");
                     setFilterStatus("TODOS");
                     setFilterCorretorId("");
+                    setFilterSemConta(false);
                   }}
                   title="Limpar filtros"
                   className="p-1.5 text-slate-400 hover:text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200/60 rounded-lg cursor-pointer transition-all ml-1"
