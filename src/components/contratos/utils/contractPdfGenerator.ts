@@ -1,7 +1,7 @@
 import { ContratoLocacao } from "../types/contractTypes";
 import { CompanySettings } from "../../../types";
 import { buildVariableMap, resolveContractText } from "./contractVariableResolver";
-import { assinaturasDoBloco } from "./contractSignatures";
+import { assinaturasDoBloco, espacosAssinatura } from "./contractSignatures";
 
 const escaparHtml = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
@@ -94,27 +94,30 @@ export function printContractDocument(
             ${resolvedContent}
           </div>
 
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 32px 24px; margin-top: 36px;">
-            ${(() => {
-              const assin = assinaturasDoBloco(block, contract, variableMap);
-              const impar = assin.linhas.length % 2 === 1;
-              const linhas = assin.linhas.map((l, idx) => `
-                <div style="text-align: center;${impar && idx === assin.linhas.length - 1 ? " grid-column: span 2; max-width: 60%; margin: 0 auto; width: 100%;" : ""}">
-                  <div style="border-top: 1.5px solid #0f172a; width: 85%; margin: 0 auto 6px auto;"></div>
-                  <p style="font-weight: 700; font-size: 10pt; margin: 0;">${escaparHtml(l.nome || "")}</p>
-                  ${l.papel ? `<p style="font-size: 8.5pt; color: #64748b; margin: 2px 0 0 0;">${escaparHtml(l.papel)}</p>` : ""}
-                  ${l.doc ? `<p style="font-size: 8pt; color: #94a3b8; margin: 0;">${escaparHtml(l.doc)}</p>` : ""}
-                </div>`).join("");
-              const testemunhas = Array.from({ length: assin.testemunhas }).map((_, idx) => `
-                <div style="text-align: center; margin-top: 20px;">
-                  <div style="border-top: 1px dashed #94a3b8; width: 85%; margin: 0 auto 6px auto;"></div>
-                  <p style="font-size: 9pt; font-weight: 600; margin: 0;">${idx + 1}ª TESTEMUNHA</p>
-                  <p style="font-size: 8pt; color: #64748b; margin: 0;">Nome: ___________________________</p>
-                  <p style="font-size: 8pt; color: #64748b; margin: 0;">CPF: ____________________________</p>
-                </div>`).join("");
-              return linhas + testemunhas;
-            })()}
-          </div>
+          ${(() => {
+            const assin = assinaturasDoBloco(block, contract, variableMap);
+            const esp = espacosAssinatura(assin);
+            const duas = esp.colunas === 2;
+            const impar = duas && assin.linhas.length % 2 === 1;
+            const grade = (extra = "") => `display: grid; grid-template-columns: ${duas ? "1fr 1fr" : "1fr"}; column-gap: 32px; row-gap: ${esp.espacoEntrePx}px;${extra}`;
+            const largura = duas ? "" : " max-width: 60%; margin: 0 auto; width: 100%;";
+            const linhas = assin.linhas.map((l, idx) => `
+              <div style="text-align: center; padding-top: ${esp.espacoAssinarPx}px; page-break-inside: avoid;${impar && idx === assin.linhas.length - 1 ? " grid-column: span 2; max-width: 60%; margin: 0 auto; width: 100%;" : largura}">
+                <div style="border-top: 1.5px solid #0f172a; width: 85%; margin: 0 auto 6px auto;"></div>
+                <p style="font-weight: 700; font-size: 10pt; margin: 0;">${escaparHtml(l.nome || "")}</p>
+                ${l.papel ? `<p style="font-size: 8.5pt; color: #64748b; margin: 2px 0 0 0;">${escaparHtml(l.papel)}</p>` : ""}
+                ${l.doc ? `<p style="font-size: 8pt; color: #94a3b8; margin: 0;">${escaparHtml(l.doc)}</p>` : ""}
+              </div>`).join("");
+            const testemunhas = Array.from({ length: assin.testemunhas }).map((_, idx) => `
+              <div style="padding-top: ${esp.espacoAssinarPx}px; font-size: 9pt; color: #334155; page-break-inside: avoid;${largura}">
+                <div style="border-top: 1px solid #64748b; width: 100%; margin: 0 0 4px 0;"></div>
+                <p style="font-weight: 600; text-align: center; margin: 0 0 8px 0;">${idx + 1}ª TESTEMUNHA</p>
+                <div style="display: flex; align-items: flex-end; gap: 4px; margin-bottom: 8px;"><span>Nome:</span><span style="flex: 1; border-bottom: 1px solid #94a3b8; height: 14px;"></span></div>
+                <div style="display: flex; align-items: flex-end; gap: 4px;"><span>CPF:</span><span style="flex: 1; border-bottom: 1px solid #94a3b8; height: 14px;"></span></div>
+              </div>`).join("");
+            return `<div style="${grade(" margin-top: 12px;")}">${linhas}</div>`
+              + (assin.testemunhas > 0 ? `<div style="${grade(` margin-top: ${esp.espacoEntrePx}px;`)}">${testemunhas}</div>` : "");
+          })()}
         </div>
       `;
     } else if (block.type === "page_break") {

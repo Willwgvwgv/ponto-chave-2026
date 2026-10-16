@@ -117,6 +117,9 @@ export interface ContractBlock {
     assinaturas?: {
       linhas: { nome: string; papel: string; doc: string }[];
       testemunhas: number;
+      espacoAssinarPx?: number;
+      espacoEntrePx?: number;
+      colunas?: 1 | 2;
     };
     tableData?: { headers: string[]; rows: string[][] };
     calloutType?: "info" | "warning" | "highlight";
