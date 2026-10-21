@@ -877,7 +877,7 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
                     {e.scaza?.ultimaAtualizacao && (e.scaza?.faturasEmAberto || []).length === 0 && (
                       <p className="mt-1 text-xs text-emerald-700">Scaza: nenhuma conta de luz em aberto · {new Date(e.scaza.ultimaAtualizacao).toLocaleDateString("pt-BR")}</p>
                     )}
-                    {isAdmin && !e.scaza?.contaId && (
+                    {podeEditar && !e.arquivada && !e.scaza?.contaId && (
                       <button type="button" onClick={() => setCadastroScaza(e)}
                         className="mt-2 h-8 px-3 rounded-lg border border-zinc-300 bg-white text-xs font-medium text-zinc-800 hover:bg-zinc-50">
                         Cadastrar na Scaza

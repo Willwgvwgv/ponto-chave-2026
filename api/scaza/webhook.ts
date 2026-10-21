@@ -133,7 +133,9 @@ export default async function handler(req: any, res: any) {
     if (typeof corpoReq === "string") { try { corpoReq = JSON.parse(corpoReq); } catch { corpoReq = {}; } }
     const id = String(corpoReq?.id || "").trim();
     const acao = corpoReq?.acao;
-    if (acao !== "sincronizar" && papel !== "admin") return res.status(403).json({ error: "só o administrador pode fazer isso" });
+    // Atualizar e cadastrar (só locações da própria empresa): admin ou quem tem a permissão Energia.
+    // Reprocessar e vincular avisos: só admin.
+    if (acao !== "sincronizar" && acao !== "cadastrar" && papel !== "admin") return res.status(403).json({ error: "só o administrador pode fazer isso" });
     if (acao === "sincronizar") {
       try {
         const resumo = await sincronizarScaza(adminDb);
