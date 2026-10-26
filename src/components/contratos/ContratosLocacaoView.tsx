@@ -164,6 +164,8 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
   const modeloSelecionado = modelos.find((m) => m.id === selectedTemplateId);
   const isVenda = modeloSelecionado?.tipoDocumento === "venda";
   const isProcuracao = ehModeloProcuracao(modeloSelecionado);
+  // Venda com pagamento direto entre as partes: sem banco, o "financiado" é o saldo a pagar ao vendedor
+  const isVendaSemBanco = modeloSelecionado?.id === "modelo-venda-sem-financiamento";
 
   // 1. Subscribe to Contratos in Firestore
   useEffect(() => {
@@ -1150,7 +1152,7 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
                         className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
                     </div>
                     <div>
-                      <label htmlFor="nc-financiado" className="block text-slate-800 font-bold mb-1">Valor Financiado</label>
+                      <label htmlFor="nc-financiado" className="block text-slate-800 font-bold mb-1">{isVendaSemBanco ? "Saldo a pagar ao vendedor" : "Valor Financiado"}</label>
                       <CurrencyInput id="nc-financiado" value={novoContratoForm.valorFinanciado || ""}
                         onChange={(v) => setNovoContratoForm({ ...novoContratoForm, valorFinanciado: v })}
                         placeholder={novoContratoForm.valorVenda ? `${formatCurrencyBRL(Math.max(0, novoContratoForm.valorVenda - (novoContratoForm.valorSinal || 0)))} (automático)` : "venda − sinal"}
@@ -1164,19 +1166,23 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
                       Sinal + financiado = {formatCurrencyBRL((novoContratoForm.valorSinal || 0) + (novoContratoForm.valorFinanciado || 0))}, diferente do valor da venda ({formatCurrencyBRL(novoContratoForm.valorVenda)}).
                     </p>
                   )}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className={`grid grid-cols-1 gap-3 ${isVendaSemBanco ? "md:grid-cols-1" : "md:grid-cols-3"}`}>
+                    {!isVendaSemBanco && (
                     <div>
                       <label htmlFor="nc-banco" className="block text-slate-800 font-bold mb-1">Banco do Financiamento</label>
                       <input id="nc-banco" type="text" value={novoContratoForm.bancoFinanciamento}
                         onChange={(e) => setNovoContratoForm({ ...novoContratoForm, bancoFinanciamento: e.target.value })}
                         className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
                     </div>
+                    )}
+                    {!isVendaSemBanco && (
                     <div>
                       <label htmlFor="nc-prazo-doc" className="block text-slate-800 font-bold mb-1">Prazo p/ Documentação (dias úteis)</label>
                       <input id="nc-prazo-doc" type="number" min="0" value={novoContratoForm.prazoDocumentacaoDias || ""}
                         onChange={(e) => setNovoContratoForm({ ...novoContratoForm, prazoDocumentacaoDias: parseInt(e.target.value) || 0 })}
                         className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
                     </div>
+                    )}
                     <div>
                       <label htmlFor="nc-comissao" className="block text-slate-800 font-bold mb-1">Comissão (%)</label>
                       <div className="flex gap-2">
