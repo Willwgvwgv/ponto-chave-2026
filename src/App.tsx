@@ -116,6 +116,7 @@ const InteressadosCidadeJardim = lazy(() => import('./components/bellaWhite/Inte
 const ContratosLocacaoView = lazy(() => import('./components/contratos/ContratosLocacaoView').then(m => ({ default: m.ContratosLocacaoView })));
 import { PontoHeaderCapsule } from "./components/ponto/PontoHeaderCapsule";
 import { ConfirmModal } from './components/ui/ConfirmModal';
+import { TaskAttachmentsView, AnexosEmEdicao, prepararAnexos, arquivosDoColar, lerPrintDaAreaDeTransferencia, anexosDaTarefa, tamanhoAnexos, LIMITE_TOTAL_ANEXOS } from "./components/tarefas/TaskAttachments";
 import { Task, Priority, Tool, RecurrenceType, UserProfile, ProcessInstance, CompanySettings, ProcessTemplate, ProcessStep, KanbanColumn, EscalaTipo, JornadaDiasConfig } from "./types";
 import { ESCALAS_PREDEFINIDAS, getExpectedDailyMinutes, getJornadaDescription } from "./utils/jornadaUtils";
 import { 
@@ -169,7 +170,10 @@ const handleOpenAttachment = (url: string, name: string) => {
   if (url.startsWith('data:')) {
     try {
       const parts = url.split(',');
-      const contentType = parts[0].split(':')[1].split(';')[0];
+      const rawType = parts[0].split(':')[1].split(';')[0].toLowerCase();
+      // Só abre no navegador tipos inofensivos; o resto (html, svg, scripts) é baixado.
+      const abrivel = /^(image\/(png|jpe?g|gif|webp)|application\/pdf)$/.test(rawType);
+      const contentType = abrivel ? rawType : 'application/octet-stream';
       const byteCharacters = atob(parts[1]);
       const byteNumbers = new Array(byteCharacters.length);
       for (let i = 0; i < byteCharacters.length; i++) {
@@ -179,7 +183,7 @@ const handleOpenAttachment = (url: string, name: string) => {
       const blob = new Blob([byteArray], { type: contentType });
       const blobUrl = URL.createObjectURL(blob);
       
-      const newWindow = window.open(blobUrl, '_blank');
+      const newWindow = abrivel ? window.open(blobUrl, '_blank') : null;
       if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
         const link = document.createElement('a');
         link.href = blobUrl;
@@ -3313,6 +3317,8 @@ function AppContent() {
   const [deleteToolModal, setDeleteToolModal] = useState<{ isOpen: boolean; toolId: string | null }>({ isOpen: false, toolId: null });
   const [dashboardFilter, setDashboardFilter] = useState<"all" | "today" | "completed" | "high" | "overdue">("today");
   const [adminTaskView, setAdminTaskView] = useState<"all" | "mine">("all");
+  // Filtro do admin: ver só as tarefas de uma pessoa ("" = toda a equipe).
+  const [adminTaskPerson, setAdminTaskPerson] = useState<string>("");
   const [activeInstanceId, setActiveInstanceId] = useState<string | null>(null);
   const isInitialLoad = React.useRef(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -3546,6 +3552,19 @@ function AppContent() {
     }
   };
 
+  const adicionarAnexosConclusao = async (arquivos: File[]) => {
+    const tarefa = tasks.find(t => t.id === completionModal.taskId);
+    setCompletionModal(prev => ({ ...prev, isUploading: true }));
+    try {
+      const jaExistentes = [...(tarefa ? anexosDaTarefa(tarefa) : []), ...(completionModal.attachments || [])];
+      const novos = await prepararAnexos(arquivos, jaExistentes);
+      setCompletionModal(prev => ({ ...prev, attachments: [...(prev.attachments || []), ...novos] }));
+      if (novos.length > 0) toast.success("Arquivos anexados!");
+    } finally {
+      setCompletionModal(prev => ({ ...prev, isUploading: false }));
+    }
+  };
+
   const confirmCompletion = async (createNext: boolean) => {
     const taskId = completionModal.taskId;
     if (!taskId || !user) return;
@@ -3560,10 +3579,16 @@ function AppContent() {
       };
       
       if (completionModal.attachments && completionModal.attachments.length > 0) {
-        updateData.attachments = completionModal.attachments;
-        // Backward compatibility
-        updateData.proofUrl = completionModal.attachments[0].url;
-        updateData.proofName = completionModal.attachments[0].name;
+        // Mantém os anexos que vieram com a tarefa e acrescenta a comprovação.
+        const juntos = [...anexosDaTarefa(task), ...completionModal.attachments];
+        if (tamanhoAnexos(juntos) > LIMITE_TOTAL_ANEXOS) {
+          toast.error("Os anexos passaram do limite da tarefa. Remova algum arquivo da comprovação.");
+          return;
+        }
+        updateData.attachments = juntos;
+        // A cópia antiga (proofUrl) já foi incluída em "juntos"; não duplicar o arquivo.
+        updateData.proofUrl = null;
+        updateData.proofName = null;
       }
 
       await updateDoc(doc(db, "tasks", taskId), updateData);
@@ -3670,6 +3695,19 @@ function AppContent() {
     }
   };
 
+  const adicionarAnexosNovaTarefa = async (arquivos: File[]) => {
+    setIsTaskUploading(true);
+    try {
+      const novos = await prepararAnexos(arquivos, newTaskAttachments);
+      if (novos.length > 0) {
+        setNewTaskAttachments(prev => [...prev, ...novos]);
+        toast.success(novos.length === 1 ? "Anexo adicionado." : `${novos.length} anexos adicionados.`);
+      }
+    } finally {
+      setIsTaskUploading(false);
+    }
+  };
+
   const addTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTaskTitle.trim() || !user || isSubmitting) return;
@@ -3693,9 +3731,6 @@ function AppContent() {
 
       if (newTaskAttachments.length > 0) {
         newTaskData.attachments = newTaskAttachments;
-        // Backward compatibility
-        newTaskData.proofUrl = newTaskAttachments[0].url;
-        newTaskData.proofName = newTaskAttachments[0].name;
       }
       
       await addDoc(collection(db, "tasks"), newTaskData);
@@ -3802,9 +3837,13 @@ function AppContent() {
     if (!isAdmin || adminTaskView === "mine") {
       return baseTasks.filter(t => t.uid === user.uid);
     }
+
+    if (adminTaskPerson) {
+      return baseTasks.filter(t => t.uid === adminTaskPerson);
+    }
     
     return baseTasks;
-  }, [tasks, user, isAdmin, adminTaskView]);
+  }, [tasks, user, isAdmin, adminTaskView, adminTaskPerson]);
 
   const overdueTasks = useMemo(() => filteredTasksByUser.filter(t => !t.completed && t.date < TODAY_ISO), [filteredTasksByUser]);
   const overdueProcesses = useMemo(() => processes.filter(p => p.status === 'active' && p.dueDate && p.dueDate < TODAY_ISO), [processes]);
@@ -4178,6 +4217,14 @@ function AppContent() {
                     </button>
                   </div>
                 )}
+                {isAdmin && adminTaskView === "all" && (
+                  <FiltroPessoaTarefas
+                    valor={adminTaskPerson}
+                    onChange={setAdminTaskPerson}
+                    pessoas={allUsers}
+                    tarefas={tasks}
+                  />
+                )}
               </div>
               <div className="flex items-center gap-4">
                 <div className="px-5 py-2 bg-slate-200/50 backdrop-blur-sm rounded-full flex items-center gap-3 border border-slate-200/50 shadow-inner">
@@ -4528,20 +4575,6 @@ function AppContent() {
                             {task.description}
                           </p>
                         )}
-                        {task.proofUrl && (
-                          <div className="mt-2 flex items-center gap-2">
-                            <button 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleOpenAttachment(task.proofUrl!, task.proofName || "Comprovação");
-                              }}
-                              className="inline-flex items-center gap-1.5 px-2 py-1 bg-blue-50 text-blue-600 border border-blue-100 rounded-lg text-[10px] font-bold hover:bg-blue-100 transition-all"
-                            >
-                              <FileText className="w-3 h-3" />
-                              Ver Comprovação
-                            </button>
-                          </div>
-                        )}
                         <div className="flex items-center gap-3 mt-1">
                           <span className={cn(
                             "text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded",
@@ -4556,34 +4589,7 @@ function AppContent() {
                             {task.actionLabel || "Ação"}
                           </span>
                         </div>
-                        {((task.proofUrl && !task.attachments) || (task.attachments && task.attachments.length > 0)) && (
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            {task.attachments ? task.attachments.map((att, aIdx) => (
-                              <button 
-                                key={aIdx}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleOpenAttachment(att.url, att.name);
-                                }}
-                                className="inline-flex items-center gap-1.5 px-2 py-1 bg-white text-slate-600 border border-slate-200 rounded-lg text-[10px] font-bold hover:bg-slate-50 hover:border-blue-200 transition-all shadow-sm"
-                              >
-                                <FileText className="w-3 h-3 text-blue-500" />
-                                {att.name}
-                              </button>
-                            )) : (
-                              <button 
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleOpenAttachment(task.proofUrl!, task.proofName || "Ver Comprovação");
-                                }}
-                                className="inline-flex items-center gap-1.5 px-2 py-1 bg-blue-50 text-blue-600 border border-blue-100 rounded-lg text-[10px] font-bold hover:bg-blue-100 transition-all"
-                              >
-                                <FileText className="w-3 h-3" />
-                                {task.proofName || "Ver Comprovação"}
-                              </button>
-                            )}
-                          </div>
-                        )}
+                        <TaskAttachmentsView anexos={anexosDaTarefa(task)} onAbrirArquivo={handleOpenAttachment} />
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -4632,6 +4638,9 @@ function AppContent() {
             currentUser={user}
             adminTaskView={adminTaskView}
             setAdminTaskView={setAdminTaskView}
+            adminTaskPerson={adminTaskPerson}
+            setAdminTaskPerson={setAdminTaskPerson}
+            allTasks={tasks}
           />
         ) : activeTab === "processes" ? (
           <ProcessesView 
@@ -4828,7 +4837,16 @@ function AppContent() {
                 <h3 className="text-xl font-bold text-slate-900">Nova Atividade</h3>
                 <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><X className="w-5 h-5 text-slate-400" /></button>
               </div>
-              <form onSubmit={addTask} className="p-8 pt-0 space-y-6 overflow-y-auto custom-scrollbar flex-1 mt-6">
+              <form
+                onSubmit={addTask}
+                onPaste={async (e) => {
+                  const arquivos = arquivosDoColar(e);
+                  if (arquivos.length === 0) return; // texto normal: deixa colar nos campos
+                  e.preventDefault();
+                  await adicionarAnexosNovaTarefa(arquivos);
+                }}
+                className="p-8 pt-0 space-y-6 overflow-y-auto custom-scrollbar flex-1 mt-6"
+              >
                 <div>
                   <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Título</label>
                   <input autoFocus type="text" value={newTaskTitle} onChange={(e) => setNewTaskTitle(e.target.value)} placeholder="O que precisa ser feito?" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#3B82F6] transition-all" />
@@ -4838,83 +4856,52 @@ function AppContent() {
                   <textarea value={newTaskDescription} onChange={(e) => setNewTaskDescription(e.target.value)} placeholder="Ex: Acessar sistema X..." rows={3} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#3B82F6] transition-all resize-none" />
                 </div>
 
-                <div className="space-y-4">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Anexos e Documentos (Opcional)</label>
-                  
-                  {newTaskAttachments.length > 0 && (
-                    <div className="space-y-2">
-                      {newTaskAttachments.map((file, fIdx) => (
-                        <div key={fIdx} className="flex items-center justify-between p-3 bg-slate-50 border border-slate-100 rounded-2xl group">
-                          <div className="flex items-center gap-3 overflow-hidden">
-                            <FileText className="w-4 h-4 text-blue-500 shrink-0" />
-                            <span className="text-xs font-bold text-slate-700 truncate">{file.name}</span>
-                          </div>
-                          <button 
-                            type="button"
-                            onClick={() => {
-                              const newAtts = [...newTaskAttachments];
-                              newAtts.splice(fIdx, 1);
-                              setNewTaskAttachments(newAtts);
-                            }}
-                            className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                <div className="space-y-3">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Prints, imagens e documentos (opcional)</label>
 
-                  <button 
-                    type="button"
-                    onClick={() => {
-                      const input = document.createElement('input');
-                      input.type = 'file';
-                      input.multiple = true;
-                      input.accept = 'image/*,application/pdf,.doc,.docx';
-                      input.onchange = async (e: any) => {
-                        const files = Array.from(e.target.files as FileList);
-                        if (files.length === 0) return;
+                  <AnexosEmEdicao
+                    anexos={newTaskAttachments}
+                    onRemover={(idx) => setNewTaskAttachments(prev => prev.filter((_, i) => i !== idx))}
+                  />
 
-                        setIsTaskUploading(true);
-                        
-                        const newAttachments = [...newTaskAttachments];
-                        
-                        for (const file of files) {
-                          if (file.size > 1024 * 1024) {
-                            toast.error(`Arquivo ${file.name} é muito grande (>1MB).`);
-                            continue;
-                          }
-
-                          try {
-                            const base64 = await new Promise<string>((resolve, reject) => {
-                              const reader = new FileReader();
-                              reader.onload = () => resolve(reader.result as string);
-                              reader.onerror = reject;
-                              reader.readAsDataURL(file);
-                            });
-                            newAttachments.push({ name: file.name, url: base64 });
-                          } catch (err) {
-                            toast.error(`Erro ao processar ${file.name}`);
-                          }
-                        }
-
-                        setNewTaskAttachments(newAttachments);
-                        setIsTaskUploading(false);
-                      };
-                      input.click();
-                    }}
-                    className="w-full py-4 border-2 border-dashed border-slate-100 rounded-2xl flex flex-col items-center justify-center gap-2 text-slate-400 hover:border-blue-400 hover:bg-blue-50/50 transition-all group"
-                  >
-                    {isTaskUploading ? (
-                      <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-                    ) : (
-                      <>
-                        <Upload className="w-5 h-5 group-hover:text-blue-500 transition-colors" />
-                        <span className="text-[10px] font-bold uppercase text-center">Clique para anexar arquivos</span>
-                      </>
-                    )}
-                  </button>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      disabled={isTaskUploading}
+                      onClick={async () => {
+                        const arquivos = await lerPrintDaAreaDeTransferencia();
+                        if (arquivos.length > 0) await adicionarAnexosNovaTarefa(arquivos);
+                      }}
+                      className="py-3 border-2 border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center gap-1 text-slate-500 hover:border-blue-400 hover:bg-blue-50/50 transition-all disabled:opacity-50"
+                    >
+                      <Copy className="w-4 h-4" />
+                      <span className="text-[10px] font-bold uppercase">Colar print</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isTaskUploading}
+                      onClick={() => {
+                        const input = document.createElement('input');
+                        input.type = 'file';
+                        input.multiple = true;
+                        input.accept = 'image/*,application/pdf,.doc,.docx';
+                        input.onchange = async (e: any) => {
+                          const files = Array.from(e.target.files as FileList);
+                          if (files.length > 0) await adicionarAnexosNovaTarefa(files);
+                        };
+                        input.click();
+                      }}
+                      className="py-3 border-2 border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center gap-1 text-slate-500 hover:border-blue-400 hover:bg-blue-50/50 transition-all disabled:opacity-50"
+                    >
+                      {isTaskUploading ? (
+                        <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <Upload className="w-4 h-4" />
+                      )}
+                      <span className="text-[10px] font-bold uppercase">Escolher arquivo</span>
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-slate-400 px-1">Dica: tire o print e aperte <b>Ctrl+V</b> aqui na janela. Imagens são reduzidas automaticamente.</p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -5420,6 +5407,12 @@ function AppContent() {
               animate={{ opacity: 1, scale: 1, y: 0 }} 
               exit={{ opacity: 0, scale: 0.95, y: 20 }} 
               className="relative bg-white w-full max-w-sm rounded-[32px] shadow-2xl overflow-hidden p-8 text-center flex flex-col items-center"
+              onPaste={async (e: React.ClipboardEvent) => {
+                const arquivos = arquivosDoColar(e);
+                if (arquivos.length === 0) return;
+                e.preventDefault();
+                await adicionarAnexosConclusao(arquivos);
+              }}
             >
               {/* Close Button */}
               <button 
@@ -5436,29 +5429,12 @@ function AppContent() {
               <div className="w-full mb-6">
                 <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 px-1 text-left">Anexos e Documentos (Opcional)</label>
                 
-                {completionModal.attachments && completionModal.attachments.length > 0 && (
-                  <div className="space-y-2 mb-3">
-                    {completionModal.attachments.map((file, fIdx) => (
-                      <div key={fIdx} className="flex items-center justify-between p-3 bg-slate-50 border border-slate-100 rounded-2xl group">
-                        <div className="flex items-center gap-3 overflow-hidden">
-                          <FileText className="w-4 h-4 text-blue-500 shrink-0" />
-                          <span className="text-[10px] font-bold text-slate-700 truncate">{file.name}</span>
-                        </div>
-                        <button 
-                          type="button"
-                          onClick={() => {
-                            const newAtts = [...(completionModal.attachments || [])];
-                            newAtts.splice(fIdx, 1);
-                            setCompletionModal({ ...completionModal, attachments: newAtts });
-                          }}
-                          className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <div className="mb-3">
+                  <AnexosEmEdicao
+                    anexos={completionModal.attachments || []}
+                    onRemover={(idx) => setCompletionModal(prev => ({ ...prev, attachments: (prev.attachments || []).filter((_, i) => i !== idx) }))}
+                  />
+                </div>
 
                 <button 
                   onClick={() => {
@@ -5470,31 +5446,7 @@ function AppContent() {
                       const files = Array.from(e.target.files as FileList);
                       if (files.length === 0) return;
 
-                      setCompletionModal(prev => ({ ...prev, isUploading: true }));
-                      
-                      const newAttachments = [...(completionModal.attachments || [])];
-                      
-                      for (const file of files) {
-                        if (file.size > 1024 * 1024) {
-                          toast.error(`Arquivo ${file.name} é muito grande (>1MB).`);
-                          continue;
-                        }
-
-                        try {
-                          const base64 = await new Promise<string>((resolve, reject) => {
-                            const reader = new FileReader();
-                            reader.onload = () => resolve(reader.result as string);
-                            reader.onerror = reject;
-                            reader.readAsDataURL(file);
-                          });
-                          newAttachments.push({ name: file.name, url: base64 });
-                        } catch (err) {
-                          toast.error(`Erro ao processar ${file.name}`);
-                        }
-                      }
-
-                      setCompletionModal(prev => ({ ...prev, attachments: newAttachments, isUploading: false }));
-                      toast.success("Arquivos anexados!");
+                      await adicionarAnexosConclusao(files);
                     };
                     input.click();
                   }}
@@ -5807,7 +5759,50 @@ function AppContent() {
 
 // --- Sub-Views ---
 
-const CalendarView = ({ selectedDate, setSelectedDate, tasks, onAddTask, onToggleTask, onTransferTask, isAdmin, allUsers, currentUser, adminTaskView, setAdminTaskView }: any) => {
+// Seletor do admin para ver só as tarefas de uma pessoa (mostra quantas pendentes cada um tem).
+const FiltroPessoaTarefas = ({ valor, onChange, pessoas, tarefas }: { valor: string; onChange: (v: string) => void; pessoas: any[]; tarefas: Task[] }) => {
+  const pendentesPorPessoa = useMemo(() => {
+    const mapa: Record<string, number> = {};
+    (tarefas || []).forEach(t => { if (!t.completed) mapa[t.uid] = (mapa[t.uid] || 0) + 1; });
+    return mapa;
+  }, [tarefas]);
+  const ordenadas = useMemo(
+    () => [...(pessoas || [])].sort((a, b) => (a.displayName || a.email || "").localeCompare(b.displayName || b.email || "", "pt-BR")),
+    [pessoas]
+  );
+  return (
+    <div className="mt-2 flex items-center gap-2">
+      <label htmlFor="filtro-pessoa-tarefas" className="text-[9px] font-black uppercase tracking-widest text-slate-400">Pessoa</label>
+      <select
+        id="filtro-pessoa-tarefas"
+        value={valor}
+        onChange={(e) => onChange(e.target.value)}
+        className={cn(
+          "px-3 py-1.5 rounded-xl border text-xs font-semibold bg-white focus:outline-none focus:ring-2 focus:ring-blue-500",
+          valor ? "border-blue-300 text-blue-700" : "border-slate-200 text-slate-600"
+        )}
+      >
+        <option value="">Toda a equipe</option>
+        {ordenadas.map(p => (
+          <option key={p.uid} value={p.uid}>
+            {(p.displayName || p.email)}{pendentesPorPessoa[p.uid] ? ` (${pendentesPorPessoa[p.uid]} pendentes)` : ""}
+          </option>
+        ))}
+      </select>
+      {valor && (
+        <button
+          type="button"
+          onClick={() => onChange("")}
+          className="text-[10px] font-bold text-slate-400 hover:text-slate-600 underline"
+        >
+          Limpar
+        </button>
+      )}
+    </div>
+  );
+};
+
+const CalendarView = ({ selectedDate, setSelectedDate, tasks, allTasks, onAddTask, onToggleTask, onTransferTask, isAdmin, allUsers, currentUser, adminTaskView, setAdminTaskView, adminTaskPerson, setAdminTaskPerson }: any) => {
   const monthStart = startOfMonth(selectedDate);
   const monthEnd = endOfMonth(monthStart);
   const startDate = startOfWeek(monthStart);
@@ -5846,6 +5841,14 @@ const CalendarView = ({ selectedDate, setSelectedDate, tasks, onAddTask, onToggl
                 Minhas
               </button>
             </div>
+          )}
+          {isAdmin && adminTaskView === "all" && setAdminTaskPerson && (
+            <FiltroPessoaTarefas
+              valor={adminTaskPerson}
+              onChange={setAdminTaskPerson}
+              pessoas={allUsers}
+              tarefas={allTasks || tasks}
+            />
           )}
         </div>
         <div className="flex items-center gap-4">
@@ -5947,7 +5950,8 @@ const CalendarView = ({ selectedDate, setSelectedDate, tasks, onAddTask, onToggl
                         Transferida por: {task.transferredFromName}
                       </p>
                     )}
-                    {task.description && <p className="text-[10px] text-slate-400 mt-0.5 line-clamp-1">{task.description}</p>}
+                    {task.description && <p className="text-[10px] text-slate-400 mt-0.5 line-clamp-2">{task.description}</p>}
+                    <TaskAttachmentsView anexos={anexosDaTarefa(task)} onAbrirArquivo={handleOpenAttachment} compacto />
                   </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
