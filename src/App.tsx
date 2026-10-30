@@ -116,6 +116,7 @@ const InteressadosCidadeJardim = lazy(() => import('./components/bellaWhite/Inte
 const ContratosLocacaoView = lazy(() => import('./components/contratos/ContratosLocacaoView').then(m => ({ default: m.ContratosLocacaoView })));
 import { PontoHeaderCapsule } from "./components/ponto/PontoHeaderCapsule";
 import { ConfirmModal } from './components/ui/ConfirmModal';
+import { TaskIdade } from "./components/tarefas/TaskIdade";
 import { TaskAttachmentsView, AnexosEmEdicao, prepararAnexos, arquivosDoColar, lerPrintDaAreaDeTransferencia, anexosDaTarefa, tamanhoAnexos, LIMITE_TOTAL_ANEXOS } from "./components/tarefas/TaskAttachments";
 import { Task, Priority, Tool, RecurrenceType, UserProfile, ProcessInstance, CompanySettings, ProcessTemplate, ProcessStep, KanbanColumn, EscalaTipo, JornadaDiasConfig } from "./types";
 import { ESCALAS_PREDEFINIDAS, getExpectedDailyMinutes, getJornadaDescription } from "./utils/jornadaUtils";
@@ -3575,6 +3576,7 @@ function AppContent() {
     try {
       const updateData: any = { 
         completed: true,
+        completedAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       };
       
@@ -4567,6 +4569,7 @@ function AppContent() {
                             </span>
                           )}
                         </div>
+                        <TaskIdade task={task} />
                         {task.description && (
                           <p className={cn(
                             "text-xs text-slate-500 mt-1 leading-relaxed",
@@ -5950,6 +5953,7 @@ const CalendarView = ({ selectedDate, setSelectedDate, tasks, allTasks, onAddTas
                         Transferida por: {task.transferredFromName}
                       </p>
                     )}
+                    <TaskIdade task={task} compacto />
                     {task.description && <p className="text-[10px] text-slate-400 mt-0.5 line-clamp-2">{task.description}</p>}
                     <TaskAttachmentsView anexos={anexosDaTarefa(task)} onAbrirArquivo={handleOpenAttachment} compacto />
                   </div>
