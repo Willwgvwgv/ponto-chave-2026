@@ -535,7 +535,7 @@ export const LancamentoModal: React.FC<LancamentoModalProps> = ({
       );
       onClose();
     } catch (err: any) {
-      toast.error("Erro ao salvar lançamento: " + (err?.message || "Tente novamente"));
+      toast.error(err?.message || "Erro ao salvar lançamento. Tente novamente.");
     } finally {
       setIsSaving(false);
     }
