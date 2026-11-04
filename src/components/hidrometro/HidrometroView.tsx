@@ -150,173 +150,188 @@ export const HidrometroView: React.FC<HidrometroViewProps> = ({
     subtitulo: ""
   });
 
-  // 1. Sync Firestore Edifícios
+  // ---- Dados (Firestore) ----
+  // Antes, o Firestore não tinha regra para estas coleções: toda gravação era recusada
+  // e o sistema guardava só no navegador (localStorage), sem avisar. As fotos também
+  // iam dentro do lançamento, o que estoura o limite de 1 MB por documento.
+  // Agora: tudo com companyId, fotos em documentos próprios (hidrometro_fotos) e erro visível.
+  const companyId = profile?.companyId || "";
+  const ehSuperAdmin = (user?.email || profile?.email) === "williangyn10@gmail.com" || profile?.role === "superadmin";
+  const [fotosPorId, setFotosPorId] = useState<Record<string, string>>({});
+  const [faturasBrutas, setFaturasBrutas] = useState<FaturaHidrometro[]>([]);
+
+  // Junta duas listas (filtrada pela empresa + leitura geral do superadmin) sem repetir.
+  const juntarPorId = <T extends { id: string }>(a: T[], b: T[]) => {
+    const m = new Map<string, T>();
+    [...a, ...b].forEach((x) => m.set(x.id, x));
+    return Array.from(m.values());
+  };
+
   useEffect(() => {
-    let unsubscribeEdificios: () => void = () => {};
-    let unsubscribeFaturas: () => void = () => {};
-
-    try {
-      const qEdificios = collection(db, "hidrometro_edificios");
-      unsubscribeEdificios = onSnapshot(
-        qEdificios,
-        (snapshot) => {
-          if (!snapshot.empty) {
-            const list: EdificioHidrometro[] = [];
-            snapshot.forEach((docSnap) => {
-              list.push({ id: docSnap.id, ...docSnap.data() } as EdificioHidrometro);
-            });
-            setEdificios(list);
-          } else {
-            // Initialize with sample if collection is empty
-            const localSaved = localStorage.getItem("hidrometro_edificios_cache");
-            if (localSaved) {
-              setEdificios(JSON.parse(localSaved));
-            } else {
-              setEdificios(INITIAL_EDIFICIOS_SAMPLE);
-              localStorage.setItem("hidrometro_edificios_cache", JSON.stringify(INITIAL_EDIFICIOS_SAMPLE));
-            }
-          }
-        },
-        (error) => {
-          console.warn("Firestore hidrometro_edificios offline/local fallback:", error);
-          const localSaved = localStorage.getItem("hidrometro_edificios_cache");
-          setEdificios(localSaved ? JSON.parse(localSaved) : INITIAL_EDIFICIOS_SAMPLE);
-        }
-      );
-
-      const qFaturas = collection(db, "hidrometro_faturas");
-      unsubscribeFaturas = onSnapshot(
-        qFaturas,
-        (snapshot) => {
-          if (!snapshot.empty) {
-            const list: FaturaHidrometro[] = [];
-            snapshot.forEach((docSnap) => {
-              list.push({ id: docSnap.id, ...docSnap.data() } as FaturaHidrometro);
-            });
-            list.sort((a, b) => (b.mesReferencia || "").localeCompare(a.mesReferencia || ""));
-            setFaturas(list);
-          } else {
-            const localFaturas = localStorage.getItem("hidrometro_faturas_cache");
-            if (localFaturas) {
-              setFaturas(JSON.parse(localFaturas));
-            }
-          }
-          setLoading(false);
-        },
-        (error) => {
-          console.warn("Firestore hidrometro_faturas fallback:", error);
-          const localFaturas = localStorage.getItem("hidrometro_faturas_cache");
-          if (localFaturas) {
-            setFaturas(JSON.parse(localFaturas));
-          }
+    if (!companyId) { setLoading(false); return; }
+    const parar: Array<() => void> = [];
+    const ouvir = <T,>(nome: string, aoReceber: (lista: T[], origem: string) => void, origem: string, filtrar: boolean) => {
+      const ref = collection(db, nome);
+      const q = filtrar ? query(ref, where("companyId", "==", companyId)) : ref;
+      parar.push(onSnapshot(q, (snap: any) => {
+        const lista: any[] = [];
+        snap.forEach((d: any) => lista.push({ id: d.id, ...d.data() }));
+        aoReceber(lista as T[], origem);
+      }, (err: any) => {
+        // A leitura geral (registros antigos sem empresa) só vale para o superadmin; pode falhar para os demais.
+        if (filtrar) {
+          console.error(`Hidrômetro: sem acesso a ${nome}`, err);
+          toast.error("Hidrômetro: sem permissão para ler os dados. Confira se as regras do Firebase estão publicadas.");
           setLoading(false);
         }
-      );
-    } catch (err) {
-      console.warn("Error setting up listeners:", err);
-      const localEd = localStorage.getItem("hidrometro_edificios_cache");
-      const localFat = localStorage.getItem("hidrometro_faturas_cache");
-      setEdificios(localEd ? JSON.parse(localEd) : INITIAL_EDIFICIOS_SAMPLE);
-      setFaturas(localFat ? JSON.parse(localFat) : []);
-      setLoading(false);
-    }
-
-    return () => {
-      unsubscribeEdificios();
-      unsubscribeFaturas();
+      }));
     };
-  }, []);
+    const fontes: Record<string, Record<string, any[]>> = { ed: {}, fat: {}, foto: {} };
+    const juntar = (tipo: "ed" | "fat" | "foto") => Object.values(fontes[tipo]).reduce((acc: any[], l) => juntarPorId(acc, l), []);
+    const origens = ehSuperAdmin ? [["empresa", true], ["geral", false]] as const : [["empresa", true]] as const;
+    origens.forEach(([origem, filtrar]) => {
+      ouvir<EdificioHidrometro>("hidrometro_edificios", (l, o) => { fontes.ed[o] = l; setEdificios(juntar("ed") as EdificioHidrometro[]); }, origem, filtrar);
+      ouvir<FaturaHidrometro>("hidrometro_faturas", (l, o) => {
+        fontes.fat[o] = l;
+        const todas = (juntar("fat") as FaturaHidrometro[]).sort((a, b) => (b.mesReferencia || "").localeCompare(a.mesReferencia || ""));
+        setFaturasBrutas(todas);
+        setLoading(false);
+      }, origem, filtrar);
+      ouvir<{ id: string; foto: string }>("hidrometro_fotos", (l, o) => {
+        fontes.foto[o] = l;
+        const mapa: Record<string, string> = {};
+        (juntar("foto") as any[]).forEach((f) => { if (f.foto) mapa[f.id] = f.foto; });
+        setFotosPorId(mapa);
+      }, origem, filtrar);
+    });
+    return () => parar.forEach((p) => p());
+  }, [companyId, ehSuperAdmin]);
+
+  // Lançamentos com as fotos de volta no lugar (a tela e os relatórios não mudam).
+  useEffect(() => {
+    setFaturas(faturasBrutas.map((f) => ({
+      ...f,
+      fotoFaturaGeralUrl: f.fotoFaturaGeralUrl || ((f as any).fotoFaturaGeralRef ? fotosPorId[(f as any).fotoFaturaGeralRef] : undefined),
+      leituras: (f.leituras || []).map((l) => (l.fotoRef && !l.fotoHidrometroUrl && fotosPorId[l.fotoRef]
+        ? { ...l, fotoHidrometroUrl: fotosPorId[l.fotoRef] }
+        : l))
+    })));
+  }, [faturasBrutas, fotosPorId]);
+
+  // Recupera o que ficou salvo só neste navegador (quando o Firebase recusava a gravação).
+  const [recuperacaoFeita, setRecuperacaoFeita] = useState(false);
+  useEffect(() => {
+    if (recuperacaoFeita || loading || !companyId) return;
+    setRecuperacaoFeita(true);
+    const exemplos = new Set(INITIAL_EDIFICIOS_SAMPLE.map((e) => e.id));
+    let locaisEd: EdificioHidrometro[] = [];
+    let locaisFat: FaturaHidrometro[] = [];
+    try { locaisEd = JSON.parse(localStorage.getItem("hidrometro_edificios_cache") || "[]"); } catch { /* ignora */ }
+    try { locaisFat = JSON.parse(localStorage.getItem("hidrometro_faturas_cache") || "[]"); } catch { /* ignora */ }
+    const faltaEd = locaisEd.filter((e) => e?.id && !exemplos.has(e.id) && !edificios.some((x) => x.id === e.id));
+    const faltaFat = locaisFat.filter((f) => f?.id && !faturasBrutas.some((x) => x.id === f.id));
+    if (!faltaEd.length && !faltaFat.length) return;
+    (async () => {
+      let ok = 0;
+      for (const e of faltaEd) { try { await salvarEdificio(e, false); ok++; } catch { /* segue */ } }
+      for (const f of faltaFat) { try { await salvarFatura(f, false); ok++; } catch { /* segue */ } }
+      if (ok) {
+        toast.success(`${ok} registro(s) que estavam só neste navegador foram enviados para o servidor.`);
+        try {
+          localStorage.removeItem("hidrometro_edificios_cache");
+          localStorage.removeItem("hidrometro_faturas_cache");
+        } catch { /* ignora */ }
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, companyId]);
+
+  const semUndef = (o: any): any => JSON.parse(JSON.stringify(o, (_k, v) => (v === undefined ? null : v)));
+
+  const salvarEdificio = async (edificio: EdificioHidrometro, _avisar = true) => {
+    const dados = semUndef({ ...edificio, companyId: (edificio as any).companyId || companyId, updatedAt: new Date().toISOString() });
+    try {
+      await setDoc(doc(db, "hidrometro_edificios", edificio.id), dados);
+    } catch (err: any) {
+      console.error("Hidrômetro: erro ao salvar edifício", err);
+      // O modal mostra a mensagem; aqui só ela fica clara.
+      throw new Error(mensagemErro(err, "o edifício"));
+    }
+  };
+
+  // Fotos (base64) vão cada uma para um documento próprio; o lançamento guarda só a referência.
+  const salvarFatura = async (fatura: FaturaHidrometro, _avisar = true) => {
+    const cid = (fatura as any).companyId || companyId;
+    try {
+      const leituras = [];
+      for (const l of fatura.leituras || []) {
+        if (l.fotoHidrometroUrl && l.fotoHidrometroUrl.startsWith("data:")) {
+          const fotoId = `${fatura.id}__${l.unidadeId}`;
+          await setDoc(doc(db, "hidrometro_fotos", fotoId), { companyId: cid, faturaId: fatura.id, unidadeId: l.unidadeId, foto: l.fotoHidrometroUrl, updatedAt: new Date().toISOString() });
+          leituras.push({ ...l, fotoHidrometroUrl: "", fotoRef: fotoId });
+        } else {
+          leituras.push(l);
+        }
+      }
+      let geral: any = {};
+      if (fatura.fotoFaturaGeralUrl && fatura.fotoFaturaGeralUrl.startsWith("data:")) {
+        const fotoId = `${fatura.id}__geral`;
+        await setDoc(doc(db, "hidrometro_fotos", fotoId), { companyId: cid, faturaId: fatura.id, unidadeId: "geral", foto: fatura.fotoFaturaGeralUrl, updatedAt: new Date().toISOString() });
+        geral = { fotoFaturaGeralUrl: "", fotoFaturaGeralRef: fotoId };
+      }
+      const dados = semUndef({ ...fatura, ...geral, leituras, companyId: cid, updatedAt: new Date().toISOString() });
+      await setDoc(doc(db, "hidrometro_faturas", fatura.id), dados);
+    } catch (err: any) {
+      console.error("Hidrômetro: erro ao salvar lançamento", err);
+      // O modal mostra a mensagem; aqui só ela fica clara.
+      throw new Error(mensagemErro(err, "o lançamento"));
+    }
+  };
+
+  const mensagemErro = (err: any, oque: string) => {
+    const m = String(err?.code || err?.message || "");
+    if (/permission|insufficient/i.test(m)) return `Não foi possível salvar ${oque}: sem permissão. Confira se as regras do Firebase estão publicadas.`;
+    if (/too large|exceeds|maximum size|1048576/i.test(m)) return `Não foi possível salvar ${oque}: alguma foto ficou grande demais. Tire a foto de novo ou use uma menor.`;
+    if (/offline|unavailable|network/i.test(m)) return `Não foi possível salvar ${oque}: sem conexão. Tente de novo.`;
+    return `Não foi possível salvar ${oque}. Nada foi gravado; tente de novo.`;
+  };
 
   // Save Edifício Handler
   const handleSaveEdificio = async (edificio: EdificioHidrometro) => {
-    try {
-      await setDoc(doc(db, "hidrometro_edificios", edificio.id), edificio);
-      
-      // Update state & cache
-      setEdificios((prev) => {
-        const index = prev.findIndex((e) => e.id === edificio.id);
-        const updated = index >= 0 ? [...prev] : [edificio, ...prev];
-        if (index >= 0) updated[index] = edificio;
-        localStorage.setItem("hidrometro_edificios_cache", JSON.stringify(updated));
-        return updated;
-      });
-    } catch (err) {
-      console.warn("Saving to local cache due to Firestore rule/network:", err);
-      setEdificios((prev) => {
-        const index = prev.findIndex((e) => e.id === edificio.id);
-        const updated = index >= 0 ? [...prev] : [edificio, ...prev];
-        if (index >= 0) updated[index] = edificio;
-        localStorage.setItem("hidrometro_edificios_cache", JSON.stringify(updated));
-        return updated;
-      });
-    }
+    await salvarEdificio(edificio);
   };
 
   // Delete Edifício Handler
   const handleDeleteEdificio = async (id: string) => {
     try {
       await deleteDoc(doc(db, "hidrometro_edificios", id));
-      setEdificios((prev) => {
-        const updated = prev.filter((e) => e.id !== id);
-        localStorage.setItem("hidrometro_edificios_cache", JSON.stringify(updated));
-        return updated;
-      });
       toast.success("Edifício excluído.");
     } catch (err) {
-      setEdificios((prev) => {
-        const updated = prev.filter((e) => e.id !== id);
-        localStorage.setItem("hidrometro_edificios_cache", JSON.stringify(updated));
-        return updated;
-      });
-      toast.success("Edifício excluído localmente.");
+      console.error(err);
+      toast.error("Não foi possível excluir o edifício (só o administrador exclui).");
     }
   };
 
   // Save Fatura Handler
   const handleSaveFatura = async (fatura: FaturaHidrometro) => {
-    try {
-      await setDoc(doc(db, "hidrometro_faturas", fatura.id), fatura);
-      
-      setFaturas((prev) => {
-        const index = prev.findIndex((f) => f.id === fatura.id);
-        const updated = index >= 0 ? [...prev] : [fatura, ...prev];
-        if (index >= 0) updated[index] = fatura;
-        updated.sort((a, b) => (b.mesReferencia || "").localeCompare(a.mesReferencia || ""));
-        localStorage.setItem("hidrometro_faturas_cache", JSON.stringify(updated));
-        return updated;
-      });
-    } catch (err) {
-      console.warn("Saving fatura locally:", err);
-      setFaturas((prev) => {
-        const index = prev.findIndex((f) => f.id === fatura.id);
-        const updated = index >= 0 ? [...prev] : [fatura, ...prev];
-        if (index >= 0) updated[index] = fatura;
-        updated.sort((a, b) => (b.mesReferencia || "").localeCompare(a.mesReferencia || ""));
-        localStorage.setItem("hidrometro_faturas_cache", JSON.stringify(updated));
-        return updated;
-      });
-    }
+    await salvarFatura(fatura);
   };
 
   // Delete Fatura Handler
   const handleDeleteFatura = async (id: string) => {
     if (!window.confirm("Deseja realmente excluir este lançamento de água?")) return;
-
     try {
+      const f = faturasBrutas.find((x) => x.id === id);
       await deleteDoc(doc(db, "hidrometro_faturas", id));
-      setFaturas((prev) => {
-        const updated = prev.filter((f) => f.id !== id);
-        localStorage.setItem("hidrometro_faturas_cache", JSON.stringify(updated));
-        return updated;
-      });
+      const refs = [
+        ...((f?.leituras || []).map((l) => l.fotoRef).filter(Boolean) as string[]),
+        ...((f as any)?.fotoFaturaGeralRef ? [(f as any).fotoFaturaGeralRef] : [])
+      ];
+      await Promise.all(refs.map((r) => deleteDoc(doc(db, "hidrometro_fotos", r)).catch(() => undefined)));
       toast.success("Lançamento excluído com sucesso.");
     } catch (err) {
-      setFaturas((prev) => {
-        const updated = prev.filter((f) => f.id !== id);
-        localStorage.setItem("hidrometro_faturas_cache", JSON.stringify(updated));
-        return updated;
-      });
-      toast.success("Lançamento excluído.");
+      console.error(err);
+      toast.error("Não foi possível excluir o lançamento (só o administrador exclui).");
     }
   };
 

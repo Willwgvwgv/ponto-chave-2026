@@ -128,7 +128,7 @@ export const EdificiosGestao: React.FC<EdificiosGestaoProps> = ({
       setEditingEdificio(null);
       toast.success("Edifício salvo com sucesso!");
     } catch (err: any) {
-      toast.error("Erro ao salvar edifício: " + (err?.message || "Tente novamente"));
+      toast.error(err?.message || "Erro ao salvar edifício. Tente novamente.");
     }
   };
 

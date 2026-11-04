@@ -655,6 +655,7 @@ export interface LeituraUnidade {
   valorAreaComumRateio: number; // R$
   valorTotalAPagar: number; // R$
   fotoHidrometroUrl?: string;
+  fotoRef?: string; // id em hidrometro_fotos (a foto fica fora do lançamento)
   fotoNome?: string;
   dataLeitura?: string;
   observacoes?: string;

@@ -349,6 +349,31 @@ service cloud.firestore {
       allow create, update, delete: if isSuperAdmin() || (isActiveUser() && (userRole() == 'admin' || userRole() == 'manager'));
     }
 
+    // Hidrômetro & rateio de água: edifícios, lançamentos e fotos dos hidrômetros.
+    // Ver, cadastrar e editar: usuário ativo da empresa. Excluir: admin/gerente.
+    // Registros antigos sem companyId só o superadmin lê (e ao salvar ganham a empresa).
+    match /hidrometro_edificios/{id} {
+      allow read: if isSuperAdmin() || (isActiveUser() && belongsToCompany(resource.data.companyId));
+      allow create: if isSuperAdmin() || (isActiveUser() && belongsToCompany(request.resource.data.companyId));
+      allow update: if isSuperAdmin() || (isActiveUser() && belongsToCompany(resource.data.companyId) &&
+        request.resource.data.companyId == resource.data.companyId);
+      allow delete: if isSuperAdmin() || (isActiveUser() && isCompanyAdmin(resource.data.companyId));
+    }
+    match /hidrometro_faturas/{id} {
+      allow read: if isSuperAdmin() || (isActiveUser() && belongsToCompany(resource.data.companyId));
+      allow create: if isSuperAdmin() || (isActiveUser() && belongsToCompany(request.resource.data.companyId));
+      allow update: if isSuperAdmin() || (isActiveUser() && belongsToCompany(resource.data.companyId) &&
+        request.resource.data.companyId == resource.data.companyId);
+      allow delete: if isSuperAdmin() || (isActiveUser() && isCompanyAdmin(resource.data.companyId));
+    }
+    match /hidrometro_fotos/{id} {
+      allow read: if isSuperAdmin() || (isActiveUser() && belongsToCompany(resource.data.companyId));
+      allow create: if isSuperAdmin() || (isActiveUser() && belongsToCompany(request.resource.data.companyId));
+      allow update: if isSuperAdmin() || (isActiveUser() && belongsToCompany(resource.data.companyId) &&
+        request.resource.data.companyId == resource.data.companyId);
+      allow delete: if isSuperAdmin() || (isActiveUser() && isCompanyAdmin(resource.data.companyId));
+    }
+
     // Collection: settings
     match /settings/{id} {
       allow read: if isSuperAdmin() || (isActiveUser() && belongsToCompany(resource.data.companyId));
