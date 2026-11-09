@@ -218,6 +218,31 @@ export const HidrometroView: React.FC<HidrometroViewProps> = ({
     })));
   }, [faturasBrutas, fotosPorId]);
 
+  // Registros antigos no servidor sem companyId: só o superadmin enxerga. Quando ele abre a tela,
+  // a empresa é gravada neles, e passam a aparecer para a equipe (ex.: Maely).
+  const [empresaGravada, setEmpresaGravada] = useState(false);
+  useEffect(() => {
+    if (empresaGravada || loading || !companyId || !ehSuperAdmin) return;
+    const semEmpresaEd = edificios.filter((e: any) => !e.companyId);
+    const semEmpresaFat = faturasBrutas.filter((f: any) => !f.companyId);
+    if (!semEmpresaEd.length && !semEmpresaFat.length) return;
+    setEmpresaGravada(true);
+    (async () => {
+      let ok = 0;
+      for (const e of semEmpresaEd) { try { await updateDoc(doc(db, "hidrometro_edificios", e.id), { companyId }); ok++; } catch (err) { console.error(err); } }
+      for (const f of semEmpresaFat) {
+        try {
+          await updateDoc(doc(db, "hidrometro_faturas", f.id), { companyId });
+          const refs = [...(f.leituras || []).map((l) => l.fotoRef).filter(Boolean) as string[], ...((f as any).fotoFaturaGeralRef ? [(f as any).fotoFaturaGeralRef] : [])];
+          for (const r of refs) { try { await updateDoc(doc(db, "hidrometro_fotos", r), { companyId }); } catch { /* foto pode não existir */ } }
+          ok++;
+        } catch (err) { console.error(err); }
+      }
+      if (ok) toast.success(`${ok} registro(s) antigos do Hidrômetro liberados para a equipe.`);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, companyId, ehSuperAdmin, edificios, faturasBrutas]);
+
   // Recupera o que ficou salvo só neste navegador (quando o Firebase recusava a gravação).
   const [recuperacaoFeita, setRecuperacaoFeita] = useState(false);
   useEffect(() => {
