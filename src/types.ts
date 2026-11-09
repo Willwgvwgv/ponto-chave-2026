@@ -656,6 +656,10 @@ export interface LeituraUnidade {
   valorTotalAPagar: number; // R$
   fotoHidrometroUrl?: string;
   fotoRef?: string; // id em hidrometro_fotos (a foto fica fora do lançamento)
+  // Envio do comprovante ao inquilino
+  enviadoEm?: string | null; // ISO
+  enviadoPorNome?: string | null;
+  enviadoVia?: "whatsapp" | "pdf" | "manual" | null;
   fotoNome?: string;
   dataLeitura?: string;
   observacoes?: string;

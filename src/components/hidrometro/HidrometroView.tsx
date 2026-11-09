@@ -321,6 +321,30 @@ export const HidrometroView: React.FC<HidrometroViewProps> = ({
     return `Não foi possível salvar ${oque}. Nada foi gravado; tente de novo.`;
   };
 
+  // Marca/desmarca o envio do comprovante de um apartamento ao inquilino.
+  // Quando todos os apartamentos foram enviados, o lançamento passa a "Enviado aos inquilinos".
+  const marcarEnvio = async (faturaId: string, unidadeId: string, enviado: boolean, via: "whatsapp" | "pdf" | "manual") => {
+    const f = faturasBrutas.find((x) => x.id === faturaId);
+    if (!f) return;
+    const nome = profile?.name || (profile as any)?.displayName || user?.displayName || "";
+    const leituras = (f.leituras || []).map((l) => l.unidadeId !== unidadeId ? l : {
+      ...l,
+      enviadoEm: enviado ? new Date().toISOString() : null,
+      enviadoPorNome: enviado ? nome : null,
+      enviadoVia: enviado ? via : null
+    });
+    const todosEnviados = leituras.length > 0 && leituras.every((l) => !!l.enviadoEm);
+    const status = todosEnviados ? "notificado" : (f.status === "notificado" ? "fechado" : f.status);
+    try {
+      await updateDoc(doc(db, "hidrometro_faturas", faturaId), semUndef({ leituras, status, updatedAt: new Date().toISOString() }));
+      if (enviado && via !== "manual") toast.success("Marcado como enviado ao inquilino.");
+      if (todosEnviados && enviado) toast.success("Todos os apartamentos receberam o comprovante.");
+    } catch (err: any) {
+      console.error(err);
+      toast.error(mensagemErro(err, "o envio"));
+    }
+  };
+
   // Save Edifício Handler
   const handleSaveEdificio = async (edificio: EdificioHidrometro) => {
     await salvarEdificio(edificio);
@@ -633,6 +657,7 @@ export const HidrometroView: React.FC<HidrometroViewProps> = ({
               {filteredFaturas.map((fatura) => {
                 const fotosCount = fatura.leituras.filter((l) => !!l.fotoHidrometroUrl).length;
                 const totalAptos = fatura.leituras.length;
+                const enviados = fatura.leituras.filter((l) => !!l.enviadoEm).length;
 
                 return (
                   <div
@@ -654,12 +679,14 @@ export const HidrometroView: React.FC<HidrometroViewProps> = ({
                           </span>
                           <span
                             className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest ${
-                              fatura.status === "fechado"
+                              fatura.status === "notificado"
+                                ? "bg-green-600 text-white border border-green-600"
+                                : fatura.status === "fechado"
                                 ? "bg-emerald-50 text-emerald-700 border border-emerald-100"
                                 : "bg-amber-50 text-amber-700 border border-amber-100"
                             }`}
                           >
-                            {fatura.status === "fechado" ? "Fechado & Calculado" : "Rascunho / Em aberto"}
+                            {fatura.status === "notificado" ? "Enviado aos inquilinos" : fatura.status === "fechado" ? "Fechado & Calculado" : "Rascunho / Em aberto"}
                           </span>
                         </div>
 
@@ -669,6 +696,11 @@ export const HidrometroView: React.FC<HidrometroViewProps> = ({
                           <span className="flex items-center gap-1 font-bold text-blue-600">
                             <Camera className="w-3.5 h-3.5" />
                             {fotosCount} fotos de hidrômetros
+                          </span>
+                          <span className={`flex items-center gap-1 font-bold ${enviados === totalAptos && totalAptos > 0 ? "text-green-700" : enviados > 0 ? "text-amber-700" : "text-slate-500"}`}
+                            title="Comprovantes enviados aos inquilinos">
+                            <Send className="w-3.5 h-3.5" />
+                            {enviados}/{totalAptos} enviados aos inquilinos
                           </span>
                         </div>
                       </div>
@@ -718,7 +750,7 @@ export const HidrometroView: React.FC<HidrometroViewProps> = ({
                       <button
                         onClick={() => {
                           setSelectedFaturaParaComprovante(fatura);
-                          setSelectedUnidadeIdParaComprovante(fatura.leituras?.[0]?.unidadeId || null);
+                          setSelectedUnidadeIdParaComprovante((fatura.leituras?.find((l) => !l.enviadoEm) || fatura.leituras?.[0])?.unidadeId || null);
                           setIsComprovanteModalOpen(true);
                         }}
                         className="px-4 py-2.5 bg-green-50 hover:bg-green-100 text-green-700 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer"
@@ -866,8 +898,9 @@ export const HidrometroView: React.FC<HidrometroViewProps> = ({
           setSelectedFaturaParaComprovante(null);
           setSelectedUnidadeIdParaComprovante(null);
         }}
-        fatura={selectedFaturaParaComprovante}
+        fatura={faturas.find((f) => f.id === selectedFaturaParaComprovante?.id) || selectedFaturaParaComprovante}
         initialUnidadeId={selectedUnidadeIdParaComprovante}
+        onMarcarEnvio={(unidadeId, enviado, via) => selectedFaturaParaComprovante ? marcarEnvio(selectedFaturaParaComprovante.id, unidadeId, enviado, via) : undefined}
         onOpenFotoViewer={handleOpenFotoViewer}
         companySettings={companySettings}
       />
