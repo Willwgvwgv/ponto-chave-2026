@@ -26,7 +26,8 @@ import {
   Layers,
   ArrowRight,
   ShieldCheck,
-  Check
+  Check,
+  FilePlus2
 } from "lucide-react";
 import { 
   ContratoLocacao, 
@@ -286,12 +287,13 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
   };
 
   // Start new contract flow
-  const handleOpenNewContractWizard = (preselectedTemplateId?: string) => {
+  const handleOpenNewContractWizard = (preselectedTemplateId?: string, principalId?: string) => {
     const defaultTemplate = modelos.find((m) => m.isPadrao) || modelos[0];
     const idEscolhido = preselectedTemplateId || defaultTemplate?.id || "modelo-padrao-caucao";
     const modeloAbrindo = modelos.find((m) => m.id === idEscolhido);
     const abrindoVenda = modeloAbrindo?.tipoDocumento === "venda";
     setSelectedTemplateId(idEscolhido);
+    setContratoPrincipalId(principalId || "");
     setWizardStep(1);
     setNovoContratoForm({
       titulo: tituloPadraoDoModelo(modeloAbrindo),
@@ -797,7 +799,7 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
                               {c.titulo}
                             </div>
                             <div className="text-[10px] font-mono text-slate-400 mt-0.5">
-                              {c.numeroContrato || "LOC"} • {c.tipoLocacao.toUpperCase()}
+                              {c.numeroContrato || "LOC"} • {c.contratoPrincipalId ? "ADITIVO" : c.tipoLocacao.toUpperCase()}
                             </div>
                           </td>
 
@@ -855,6 +857,21 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
                               >
                                 <Printer className="w-4 h-4" />
                               </button>
+
+                              {!c.contratoPrincipalId && !/^PRO-/.test(c.numeroContrato || "") && (
+                                <button
+                                  onClick={() => {
+                                    const modeloAditivo = modelos.find((m) => ehModeloAditivo(m));
+                                    if (!modeloAditivo) { toast.error("Modelo de aditivo não encontrado na Galeria de Modelos."); return; }
+                                    handleOpenNewContractWizard(modeloAditivo.id, c.id);
+                                  }}
+                                  className="p-1.5 text-violet-600 hover:bg-violet-50 rounded-lg transition-colors cursor-pointer"
+                                  title="Fazer aditivo deste contrato"
+                                  aria-label="Fazer aditivo deste contrato"
+                                >
+                                  <FilePlus2 className="w-4 h-4" />
+                                </button>
+                              )}
 
                               <button
                                 onClick={() => handleDuplicateContract(c)}
