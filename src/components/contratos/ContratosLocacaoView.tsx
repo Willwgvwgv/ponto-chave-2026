@@ -63,13 +63,29 @@ import { toast } from "sonner";
 // Procuração de troca de titularidade (energia/água): usa um formulário próprio,
 // só com os dados do locatário (outorgante) e do imóvel — sem aluguel nem prazo.
 const TITULO_PROCURACAO = "Procuração – Troca de Titularidade";
-const TITULOS_PADRAO = ["", "Contrato de Locação Residencial", "Contrato de Compra e Venda", TITULO_PROCURACAO];
+const TITULO_ADITIVO = "Termo Aditivo";
+const TITULOS_PADRAO = ["", "Contrato de Locação Residencial", "Contrato de Compra e Venda", TITULO_PROCURACAO, TITULO_ADITIVO];
+
+// Aditivo: altera um contrato já existente; partes e imóvel vêm do contrato principal.
+const ehModeloAditivo = (m?: ContratoModelo) =>
+  !!m && (m.categoria === "Aditivos" || m.id.startsWith("modelo-aditivo"));
+
+// Data (YYYY-MM-DD) em que um contrato foi criado, aceitando Timestamp do Firestore ou texto.
+const dataDoContrato = (c?: ContratoLocacao | null): string => {
+  const v: any = c?.createdAt;
+  try {
+    const d = v?.toDate ? v.toDate() : typeof v?.seconds === "number" ? new Date(v.seconds * 1000) : v ? new Date(v) : null;
+    if (d && !isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+  } catch { /* ignora */ }
+  return c?.condicoes?.dataInicio || "";
+};
 
 const ehModeloProcuracao = (m?: ContratoModelo) =>
   !!m && (m.categoria === "Procurações" || m.id.startsWith("modelo-procuracao"));
 
 const tituloPadraoDoModelo = (m?: ContratoModelo) =>
-  m?.tipoDocumento === "venda" ? "Contrato de Compra e Venda"
+  ehModeloAditivo(m) ? TITULO_ADITIVO
+    : m?.tipoDocumento === "venda" ? "Contrato de Compra e Venda"
     : ehModeloProcuracao(m) ? TITULO_PROCURACAO
     : "Contrato de Locação Residencial";
 
@@ -166,6 +182,13 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
   const isProcuracao = ehModeloProcuracao(modeloSelecionado);
   // Venda com pagamento direto entre as partes: sem banco, o "financiado" é o saldo a pagar ao vendedor
   const isVendaSemBanco = modeloSelecionado?.id === "modelo-venda-sem-financiamento";
+  const isAditivo = ehModeloAditivo(modeloSelecionado);
+  const [contratoPrincipalId, setContratoPrincipalId] = useState("");
+  // Contratos que podem receber aditivo (não lista procurações nem outros aditivos)
+  const contratosParaAditivo = useMemo(() => contratos
+    .filter((c) => !c.contratoPrincipalId && !/^PRO-/.test(c.numeroContrato || ""))
+    .sort((a, b) => dataDoContrato(b).localeCompare(dataDoContrato(a))), [contratos]);
+  const contratoPrincipal = contratos.find((c) => c.id === contratoPrincipalId) || null;
 
   // 1. Subscribe to Contratos in Firestore
   useEffect(() => {
@@ -318,6 +341,68 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
     const chosenTemplate = modelos.find((m) => m.id === selectedTemplateId) || modelos[0];
     const ehVenda = chosenTemplate?.tipoDocumento === "venda";
     const ehProcuracao = ehModeloProcuracao(chosenTemplate);
+
+    if (ehModeloAditivo(chosenTemplate)) {
+      const base = contratos.find((c) => c.id === contratoPrincipalId);
+      if (!base) {
+        toast.error("Escolha o contrato principal que o aditivo vai alterar.");
+        return;
+      }
+      const qtdAditivos = contratos.filter((c) => c.contratoPrincipalId === base.id).length;
+      const numero = `${base.numeroContrato}-AD${qtdAditivos + 1}`;
+      const aditivo: Omit<ContratoLocacao, "id"> = {
+        companyId,
+        numeroContrato: numero,
+        titulo: TITULOS_PADRAO.includes(novoContratoForm.titulo.trim())
+          ? `Termo Aditivo ${qtdAditivos + 1} – ${base.titulo}`
+          : novoContratoForm.titulo.trim(),
+        tipoLocacao: base.tipoLocacao,
+        tipoDocumento: base.tipoDocumento || "locacao",
+        status: "rascunho",
+        modeloOrigemId: chosenTemplate.id,
+        modeloOrigemNome: chosenTemplate.nome,
+        // Partes, imóvel e condições copiados do contrato principal
+        locador: base.locador,
+        locatarios: base.locatarios || [],
+        fiadores: base.fiadores || [],
+        imovel: base.imovel,
+        condicoes: base.condicoes,
+        contratoPrincipalId: base.id,
+        contratoPrincipalNumero: base.numeroContrato,
+        contratoPrincipalTitulo: base.titulo,
+        contratoPrincipalData: dataDoContrato(base),
+        contratoPrincipalTipo: base.tipoDocumento || "locacao",
+        blocks: chosenTemplate.blocks,
+        styleSettings: chosenTemplate.styleSettings || DEFAULT_STYLE_SETTINGS,
+        versoes: [
+          {
+            id: `v_init_${Date.now()}`,
+            versionNumber: 1,
+            createdAt: new Date().toISOString(),
+            createdByUid: user?.uid || "system",
+            createdByName: profile?.displayName || "Usuário",
+            description: `Aditivo ao contrato ${base.numeroContrato} a partir do modelo ${chosenTemplate.nome}`,
+            blocksSnapshot: chosenTemplate.blocks,
+            styleSettingsSnapshot: chosenTemplate.styleSettings || DEFAULT_STYLE_SETTINGS
+          }
+        ],
+        criadoPorUid: user?.uid || "system",
+        criadoPorNome: profile?.displayName || "Usuário",
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      };
+      try {
+        const docRef = await addDoc(collection(db, "contratos_locacao"), aditivo);
+        setIsNewContractModalOpen(false);
+        setContratoPrincipalId("");
+        toast.success("Aditivo criado com os dados do contrato principal. Abrindo editor visual...");
+        setActiveEditingContract({ id: docRef.id, ...aditivo });
+      } catch (err) {
+        console.error("Erro ao criar aditivo:", err);
+        toast.error("Erro ao salvar o aditivo no banco de dados.");
+      }
+      return;
+    }
 
     if (ehProcuracao) {
       const faltando = [
@@ -873,10 +958,12 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
                 </div>
                 <div>
                   <h2 className="text-base font-black text-slate-900">
-                    {isVenda ? "Novo Contrato de Compra e Venda" : isProcuracao ? "Nova Procuração – Troca de Titularidade" : "Novo Contrato de Locação"}
+                    {isAditivo ? "Novo Termo Aditivo" : isVenda ? "Novo Contrato de Compra e Venda" : isProcuracao ? "Nova Procuração – Troca de Titularidade" : "Novo Contrato de Locação"}
                   </h2>
                   <p className="text-xs text-slate-500">
-                    {isProcuracao
+                    {isAditivo
+                      ? "Escolha o contrato principal: as partes e o imóvel vêm dele."
+                      : isProcuracao
                       ? "O locatário autoriza a imobiliária a passar a energia (e a água) para o nome dele. Preencha os dados dele, o endereço e a UC do imóvel."
                       : "Selecione o modelo e informe os dados principais para carregar no Editor Visual."}
                   </p>
@@ -932,7 +1019,36 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
                 />
               </div>
 
-              {isProcuracao ? (
+              {isAditivo ? (
+              <div className="space-y-3">
+                <div>
+                  <label htmlFor="nc-contrato-principal" className="block text-slate-800 font-bold mb-1">Contrato principal*</label>
+                  <select id="nc-contrato-principal" value={contratoPrincipalId}
+                    onChange={(e) => setContratoPrincipalId(e.target.value)}
+                    className="w-full p-2 border border-slate-300 rounded-xl outline-none bg-white">
+                    <option value="">Escolha o contrato que o aditivo altera…</option>
+                    {contratosParaAditivo.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.numeroContrato} – {c.titulo}{dataDoContrato(c) ? ` (${dataDoContrato(c).split("-").reverse().join("/")})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-slate-500 mt-1">As partes, o imóvel e os valores vêm do contrato escolhido. Não precisa digitar de novo.</p>
+                </div>
+                {contratoPrincipal && (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700 space-y-1">
+                    <p><strong>{contratoPrincipal.tipoDocumento === "venda" ? "Vendedor" : "Locador"}:</strong> {contratoPrincipal.locador?.nome || "—"} {contratoPrincipal.locador?.cpfCnpj ? `· ${contratoPrincipal.locador.cpfCnpj}` : ""}</p>
+                    {(contratoPrincipal.locatarios || []).map((p, i) => (
+                      <p key={i}><strong>{contratoPrincipal.tipoDocumento === "venda" ? "Comprador" : "Locatário"}:</strong> {p.nome} {p.cpfCnpj ? `· ${p.cpfCnpj}` : ""}</p>
+                    ))}
+                    <p><strong>Imóvel:</strong> {[contratoPrincipal.imovel?.endereco, contratoPrincipal.imovel?.numero, contratoPrincipal.imovel?.complemento, contratoPrincipal.imovel?.bairro, contratoPrincipal.imovel?.cidade].filter(Boolean).join(", ")}</p>
+                    {(!contratoPrincipal.locador?.nome || !contratoPrincipal.locador?.cpfCnpj || !(contratoPrincipal.locatarios || [])[0]?.cpfCnpj) && (
+                      <p className="text-amber-700 font-semibold">Faltam dados de alguma parte no contrato principal. Complete no editor do aditivo, em Dados do contrato.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+              ) : isProcuracao ? (
               <>
               <p className="pt-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">Locatário (outorgante)</p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1393,7 +1509,7 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
                 className="px-5 py-2.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-md rounded-xl cursor-pointer transition-all flex items-center gap-2"
               >
                 <Sparkles className="w-4 h-4" />
-                {isProcuracao ? "Gerar Procuração" : "Criar e Abrir no Editor Visual"}
+                {isAditivo ? "Gerar Aditivo" : isProcuracao ? "Gerar Procuração" : "Criar e Abrir no Editor Visual"}
               </button>
             </div>
           </div>

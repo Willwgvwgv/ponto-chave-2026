@@ -764,6 +764,81 @@ export const PROCURACAO_TITULARIDADE_BLOCKS: ContractBlock[] = [
   }
 ];
 
+
+// Termo aditivo: altera um contrato já feito no Ponto Chave. As partes e o imóvel
+// vêm do contrato principal escolhido no formulário (não precisa digitar de novo).
+export const ADITIVO_PROJETO_FECHADO_BLOCKS: ContractBlock[] = [
+  {
+    id: "block-title",
+    type: "title",
+    content: "TERMO ADITIVO AO CONTRATO PRINCIPAL",
+    isLocked: true
+  },
+  {
+    id: "block-subtitle",
+    type: "subtitle",
+    content: "ENCERRAMENTO DAS ALTERAÇÕES DE PROJETO — SOMENTE ESCOLHA DE ACABAMENTOS",
+    isLocked: true
+  },
+  {
+    id: "block-parties-aditivo",
+    type: "parties",
+    clauseTitle: "IDENTIFICAÇÃO DAS PARTES",
+    sectionCategory: "Identificação das partes",
+    content: `<p><strong>{{papel_parte_1}}:</strong> {{qualificacao_completa_locador}}.</p>
+<p class="mt-2"><strong>{{papel_parte_2}}:</strong> {{qualificacao_completa_locatario}}.</p>
+<p class="mt-2"><strong>INTERMEDIÁRIA (IMOBILIÁRIA):</strong> <strong>{{nome_imobiliaria}}</strong>, inscrita no CNPJ sob o nº {{cnpj_imobiliaria}}, registro no CRECI sob o nº {{creci_imobiliaria}}, estabelecida à {{endereco_imobiliaria}}.</p>`
+  },
+  {
+    id: "block-preambulo-aditivo",
+    type: "paragraph",
+    sectionCategory: "Identificação das partes",
+    content: `<p>As partes acima qualificadas, signatárias do <strong>Contrato nº {{numero_contrato_principal}}</strong>, celebrado em {{data_contrato_principal}}, referente ao imóvel situado à <strong>{{endereco_imovel}}</strong> (doravante "Contrato Principal"), resolvem firmar o presente Termo Aditivo, que se regerá pelas cláusulas seguintes:</p>`
+  },
+  {
+    id: "clause-1",
+    type: "clause",
+    clauseTitle: "DO OBJETO",
+    sectionCategory: "Objeto",
+    content: `<p><strong>1.1.</strong> O presente Termo Aditivo altera o Contrato Principal exclusivamente quanto aos serviços e obras adicionais nele ajustados, para registrar o encerramento das alterações de projeto.</p>`
+  },
+  {
+    id: "clause-2",
+    type: "clause",
+    clauseTitle: "DO ENCERRAMENTO DAS ALTERAÇÕES DE PROJETO",
+    sectionCategory: "Alterações",
+    content: `<p><strong>2.1.</strong> As partes declaram que o projeto dos serviços e obras adicionais previstos no Contrato Principal está definido e encerrado na forma em que se encontra nesta data.</p>
+<p><strong>2.2.</strong> A partir da assinatura deste Termo Aditivo, não serão admitidas novas alterações de projeto, de layout, de estrutura ou de execução, nem a inclusão ou substituição de serviços.</p>
+<p><strong>2.3.</strong> Fica permitida ao {{papel_parte_2}} somente a escolha dos materiais de acabamento, observadas as condições técnicas e de execução da obra e o que dispõe o Contrato Principal sobre o tema.</p>
+<p><strong>2.4.</strong> Eventual diferença de valor decorrente da escolha de materiais de acabamento permanece de responsabilidade do {{papel_parte_2}}, nos termos do Contrato Principal.</p>`
+  },
+  {
+    id: "clause-3",
+    type: "clause",
+    clauseTitle: "DA RATIFICAÇÃO",
+    sectionCategory: "Disposições gerais",
+    content: `<p><strong>3.1.</strong> Permanecem inalteradas e em pleno vigor todas as demais cláusulas e condições do Contrato Principal que não conflitem com o presente Termo Aditivo, do qual passa a fazer parte integrante.</p>`
+  },
+  {
+    id: "block-signatures",
+    type: "signatures",
+    clauseTitle: "LOCAL, DATA E ASSINATURAS",
+    sectionCategory: "Assinaturas e testemunhas",
+    content: `<p style="text-align:center">E, por estarem assim justas e contratadas, as partes assinam o presente Termo Aditivo em 3 (três) vias de igual teor e forma.</p>
+<p class="text-center italic text-slate-600 my-6">{{data_atual_extenso}}</p>`,
+    metadata: {
+      assinaturas: {
+        linhas: [
+          { nome: "{{nome_locador}}", papel: "{{papel_parte_1}}", doc: "CPF/CNPJ: {{cpf_locador}}" },
+          { nome: "{{nome_locatario}}", papel: "{{papel_parte_2}}", doc: "CPF/CNPJ: {{cpf_locatario}}" },
+          { nome: "{{nome_imobiliaria}}", papel: "INTERMEDIÁRIA", doc: "CRECI {{creci_imobiliaria}}" }
+        ],
+        testemunhas: 2
+      }
+    }
+  }
+];
+
 export const INITIAL_PREDEFINED_TEMPLATES: ContratoModelo[] = [
   {
     id: "modelo-padrao-caucao",
@@ -914,6 +989,21 @@ export const INITIAL_PREDEFINED_TEMPLATES: ContratoModelo[] = [
     isPadrao: false,
     categoria: "Compra e Venda",
     blocks: VENDA_SEM_FINANCIAMENTO_BLOCKS,
+    styleSettings: DEFAULT_STYLE_SETTINGS,
+    criadoPorUid: "system",
+    criadoPorNome: "Ponto Chave",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+  {
+    id: "modelo-aditivo-projeto-fechado",
+    companyId: "global",
+    nome: "Termo Aditivo – Encerramento de Alterações de Projeto",
+    descricao: "Aditivo a um contrato já feito no Ponto Chave: registra que o projeto está fechado e que só a escolha de acabamentos continua permitida. Escolha o contrato principal e as partes e o imóvel vêm dele.",
+    tipoLocacao: "residencial",
+    isPadrao: false,
+    categoria: "Aditivos",
+    blocks: ADITIVO_PROJETO_FECHADO_BLOCKS,
     styleSettings: DEFAULT_STYLE_SETTINGS,
     criadoPorUid: "system",
     criadoPorNome: "Ponto Chave",
