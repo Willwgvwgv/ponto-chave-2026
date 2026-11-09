@@ -30,6 +30,8 @@ interface ComprovanteIndividualModalProps {
   initialUnidadeId?: string | null;
   onOpenFotoViewer: (url: string, titulo: string, subtitulo: string) => void;
   companySettings?: CompanySettings | null;
+  /** Marca (ou desmarca) que o comprovante do apartamento foi enviado ao inquilino. */
+  onMarcarEnvio?: (unidadeId: string, enviado: boolean, via: "whatsapp" | "pdf" | "manual") => Promise<void> | void;
 }
 
 const formatBRL = (val: number) => 
@@ -50,7 +52,8 @@ export const ComprovanteIndividualModal: React.FC<ComprovanteIndividualModalProp
   fatura,
   initialUnidadeId,
   onOpenFotoViewer,
-  companySettings
+  companySettings,
+  onMarcarEnvio
 }) => {
   const [selectedUnidadeId, setSelectedUnidadeId] = useState<string>(
     initialUnidadeId || (fatura?.leituras?.[0]?.unidadeId || "")
@@ -113,6 +116,7 @@ export const ComprovanteIndividualModal: React.FC<ComprovanteIndividualModalProp
       : `https://wa.me/?text=${text}`;
 
     window.open(url, "_blank");
+    if (!currentLeitura.enviadoEm) onMarcarEnvio?.(currentLeitura.unidadeId, true, "whatsapp");
   };
 
   const handleExportPDF = async () => {
@@ -143,6 +147,7 @@ export const ComprovanteIndividualModal: React.FC<ComprovanteIndividualModalProp
       pdf.addImage(imgData, "PNG", 10, 15, imgWidth, imgHeight, undefined, "FAST");
       pdf.save(`Comprovante_Agua_${currentLeitura.numeroUnidade}_${fatura.mesReferencia}.pdf`);
       toast.success("Comprovante PDF baixado com sucesso!");
+      if (!currentLeitura.enviadoEm) onMarcarEnvio?.(currentLeitura.unidadeId, true, "pdf");
     } catch (error: any) {
       console.error("Erro ao gerar PDF:", error);
       toast.error("Erro ao gerar PDF: " + (error?.message || "Ocorreu um erro ao gerar o PDF"));
@@ -192,7 +197,7 @@ export const ComprovanteIndividualModal: React.FC<ComprovanteIndividualModalProp
               >
                 {fatura.leituras.map((l) => (
                   <option key={l.unidadeId} value={l.unidadeId}>
-                    {formatUnitLabel(l.numeroUnidade)} {l.moradorNome ? `- ${l.moradorNome}` : ""}
+                    {l.enviadoEm ? "✓ " : ""}{formatUnitLabel(l.numeroUnidade)} {l.moradorNome ? `- ${l.moradorNome}` : ""}
                   </option>
                 ))}
               </select>
@@ -332,6 +337,25 @@ export const ComprovanteIndividualModal: React.FC<ComprovanteIndividualModalProp
                 </div>
               )}
             </div>
+
+            {/* Envio ao inquilino */}
+            {onMarcarEnvio && (
+              <label className={`flex items-center gap-3 px-4 py-3 rounded-2xl border text-xs cursor-pointer ${
+                currentLeitura.enviadoEm ? "bg-emerald-50 border-emerald-200 text-emerald-900" : "bg-amber-50 border-amber-200 text-amber-900"
+              }`}>
+                <input
+                  type="checkbox"
+                  className="w-4 h-4 accent-emerald-600"
+                  checked={!!currentLeitura.enviadoEm}
+                  onChange={(e) => onMarcarEnvio(currentLeitura.unidadeId, e.target.checked, "manual")}
+                />
+                <span className="font-bold">
+                  {currentLeitura.enviadoEm
+                    ? `Enviado ao inquilino em ${new Date(currentLeitura.enviadoEm).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}${currentLeitura.enviadoPorNome ? ` por ${currentLeitura.enviadoPorNome}` : ""}${currentLeitura.enviadoVia === "whatsapp" ? " (WhatsApp)" : currentLeitura.enviadoVia === "pdf" ? " (PDF)" : ""}`
+                    : "Ainda não enviado ao inquilino. Marca sozinho ao enviar pelo WhatsApp ou baixar o PDF."}
+                </span>
+              </label>
+            )}
 
             {/* Actions for WhatsApp / PDF */}
             <div className="grid grid-cols-3 gap-2.5">
