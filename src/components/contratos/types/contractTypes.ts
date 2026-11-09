@@ -202,6 +202,13 @@ export interface ContratoLocacao {
   // Link para assinatura digital
   assinaturaDigitalUrl?: string;
   envelopeAssinaturaId?: string;
+
+  // Aditivo: contrato principal que este documento altera
+  contratoPrincipalId?: string;
+  contratoPrincipalNumero?: string;
+  contratoPrincipalTitulo?: string;
+  contratoPrincipalData?: string; // YYYY-MM-DD
+  contratoPrincipalTipo?: "locacao" | "venda";
 }
 
 export interface ContratoModelo {
