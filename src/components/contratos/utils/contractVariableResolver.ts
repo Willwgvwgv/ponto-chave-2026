@@ -21,6 +21,10 @@ export const DYNAMIC_VARIABLES_CATALOG: DynamicVariableDefinition[] = [
   { key: "bairro_imovel", label: "Bairro do Imóvel", category: "imovel", description: "Bairro onde está localizado", exampleValue: "Setor Bueno" },
   { key: "cidade_imovel", label: "Cidade do Imóvel", category: "imovel", description: "Município do imóvel", exampleValue: "Goiânia" },
   { key: "estado_imovel", label: "Estado do Imóvel (UF)", category: "imovel", description: "Sigla do Estado", exampleValue: "GO" },
+  { key: "corretor_nome", label: "Nome do Corretor", category: "imobiliaria", description: "Corretor que atendeu o cliente (termo de intermediação)", exampleValue: "NOME DO CORRETOR" },
+  { key: "corretor_creci", label: "CRECI do Corretor", category: "imobiliaria", description: "CRECI do corretor que atendeu", exampleValue: "00000" },
+  { key: "empreendimento_imovel", label: "Empreendimento", category: "imovel", description: "Empreendimento apresentado ao cliente", exampleValue: "RESIDENCIAL EXEMPLO" },
+  { key: "unidade_imovel", label: "Unidade", category: "imovel", description: "Unidade do empreendimento (ou A ESCOLHER)", exampleValue: "A ESCOLHER" },
   { key: "numero_contrato_principal", label: "Nº do Contrato Principal", category: "datas", description: "Contrato que o aditivo altera", exampleValue: "VEN-2026-1234" },
   { key: "data_contrato_principal", label: "Data do Contrato Principal", category: "datas", description: "Data em que o contrato principal foi feito", exampleValue: "05/10/2026" },
   { key: "papel_parte_1", label: "Papel da 1ª parte", category: "datas", description: "VENDEDOR ou LOCADOR, conforme o contrato principal", exampleValue: "VENDEDOR" },
@@ -385,6 +389,11 @@ export function buildVariableMap(
     data_contrato_principal: contract.contratoPrincipalData
       ? format(new Date(contract.contratoPrincipalData + "T12:00:00"), "dd/MM/yyyy")
       : "____/____/______",
+    // Termo de reconhecimento de intermediação
+    corretor_nome: contract.corretorNome || "______________",
+    corretor_creci: contract.corretorCreci || "______",
+    empreendimento_imovel: im.endereco || "______________",
+    unidade_imovel: im.complemento || "A ESCOLHER",
     papel_parte_1: (contract.contratoPrincipalTipo || contract.tipoDocumento) === "venda" ? "VENDEDOR" : "LOCADOR",
     papel_parte_2: (contract.contratoPrincipalTipo || contract.tipoDocumento) === "venda" ? "COMPRADOR" : "LOCATÁRIO",
     data_extenso: formattedCurrentDate,

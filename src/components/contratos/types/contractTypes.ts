@@ -209,6 +209,10 @@ export interface ContratoLocacao {
   contratoPrincipalTitulo?: string;
   contratoPrincipalData?: string; // YYYY-MM-DD
   contratoPrincipalTipo?: "locacao" | "venda";
+
+  // Termo de reconhecimento de intermediação: corretor que atendeu o cliente
+  corretorNome?: string;
+  corretorCreci?: string;
 }
 
 export interface ContratoModelo {
