@@ -190,8 +190,8 @@ export const ContractPageCanvas: React.FC<ContractPageCanvasProps> = ({
       if (partes.length === 0) return;
       const rects = partes.map((p) => p.getBoundingClientRect());
       const escala = 1; // medidor fica fora do zoom
-      // No modo edição cada bloco ocupa +20px na folha (p-2 -m-2 + marginBottom)
-      const header = (rects[0].top - topoBloco) / escala + (isReadOnly ? 0 : 20);
+      // No modo edição cada bloco ocupa +16px na folha (medido na tela: p-2 -m-2 + marginBottom)
+      const header = (rects[0].top - topoBloco) / escala + (isReadOnly ? 0 : 16);
       const parts = rects.map((r, idx) => ((idx < rects.length - 1 ? rects[idx + 1].top : r.bottom) - r.top) / escala);
       novo[id] = { header, parts };
       const ant = measuredPartsRef.current[id];
@@ -235,10 +235,18 @@ export const ContractPageCanvas: React.FC<ContractPageCanvasProps> = ({
     contract.blocks.forEach((block) => {
       // Cláusulas e parágrafos são medidos pelo medidor oculto (trechos)
       if (block.type === "clause" || block.type === "paragraph") return;
+      // Bloco selecionado mostra ferramentas de edição (editor de texto, "Quem assina"):
+      // mantém a altura de quando não estava selecionado, para a paginação não mudar
+      // só por clicar nele (era o que jogava as assinaturas para outra folha).
+      if (block.id === activeBlockId && currentHeights[block.id]) return;
       const el = document.getElementById(`block-${block.id}`);
       if (el) {
         // espaço entre blocos na tela = maior entre o espaçamento e o space-y-4 (16px)
-        const height = el.offsetHeight + (isReadOnly ? 0 : 4) + Math.max(styles.paragraphSpacingPx || 12, 16) + (block.espacoAcimaPx || 0);
+        // Painéis de edição (ex.: "Quem assina" com o bloco selecionado) não vão para o papel:
+        // não contam na altura, senão as assinaturas pulam para outra folha sem precisar.
+        const paineis = Array.from(el.querySelectorAll<HTMLElement>("[data-painel-edicao]"))
+          .reduce((soma, pn) => soma + pn.offsetHeight + parseFloat(getComputedStyle(pn).marginTop || "0"), 0);
+        const height = el.offsetHeight - paineis + Math.max(styles.paragraphSpacingPx || 12, 16) + (block.espacoAcimaPx || 0);
         const prev = currentHeights[block.id] || 0;
         if (Math.abs(prev - height) > 5) {
           currentHeights[block.id] = height;
@@ -251,7 +259,7 @@ export const ContractPageCanvas: React.FC<ContractPageCanvasProps> = ({
       measuredHeightsRef.current = currentHeights;
       setMeasuredHeights(currentHeights);
     }
-  }, [contract.blocks, styles, zoomLevel]);
+  }, [contract.blocks, styles, zoomLevel, activeBlockId]);
 
   // Compute A4 pages layout
   const pages: PageLayout[] = useMemo(() => {
@@ -1097,7 +1105,7 @@ export const ContractPageCanvas: React.FC<ContractPageCanvasProps> = ({
                               )}
 
                               {isActive && onUpdateBlock && (
-                                <div className="mt-6 p-3 border border-slate-200 rounded-lg bg-slate-50 text-xs space-y-2" onClick={(e) => e.stopPropagation()}>
+                                <div data-painel-edicao className="mt-6 p-3 border border-slate-200 rounded-lg bg-slate-50 text-xs space-y-2" onClick={(e) => e.stopPropagation()}>
                                   <p className="font-bold text-slate-800">Quem assina</p>
                                   {assin.linhas.map((l, idx) => (
                                     <div key={`ed-${idx}`} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 items-end">
