@@ -65,7 +65,14 @@ import { toast } from "sonner";
 // só com os dados do locatário (outorgante) e do imóvel — sem aluguel nem prazo.
 const TITULO_PROCURACAO = "Procuração – Troca de Titularidade";
 const TITULO_ADITIVO = "Termo Aditivo";
-const TITULOS_PADRAO = ["", "Contrato de Locação Residencial", "Contrato de Compra e Venda", TITULO_PROCURACAO, TITULO_ADITIVO];
+const TITULO_TERMO_INTERMEDIACAO = "Termo de Reconhecimento de Intermediação";
+const TITULOS_PADRAO = ["", "Contrato de Locação Residencial", "Contrato de Compra e Venda", TITULO_PROCURACAO, TITULO_ADITIVO, TITULO_TERMO_INTERMEDIACAO];
+
+// Termo de reconhecimento de intermediação: só o cliente, o empreendimento e o corretor.
+const ehModeloTermoIntermediacao = (m?: ContratoModelo) =>
+  !!m && m.id.startsWith("modelo-termo-intermediacao");
+// Documentos que não são contratos de imóvel (não recebem aditivo)
+const ehDocumentoAvulso = (numero?: string) => /^(PRO|TRI)-/.test(numero || "");
 
 // Aditivo: altera um contrato já existente; partes e imóvel vêm do contrato principal.
 const ehModeloAditivo = (m?: ContratoModelo) =>
@@ -86,6 +93,7 @@ const ehModeloProcuracao = (m?: ContratoModelo) =>
 
 const tituloPadraoDoModelo = (m?: ContratoModelo) =>
   ehModeloAditivo(m) ? TITULO_ADITIVO
+    : ehModeloTermoIntermediacao(m) ? TITULO_TERMO_INTERMEDIACAO
     : m?.tipoDocumento === "venda" ? "Contrato de Compra e Venda"
     : ehModeloProcuracao(m) ? TITULO_PROCURACAO
     : "Contrato de Locação Residencial";
@@ -187,9 +195,24 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
   const [contratoPrincipalId, setContratoPrincipalId] = useState("");
   // Contratos que podem receber aditivo (não lista procurações nem outros aditivos)
   const contratosParaAditivo = useMemo(() => contratos
-    .filter((c) => !c.contratoPrincipalId && !/^PRO-/.test(c.numeroContrato || ""))
+    .filter((c) => !c.contratoPrincipalId && !ehDocumentoAvulso(c.numeroContrato))
     .sort((a, b) => dataDoContrato(b).localeCompare(dataDoContrato(a))), [contratos]);
   const contratoPrincipal = contratos.find((c) => c.id === contratoPrincipalId) || null;
+  const isTermoIntermediacao = ehModeloTermoIntermediacao(modeloSelecionado);
+  // Corretor e CRECI ficam lembrados neste navegador para os próximos termos
+  const [termoForm, setTermoForm] = useState(() => {
+    let salvo: any = {};
+    try { salvo = JSON.parse(localStorage.getItem("pc_termo_corretor") || "{}"); } catch { /* ignora */ }
+    return {
+      clienteNome: "",
+      clienteCpf: "",
+      empreendimento: "",
+      unidade: "A ESCOLHER",
+      corretorNome: salvo.corretorNome || profile?.displayName || "",
+      corretorCreci: salvo.corretorCreci || "",
+      cidade: salvo.cidade || companySettings?.city || ""
+    };
+  });
 
   // 1. Subscribe to Contratos in Firestore
   useEffect(() => {
@@ -343,6 +366,106 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
     const chosenTemplate = modelos.find((m) => m.id === selectedTemplateId) || modelos[0];
     const ehVenda = chosenTemplate?.tipoDocumento === "venda";
     const ehProcuracao = ehModeloProcuracao(chosenTemplate);
+
+    if (ehModeloTermoIntermediacao(chosenTemplate)) {
+      const t = termoForm;
+      const faltando = [
+        !t.clienteNome.trim() && "nome do cliente",
+        !t.clienteCpf.trim() && "CPF do cliente",
+        !t.empreendimento.trim() && "empreendimento",
+        !t.corretorNome.trim() && "nome do corretor",
+        !t.corretorCreci.trim() && "CRECI do corretor"
+      ].filter(Boolean);
+      if (faltando.length) {
+        toast.error(`Preencha: ${faltando.join(", ")}.`);
+        return;
+      }
+      try {
+        localStorage.setItem("pc_termo_corretor", JSON.stringify({ corretorNome: t.corretorNome.trim(), corretorCreci: t.corretorCreci.trim(), cidade: t.cidade.trim() }));
+      } catch { /* ignora */ }
+      const hoje = new Date().toISOString().split("T")[0];
+      const cidade = t.cidade.trim() || companySettings?.city || "Goiânia";
+      const termo: Omit<ContratoLocacao, "id"> = {
+        companyId,
+        numeroContrato: `TRI-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
+        titulo: TITULOS_PADRAO.includes(novoContratoForm.titulo.trim())
+          ? `${TITULO_TERMO_INTERMEDIACAO} – ${t.clienteNome.trim()}`
+          : novoContratoForm.titulo.trim(),
+        tipoLocacao: "residencial",
+        tipoDocumento: "venda",
+        status: "rascunho",
+        modeloOrigemId: chosenTemplate.id,
+        modeloOrigemNome: chosenTemplate.nome,
+        locador: {
+          id: `loc_${Date.now()}`,
+          role: "locador",
+          nome: companySettings?.name || "",
+          cpfCnpj: companySettings?.cnpj || "",
+          endereco: companySettings?.address || ""
+        },
+        locatarios: [{
+          id: `locat_${Date.now()}`,
+          role: "locatario",
+          nome: t.clienteNome.trim(),
+          cpfCnpj: t.clienteCpf.trim()
+        }],
+        fiadores: [],
+        imovel: {
+          endereco: t.empreendimento.trim(),
+          numero: "",
+          complemento: t.unidade.trim() || "A ESCOLHER",
+          bairro: "",
+          cidade,
+          estado: "GO",
+          cep: "",
+          tipoImovel: "Empreendimento",
+          destinacao: "residencial"
+        },
+        condicoes: {
+          valorAluguel: 0,
+          diaVencimento: 0,
+          dataInicio: hoje,
+          dataTermino: hoje,
+          prazoMeses: 0,
+          indiceReajuste: "IPCA",
+          modalidadeGarantia: "sem_garantia",
+          multaAtrasoPercent: 0,
+          jurosMoraPercent: 0,
+          multaRescisoriaMeses: 0,
+          cidadeForo: cidade,
+          estadoForo: "Goiás"
+        },
+        corretorNome: t.corretorNome.trim(),
+        corretorCreci: t.corretorCreci.trim(),
+        blocks: chosenTemplate.blocks,
+        styleSettings: chosenTemplate.styleSettings || DEFAULT_STYLE_SETTINGS,
+        versoes: [{
+          id: `v_init_${Date.now()}`,
+          versionNumber: 1,
+          createdAt: new Date().toISOString(),
+          createdByUid: user?.uid || "system",
+          createdByName: profile?.displayName || "Usuário",
+          description: `Criação a partir do modelo ${chosenTemplate.nome}`,
+          blocksSnapshot: chosenTemplate.blocks,
+          styleSettingsSnapshot: chosenTemplate.styleSettings || DEFAULT_STYLE_SETTINGS
+        }],
+        criadoPorUid: user?.uid || "system",
+        criadoPorNome: profile?.displayName || "Usuário",
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      };
+      try {
+        const docRef = await addDoc(collection(db, "contratos_locacao"), termo);
+        setIsNewContractModalOpen(false);
+        setTermoForm((f) => ({ ...f, clienteNome: "", clienteCpf: "" }));
+        toast.success("Termo criado. Abrindo editor para revisar e enviar para assinatura...");
+        setActiveEditingContract({ id: docRef.id, ...termo });
+      } catch (err) {
+        console.error("Erro ao criar termo:", err);
+        toast.error("Erro ao salvar o termo no banco de dados.");
+      }
+      return;
+    }
 
     if (ehModeloAditivo(chosenTemplate)) {
       const base = contratos.find((c) => c.id === contratoPrincipalId);
@@ -858,7 +981,7 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
                                 <Printer className="w-4 h-4" />
                               </button>
 
-                              {!c.contratoPrincipalId && !/^PRO-/.test(c.numeroContrato || "") && (
+                              {!c.contratoPrincipalId && !ehDocumentoAvulso(c.numeroContrato) && (
                                 <button
                                   onClick={() => {
                                     const modeloAditivo = modelos.find((m) => ehModeloAditivo(m));
@@ -975,10 +1098,12 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
                 </div>
                 <div>
                   <h2 className="text-base font-black text-slate-900">
-                    {isAditivo ? "Novo Termo Aditivo" : isVenda ? "Novo Contrato de Compra e Venda" : isProcuracao ? "Nova Procuração – Troca de Titularidade" : "Novo Contrato de Locação"}
+                    {isTermoIntermediacao ? "Novo Termo de Intermediação" : isAditivo ? "Novo Termo Aditivo" : isVenda ? "Novo Contrato de Compra e Venda" : isProcuracao ? "Nova Procuração – Troca de Titularidade" : "Novo Contrato de Locação"}
                   </h2>
                   <p className="text-xs text-slate-500">
-                    {isAditivo
+                    {isTermoIntermediacao
+                      ? "O cliente reconhece que foi atendido pelo corretor. Preencha os dados dele e o empreendimento."
+                      : isAditivo
                       ? "Escolha o contrato principal: as partes e o imóvel vêm dele."
                       : isProcuracao
                       ? "O locatário autoriza a imobiliária a passar a energia (e a água) para o nome dele. Preencha os dados dele, o endereço e a UC do imóvel."
@@ -1036,7 +1161,62 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
                 />
               </div>
 
-              {isAditivo ? (
+              {isTermoIntermediacao ? (
+              <div className="space-y-3">
+                <p className="pt-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">Cliente (declarante)</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label htmlFor="tri-nome" className="block text-slate-800 font-bold mb-1">Nome completo*</label>
+                    <input id="tri-nome" type="text" value={termoForm.clienteNome}
+                      onChange={(e) => setTermoForm({ ...termoForm, clienteNome: e.target.value })}
+                      placeholder="Como no documento" className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                  </div>
+                  <div>
+                    <label htmlFor="tri-cpf" className="block text-slate-800 font-bold mb-1">CPF*</label>
+                    <input id="tri-cpf" type="text" inputMode="numeric" value={termoForm.clienteCpf}
+                      onChange={(e) => setTermoForm({ ...termoForm, clienteCpf: e.target.value })}
+                      placeholder="000.000.000-00" className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                  </div>
+                </div>
+                <p className="pt-3 border-t border-slate-200 text-[11px] font-bold uppercase tracking-wide text-slate-500">Imóvel apresentado</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label htmlFor="tri-emp" className="block text-slate-800 font-bold mb-1">Empreendimento*</label>
+                    <input id="tri-emp" type="text" value={termoForm.empreendimento}
+                      onChange={(e) => setTermoForm({ ...termoForm, empreendimento: e.target.value })}
+                      placeholder="Ex.: nome do residencial" className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                  </div>
+                  <div>
+                    <label htmlFor="tri-uni" className="block text-slate-800 font-bold mb-1">Unidade</label>
+                    <input id="tri-uni" type="text" value={termoForm.unidade}
+                      onChange={(e) => setTermoForm({ ...termoForm, unidade: e.target.value })}
+                      placeholder="A ESCOLHER" className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                  </div>
+                </div>
+                <p className="pt-3 border-t border-slate-200 text-[11px] font-bold uppercase tracking-wide text-slate-500">Corretor que atendeu</p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <label htmlFor="tri-corretor" className="block text-slate-800 font-bold mb-1">Nome do corretor*</label>
+                    <input id="tri-corretor" type="text" value={termoForm.corretorNome}
+                      onChange={(e) => setTermoForm({ ...termoForm, corretorNome: e.target.value })}
+                      placeholder="" className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                  </div>
+                  <div>
+                    <label htmlFor="tri-creci" className="block text-slate-800 font-bold mb-1">CRECI*</label>
+                    <input id="tri-creci" type="text" inputMode="numeric" value={termoForm.corretorCreci}
+                      onChange={(e) => setTermoForm({ ...termoForm, corretorCreci: e.target.value })}
+                      placeholder="" className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                  </div>
+                  <div>
+                    <label htmlFor="tri-cidade" className="block text-slate-800 font-bold mb-1">Cidade (local da assinatura)</label>
+                    <input id="tri-cidade" type="text" value={termoForm.cidade}
+                      onChange={(e) => setTermoForm({ ...termoForm, cidade: e.target.value })}
+                      placeholder="" className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                  </div>
+                </div>
+                <p className="text-xs text-slate-500">Corretor, CRECI e cidade ficam salvos neste navegador para os próximos termos. O termo sai com a data de hoje.</p>
+              </div>
+              ) : isAditivo ? (
               <div className="space-y-3">
                 <div>
                   <label htmlFor="nc-contrato-principal" className="block text-slate-800 font-bold mb-1">Contrato principal*</label>
@@ -1526,7 +1706,7 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
                 className="px-5 py-2.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-md rounded-xl cursor-pointer transition-all flex items-center gap-2"
               >
                 <Sparkles className="w-4 h-4" />
-                {isAditivo ? "Gerar Aditivo" : isProcuracao ? "Gerar Procuração" : "Criar e Abrir no Editor Visual"}
+                {isTermoIntermediacao ? "Gerar Termo" : isAditivo ? "Gerar Aditivo" : isProcuracao ? "Gerar Procuração" : "Criar e Abrir no Editor Visual"}
               </button>
             </div>
           </div>

@@ -839,6 +839,62 @@ export const ADITIVO_PROJETO_FECHADO_BLOCKS: ContractBlock[] = [
   }
 ];
 
+
+// Termo em que o cliente reconhece que foi atendido pelo corretor (proteção da
+// comissão, arts. 722 a 729 do Código Civil). Só o cliente assina.
+export const TERMO_INTERMEDIACAO_BLOCKS: ContractBlock[] = [
+  {
+    id: "block-title",
+    type: "title",
+    content: "TERMO DE RECONHECIMENTO DE INTERMEDIAÇÃO IMOBILIÁRIA",
+    isLocked: true
+  },
+  {
+    id: "block-declarante",
+    type: "paragraph",
+    sectionCategory: "Identificação das partes",
+    content: `<p>Eu, <strong>{{nome_locatario}}</strong>, CPF nº <strong>{{cpf_locatario}}</strong>, declaro para os devidos fins que:</p>`
+  },
+  {
+    id: "clause-1",
+    type: "paragraph",
+    sectionCategory: "Objeto",
+    content: `<p><strong>1.</strong> Fui atendido(a) pelo corretor de imóveis <strong>{{corretor_nome}}</strong>, inscrito no CRECI nº <strong>{{corretor_creci}}</strong>, o qual realizou a apresentação do imóvel abaixo descrito, bem como conduziu tratativas comerciais, simulações, análise de crédito e encaminhamento de documentação à correspondente bancária:</p>
+<p style="margin-left:24px"><strong>Empreendimento:</strong> {{empreendimento_imovel}}<br><strong>Unidade:</strong> {{unidade_imovel}}</p>`
+  },
+  {
+    id: "clause-2",
+    type: "paragraph",
+    sectionCategory: "Objeto",
+    content: `<p><strong>2.</strong> Reconheço que a atuação do referido corretor configurou intermediação imobiliária nos termos dos artigos 722 a 729 do Código Civil Brasileiro.</p>`
+  },
+  {
+    id: "clause-3",
+    type: "paragraph",
+    sectionCategory: "Objeto",
+    content: `<p><strong>3.</strong> Estou ciente de que, caso venha a adquirir o imóvel acima identificado, ainda que por intermédio de outro corretor, diretamente com a construtora/incorporadora ou por qualquer outro meio, será devida a comissão de corretagem ao profissional que iniciou e efetivamente promoveu a intermediação do negócio, conforme dispõe o art. 725 do Código Civil.</p>`
+  },
+  {
+    id: "clause-4",
+    type: "paragraph",
+    sectionCategory: "Disposições gerais",
+    content: `<p><strong>4.</strong> O presente termo não constitui promessa ou obrigação de compra, servindo exclusivamente como reconhecimento formal da intermediação profissional realizada.</p>`
+  },
+  {
+    id: "block-signatures",
+    type: "signatures",
+    clauseTitle: "LOCAL, DATA E ASSINATURA",
+    sectionCategory: "Assinaturas e testemunhas",
+    content: `<p class="text-center italic text-slate-600 my-6">{{data_atual_extenso}}</p>`,
+    metadata: {
+      assinaturas: {
+        linhas: [{ nome: "{{nome_locatario}}", papel: "DECLARANTE", doc: "CPF: {{cpf_locatario}}" }],
+        testemunhas: 0
+      }
+    }
+  }
+];
+
 export const INITIAL_PREDEFINED_TEMPLATES: ContratoModelo[] = [
   {
     id: "modelo-padrao-caucao",
@@ -1004,6 +1060,21 @@ export const INITIAL_PREDEFINED_TEMPLATES: ContratoModelo[] = [
     isPadrao: false,
     categoria: "Aditivos",
     blocks: ADITIVO_PROJETO_FECHADO_BLOCKS,
+    styleSettings: DEFAULT_STYLE_SETTINGS,
+    criadoPorUid: "system",
+    criadoPorNome: "Ponto Chave",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+  {
+    id: "modelo-termo-intermediacao",
+    companyId: "global",
+    nome: "Termo de Reconhecimento de Intermediação Imobiliária",
+    descricao: "O cliente declara que foi atendido pelo corretor (empreendimento e unidade) e que a comissão é devida a ele se comprar o imóvel por outro meio. Basta o nome e CPF do cliente.",
+    tipoLocacao: "residencial",
+    isPadrao: false,
+    categoria: "Termos",
+    blocks: TERMO_INTERMEDIACAO_BLOCKS,
     styleSettings: DEFAULT_STYLE_SETTINGS,
     criadoPorUid: "system",
     criadoPorNome: "Ponto Chave",
