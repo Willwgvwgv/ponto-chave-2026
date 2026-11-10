@@ -356,7 +356,7 @@ export const VENDA_FINANCIAMENTO_BLOCKS: ContractBlock[] = [
     clauseTitle: "DO PRAZO PARA O FINANCIAMENTO",
     sectionCategory: "Financiamento",
     content: `<p><strong>3.1.</strong> O COMPRADOR compromete-se a apresentar toda a documentação necessária à instituição financeira no prazo de {{prazo_documentacao}} dias úteis a contar desta data, para a efetivação da análise de crédito e emissão do contrato de financiamento.</p>
-<p><strong>3.2.</strong> Caso o financiamento seja negado pela instituição financeira por motivo não atribuível ao VENDEDOR ou à INTERMEDIÁRIA, este contrato poderá ser rescindido de pleno direito, com a devolução dos valores pagos pelo COMPRADOR, deduzidos os custos operacionais e a comissão de intermediação previamente acordados.</p>`
+<p><strong>3.2.</strong> Caso o financiamento seja negado ou não seja concluído, aplicam-se as regras do item 6.4 deste instrumento.</p>`
   },
   {
     id: "clause-4",
@@ -374,11 +374,24 @@ export const VENDA_FINANCIAMENTO_BLOCKS: ContractBlock[] = [
     content: `<p><strong>5.1.</strong> Pela intermediação imobiliária prestada pela {{nome_imobiliaria}}, será devida comissão de {{comissao_percentual}} sobre o valor total da venda, totalizando <strong>{{valor_comissao}} ({{valor_comissao_extenso}})</strong>, a ser paga pelo <strong>{{comissao_paga_por}}</strong> no ato do recebimento do sinal ou da liberação do financiamento.</p>`
   },
   {
-    id: "clause-6",
+    id: "clause-multa-venda",
+    type: "clause",
+    clauseTitle: "DA DESISTÊNCIA, DO INADIMPLEMENTO E DA MULTA",
+    sectionCategory: "Rescisão e multas",
+    content: `<p><strong>6.1.</strong> O presente contrato é celebrado em caráter irrevogável e irretratável, sem direito de arrependimento. O sinal pago tem natureza de <strong>arras confirmatórias</strong>, nos termos dos arts. 417 a 419 do Código Civil.</p>
+<p><strong>6.2. Desistência ou inadimplemento do COMPRADOR.</strong> Se o COMPRADOR desistir do negócio ou der causa à rescisão — inclusive por não entregar a documentação no prazo, não assinar o contrato de financiamento quando convocado ou não pagar valores de sua responsabilidade —, pagará ao VENDEDOR <strong>multa compensatória de 10% (dez por cento) do preço total</strong>, que o VENDEDOR poderá reter dos valores recebidos. O saldo restante, se houver, será devolvido ao COMPRADOR em até 30 (trinta) dias da rescisão.</p>
+<p><strong>6.3. Desistência ou inadimplemento do VENDEDOR.</strong> Se o VENDEDOR desistir do negócio ou der causa à rescisão — inclusive por vender ou prometer o imóvel a terceiro, deixar de apresentar documentos necessários ao financiamento ou à escritura ou não entregar a posse no prazo —, devolverá ao COMPRADOR, em até 30 (trinta) dias, todos os valores recebidos, corrigidos pelo IPCA, acrescidos de <strong>multa compensatória de 10% (dez por cento) do preço total</strong>.</p>
+<p><strong>6.4. Financiamento não concluído.</strong> Se o financiamento for negado ou não for concluído por motivo alheio à vontade das partes (por exemplo, reprovação do imóvel na avaliação bancária ou mudança nas regras da instituição financeira), o contrato será desfeito sem multa para qualquer das partes, e o VENDEDOR devolverá ao COMPRADOR os valores recebidos, corrigidos pelo IPCA, em até 30 (trinta) dias. Se o financiamento não for concluído por culpa do COMPRADOR (atraso ou falta de documentos, informações falsas, nova restrição cadastral, comprometimento de renda após a aprovação ou desistência), aplica-se o item 6.2. Se for por culpa do VENDEDOR ou por pendência documental do imóvel, aplica-se o item 6.3.</p>
+<p><strong>6.5. Notificação.</strong> Antes de considerar o contrato rescindido, a parte prejudicada notificará a outra, por escrito (inclusive por e-mail ou WhatsApp), concedendo prazo de 15 (quinze) dias para regularizar a situação.</p>
+<p><strong>6.6. Comissão da INTERMEDIÁRIA.</strong> A comissão de intermediação é devida com a assinatura deste instrumento, por ter sido alcançado o resultado útil da intermediação (art. 725 do Código Civil), e não será devolvida nem deixará de ser paga em caso de desistência, arrependimento ou rescisão por qualquer das partes. A parte que der causa à rescisão reembolsará à outra o valor da comissão que esta tiver pago, sem prejuízo da multa.</p>
+<p><strong>6.7.</strong> A multa prevista nesta cláusula não impede a cobrança de perdas e danos que comprovadamente excederem o seu valor (art. 416, parágrafo único, do Código Civil).</p>`
+  },
+  {
+    id: "clause-7",
     type: "clause",
     clauseTitle: "DO FORO",
     sectionCategory: "Disposições gerais",
-    content: `<p><strong>6.1.</strong> As partes elegem o foro da <strong>{{cidade_foro}}</strong> para dirimir quaisquer dúvidas ou litígios decorrentes deste instrumento, com renúncia expressa a qualquer outro, por mais privilegiado que seja.</p>`
+    content: `<p><strong>7.1.</strong> As partes elegem o foro da <strong>{{cidade_foro}}</strong> para dirimir quaisquer dúvidas ou litígios decorrentes deste instrumento, com renúncia expressa a qualquer outro, por mais privilegiado que seja.</p>`
   },
   {
     id: "block-assinaturas-venda",
@@ -466,11 +479,24 @@ export const VENDA_SEM_FINANCIAMENTO_BLOCKS: ContractBlock[] = [
     content: `<p><strong>4.1.</strong> Pela intermediação imobiliária prestada pela {{nome_imobiliaria}}, será devida comissão de {{comissao_percentual}} sobre o valor total da venda, totalizando <strong>{{valor_comissao}} ({{valor_comissao_extenso}})</strong>, a ser paga pelo <strong>{{comissao_paga_por}}</strong> no ato da assinatura deste instrumento ou do recebimento do sinal, conforme acordado entre as partes.</p>`
   },
   {
-    id: "clause-5",
+    id: "clause-multa-venda",
+    type: "clause",
+    clauseTitle: "DA DESISTÊNCIA, DO INADIMPLEMENTO E DA MULTA",
+    sectionCategory: "Rescisão e multas",
+    content: `<p><strong>5.1.</strong> O presente contrato é celebrado em caráter irrevogável e irretratável, sem direito de arrependimento. O sinal pago tem natureza de <strong>arras confirmatórias</strong>, nos termos dos arts. 417 a 419 do Código Civil.</p>
+<p><strong>5.2. Desistência ou inadimplemento do COMPRADOR.</strong> Se o COMPRADOR desistir do negócio ou der causa à rescisão — inclusive por não pagar o saldo do preço nas datas combinadas —, pagará ao VENDEDOR <strong>multa compensatória de 10% (dez por cento) do preço total</strong>, que o VENDEDOR poderá reter dos valores recebidos. O saldo restante, se houver, será devolvido ao COMPRADOR em até 30 (trinta) dias da rescisão.</p>
+<p><strong>5.3. Desistência ou inadimplemento do VENDEDOR.</strong> Se o VENDEDOR desistir do negócio ou der causa à rescisão — inclusive por vender ou prometer o imóvel a terceiro, deixar de apresentar documentos necessários à escritura ou não entregar a posse no prazo —, devolverá ao COMPRADOR, em até 30 (trinta) dias, todos os valores recebidos, corrigidos pelo IPCA, acrescidos de <strong>multa compensatória de 10% (dez por cento) do preço total</strong>.</p>
+<p><strong>5.4. Atraso no pagamento.</strong> O atraso no pagamento de qualquer parcela do preço sujeitará o COMPRADOR a multa moratória de 2% (dois por cento), juros de 1% (um por cento) ao mês e correção pelo IPCA. Persistindo o atraso por mais de 30 (trinta) dias, o VENDEDOR poderá considerar o contrato rescindido por culpa do COMPRADOR, aplicando-se o item 5.2.</p>
+<p><strong>5.5. Notificação.</strong> Antes de considerar o contrato rescindido, a parte prejudicada notificará a outra, por escrito (inclusive por e-mail ou WhatsApp), concedendo prazo de 15 (quinze) dias para regularizar a situação.</p>
+<p><strong>5.6. Comissão da INTERMEDIÁRIA.</strong> A comissão de intermediação é devida com a assinatura deste instrumento, por ter sido alcançado o resultado útil da intermediação (art. 725 do Código Civil), e não será devolvida nem deixará de ser paga em caso de desistência, arrependimento ou rescisão por qualquer das partes. A parte que der causa à rescisão reembolsará à outra o valor da comissão que esta tiver pago, sem prejuízo da multa.</p>
+<p><strong>5.7.</strong> A multa prevista nesta cláusula não impede a cobrança de perdas e danos que comprovadamente excederem o seu valor (art. 416, parágrafo único, do Código Civil).</p>`
+  },
+  {
+    id: "clause-6",
     type: "clause",
     clauseTitle: "DO FORO",
     sectionCategory: "Disposições gerais",
-    content: `<p><strong>5.1.</strong> As partes elegem o foro da <strong>{{cidade_foro}}</strong> para dirimir quaisquer dúvidas ou litígios decorrentes deste instrumento, com renúncia expressa a qualquer outro, por mais privilegiado que seja.</p>`
+    content: `<p><strong>6.1.</strong> As partes elegem o foro da <strong>{{cidade_foro}}</strong> para dirimir quaisquer dúvidas ou litígios decorrentes deste instrumento, com renúncia expressa a qualquer outro, por mais privilegiado que seja.</p>`
   },
   {
     id: "block-assinaturas-venda",
@@ -1024,7 +1050,7 @@ export const INITIAL_PREDEFINED_TEMPLATES: ContratoModelo[] = [
     companyId: "global",
     nome: "Compra e Venda com Intermediação e Financiamento Bancário",
     tipoDocumento: "venda",
-    descricao: "Instrumento particular de compra e venda com sinal, recursos de financiamento (ex.: Caixa), prazo para documentação, posse, despesas e comissão da imobiliária.",
+    descricao: "Instrumento particular de compra e venda com sinal, recursos de financiamento (ex.: Caixa), prazo para documentação, posse, despesas, multa por desistência e comissão da imobiliária.",
     tipoLocacao: "residencial",
     isPadrao: false,
     categoria: "Compra e Venda",
@@ -1040,7 +1066,7 @@ export const INITIAL_PREDEFINED_TEMPLATES: ContratoModelo[] = [
     companyId: "global",
     nome: "Compra e Venda sem Financiamento Bancário",
     tipoDocumento: "venda",
-    descricao: "Instrumento particular de compra e venda com pagamento direto entre as partes (à vista ou parcelado combinado entre VENDEDOR e COMPRADOR), sem cláusula de financiamento bancário. Posse, despesas e comissão da imobiliária.",
+    descricao: "Instrumento particular de compra e venda com pagamento direto entre as partes (à vista ou parcelado combinado entre VENDEDOR e COMPRADOR), sem cláusula de financiamento bancário. Posse, despesas, multa por desistência e comissão da imobiliária.",
     tipoLocacao: "residencial",
     isPadrao: false,
     categoria: "Compra e Venda",
