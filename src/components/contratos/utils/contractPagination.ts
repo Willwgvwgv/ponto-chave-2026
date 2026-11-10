@@ -290,7 +290,12 @@ export function paginateBlocks(
       continue;
     }
 
-    const blockHeight = measuredHeights?.[block.id] || estimateBlockHeight(block, styles, hasFiador);
+    const medido = measuredHeights?.[block.id];
+    // A altura medida já inclui o espaço acima do bloco; o primeiro bloco da folha não tem esse espaço.
+    const gapMedido = Math.max(styles.paragraphSpacingPx || 12, 16);
+    const alturaBloco = (primeiroDaFolha: boolean) =>
+      medido ? Math.max(0, medido - (primeiroDaFolha ? gapMedido : 0)) : estimateBlockHeight(block, styles, hasFiador);
+    const blockHeight = alturaBloco(currentPageBlocks.length === 0);
     const maxH = getPageMax(currentPageIndex);
 
     // If adding this block would exceed page limit AND page already has at least one block:
@@ -318,9 +323,10 @@ export function paginateBlocks(
         maxAvailableHeight: maxH
       });
       currentPageIndex++;
+      const hNova = alturaBloco(!acompanha);
       currentPageBlocks = acompanha ? [acompanha, { block, globalIndex: i }] : [{ block, globalIndex: i }];
-      alturasItens = acompanha ? [alturaAcompanha, blockHeight] : [blockHeight];
-      currentHeight = alturaAcompanha + blockHeight;
+      alturasItens = acompanha ? [alturaAcompanha, hNova] : [hNova];
+      currentHeight = alturaAcompanha + hNova;
     } else {
       currentPageBlocks.push({ block, globalIndex: i });
       alturasItens.push(blockHeight);
