@@ -13,6 +13,9 @@ export const DYNAMIC_VARIABLES_CATALOG: DynamicVariableDefinition[] = [
   { key: "prazo_documentacao", label: "Prazo para Documentação (dias úteis)", category: "prazos", description: "Prazo do comprador para entregar documentos ao banco", exampleValue: "15 (quinze)" },
   { key: "comissao_percentual", label: "Comissão (%)", category: "comercial", description: "Percentual da intermediação", exampleValue: "6% (seis por cento)" },
   { key: "valor_comissao", label: "Valor da Comissão", category: "comercial", description: "Comissão calculada sobre a venda", exampleValue: "R$ 15.000,00" },
+  { key: "valor_sinal_vendedor", label: "Sinal Líquido ao Vendedor", category: "comercial", description: "Sinal menos a comissão paga direto à imobiliária (arras)", exampleValue: "R$ 30.000,00" },
+  { key: "valor_sinal_vendedor_dobro", label: "Arras em Dobro", category: "comercial", description: "Devolução das arras mais o equivalente (art. 418 CC)", exampleValue: "R$ 60.000,00" },
+  { key: "numero_aditivo", label: "Nº do Aditivo", category: "datas", description: "1, 2, 3... conforme a ordem dos aditivos do contrato", exampleValue: "2" },
   { key: "comissao_paga_por", label: "Comissão Paga Por", category: "comercial", description: "VENDEDOR ou COMPRADOR", exampleValue: "VENDEDOR" },
   // 1. Dados do Imóvel
   { key: "endereco_imovel", label: "Endereço Completo do Imóvel", category: "imovel", description: "Rua, número, complemento, bairro, cidade e UF", exampleValue: "Av. T-63, nº 1200, Apto 504, Ed. Horizonte, Setor Bueno, Goiânia - GO" },
@@ -368,7 +371,19 @@ export function buildVariableMap(
         comissao_percentual: pct ? `${String(pct).replace(".", ",")}% (${semMoeda(pct)} por cento)` : `${LINHA}% (${LINHA} por cento)`,
         valor_comissao: brl(valorComissao),
         valor_comissao_extenso: ext(valorComissao),
-        comissao_paga_por: cond.comissaoPagaPor || LINHA
+        comissao_paga_por: cond.comissaoPagaPor || LINHA,
+        // Entrada dividida: comissão paga direto à imobiliária, o resto fica com o vendedor como arras
+        ...(() => {
+          const liquido = cond.valorSinal && valorComissao && cond.valorSinal > valorComissao
+            ? Math.round((cond.valorSinal - valorComissao) * 100) / 100
+            : undefined;
+          return {
+            valor_sinal_vendedor: brl(liquido),
+            valor_sinal_vendedor_extenso: ext(liquido),
+            valor_sinal_vendedor_dobro: brl(liquido ? liquido * 2 : undefined),
+            valor_sinal_vendedor_dobro_extenso: ext(liquido ? liquido * 2 : undefined)
+          };
+        })()
       };
     })(),
 
@@ -385,6 +400,7 @@ export function buildVariableMap(
     data_atual_extenso: formattedCurrentDate,
     // Aditivo: dados do contrato principal e o nome de cada parte conforme o tipo dele
     numero_contrato_principal: contract.contratoPrincipalNumero || "______________",
+    numero_aditivo: (contract.numeroContrato || "").match(/-AD(\d+)$/)?.[1] || "____",
     titulo_contrato_principal: contract.contratoPrincipalTitulo || "______________",
     data_contrato_principal: contract.contratoPrincipalData
       ? format(new Date(contract.contratoPrincipalData + "T12:00:00"), "dd/MM/yyyy")
