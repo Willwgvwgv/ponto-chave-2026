@@ -840,6 +840,166 @@ export const ADITIVO_PROJETO_FECHADO_BLOCKS: ContractBlock[] = [
 ];
 
 
+// Aditivo a um contrato de compra e venda com financiamento: entrada dividida
+// (parte ao vendedor como arras, parte direto à imobiliária como comissão),
+// prazo de entrega, rescisão por culpa de cada parte, financiamento não
+// concluído e comissão. Valores vêm do contrato principal.
+export const ADITIVO_VENDA_ENTRADA_BLOCKS: ContractBlock[] = [
+  {
+    id: "block-title",
+    type: "title",
+    content: "TERMO ADITIVO AO CONTRATO DE COMPRA E VENDA",
+    isLocked: true
+  },
+  {
+    id: "block-subtitle",
+    type: "subtitle",
+    content: "ENTRADA, PRAZO DE ENTREGA, RESCISÃO E COMISSÃO",
+    isLocked: true
+  },
+  {
+    id: "block-parties-aditivo",
+    type: "parties",
+    clauseTitle: "IDENTIFICAÇÃO DAS PARTES",
+    sectionCategory: "Identificação das partes",
+    content: `<p><strong>VENDEDOR(A):</strong> {{qualificacao_completa_locador}}.</p>
+<p class="mt-2"><strong>COMPRADOR(A):</strong> {{qualificacao_completa_locatario}}.</p>
+<p class="mt-2"><strong>INTERMEDIÁRIA (IMOBILIÁRIA):</strong> <strong>{{nome_imobiliaria}}</strong>, inscrita no CNPJ sob o nº {{cnpj_imobiliaria}}, registro no CRECI sob o nº {{creci_imobiliaria}}, estabelecida à {{endereco_imobiliaria}}.</p>`
+  },
+  {
+    id: "block-preambulo-aditivo",
+    type: "paragraph",
+    sectionCategory: "Identificação das partes",
+    content: `<p>As partes acima qualificadas, signatárias do <strong>Contrato de Compra e Venda nº {{numero_contrato_principal}}</strong>, celebrado em {{data_contrato_principal}}, referente ao imóvel situado à <strong>{{endereco_imovel}}</strong> (doravante "Contrato Principal"), e de eventuais termos aditivos anteriores, resolvem celebrar o presente <strong>Termo Aditivo nº {{numero_aditivo}}</strong>, mediante as cláusulas e condições seguintes:</p>`
+  },
+  {
+    id: "clause-1",
+    type: "clause",
+    clauseTitle: "DO OBJETO",
+    sectionCategory: "Objeto",
+    content: `<p><strong>1.1.</strong> O presente instrumento complementa o Contrato Principal e estabelece: a) a forma de pagamento da entrada; b) o prazo de entrega do imóvel; c) as consequências da desistência e do inadimplemento de cada parte; d) as regras da comissão de intermediação imobiliária.</p>
+<p><strong>1.2.</strong> Permanece mantido o preço da compra e venda, fixado em <strong>{{valor_venda}} ({{valor_venda_extenso}})</strong>, bem como as demais condições anteriormente ajustadas que não forem alteradas por este instrumento.</p>`
+  },
+  {
+    id: "clause-2",
+    type: "clause",
+    clauseTitle: "DA ENTRADA, DO SINAL E DA COMISSÃO",
+    sectionCategory: "Preço e pagamento",
+    content: `<p><strong>2.1.</strong> A entrada da negociação é de <strong>{{valor_sinal}} ({{valor_sinal_extenso}})</strong> e será paga pelo COMPRADOR da seguinte forma:</p>
+<p><strong>a)</strong> <strong>{{valor_sinal_vendedor}} ({{valor_sinal_vendedor_extenso}})</strong>, pagos diretamente ao VENDEDOR, a título de sinal e princípio de pagamento;</p>
+<p><strong>b)</strong> <strong>{{valor_comissao}} ({{valor_comissao_extenso}})</strong>, pagos diretamente à INTERMEDIÁRIA, a título de comissão de intermediação imobiliária. A comissão é de responsabilidade do VENDEDOR, e o COMPRADOR a paga por conta e ordem dele.</p>
+<p><strong>2.2.</strong> Os dois pagamentos previstos no item 2.1 integram o preço de {{valor_venda}} e serão abatidos dele. O saldo de <strong>{{valor_financiado}} ({{valor_financiado_extenso}})</strong> será quitado por meio de financiamento imobiliário junto à {{banco_financiamento}}, conforme o Contrato Principal.</p>
+<p><strong>2.3.</strong> As partes declaram que, na data da assinatura deste Termo Aditivo, a entrada ______________________ (ainda não foi paga / já foi paga e compensada).</p>
+<p><strong>2.4.</strong> Após o efetivo pagamento e compensação, o valor de {{valor_sinal_vendedor}} recebido pelo VENDEDOR terá natureza de <strong>arras confirmatórias</strong>, nos termos dos artigos 417, 418 e 419 do Código Civil.</p>
+<p><strong>2.5.</strong> O presente negócio somente produzirá efeitos e terá plena validade entre as partes após a efetiva quitação e compensação dos dois pagamentos previstos no item 2.1.</p>
+<p><strong>2.6.</strong> O VENDEDOR dará quitação da comissão perante a INTERMEDIÁRIA com o recebimento, por esta, do valor previsto na alínea "b" do item 2.1. A INTERMEDIÁRIA emitirá recibo em nome do VENDEDOR, com menção expressa a este contrato.</p>`
+  },
+  {
+    id: "clause-3",
+    type: "clause",
+    clauseTitle: "DO PRAZO PARA ENTREGA DO IMÓVEL",
+    sectionCategory: "Posse e despesas",
+    content: `<p><strong>3.1.</strong> O VENDEDOR compromete-se a deixar o imóvel pronto e disponível para entrega no prazo máximo de <strong>90 (noventa) dias corridos</strong>, contados da compensação integral da entrada prevista no item 2.1.</p>
+<p><strong>3.2.</strong> A entrega ocorrerá com o imóvel livre e desocupado de pessoas e bens, em condições de uso, com a entrega das respectivas chaves.</p>
+<p><strong>3.3.</strong> A entrega das chaves ocorrerá em até 5 (cinco) dias após a liberação dos recursos do financiamento ao VENDEDOR. Se a liberação ocorrer antes do fim do prazo do item 3.1, prevalece o prazo do item 3.1. Outra condição só valerá se for ajustada por escrito entre as partes.</p>
+<p><strong>3.4.</strong> O atraso na entrega por motivo atribuível ao VENDEDOR o sujeitará ao pagamento de multa moratória de 0,5% (meio por cento) do preço por mês de atraso, calculada proporcionalmente aos dias. Persistindo o atraso por mais de 30 (trinta) dias, o COMPRADOR poderá exigir o cumprimento da obrigação ou considerar o contrato resolvido, aplicando-se a Cláusula 5ª.</p>
+<p><strong>3.5.</strong> Eventual prorrogação do prazo somente será válida mediante concordância expressa e por escrito entre as partes.</p>`
+  },
+  {
+    id: "clause-4",
+    type: "clause",
+    clauseTitle: "DA RESCISÃO POR INICIATIVA OU RESPONSABILIDADE DO COMPRADOR",
+    sectionCategory: "Rescisão e multas",
+    content: `<p><strong>4.1.</strong> Após o pagamento da entrada, se o COMPRADOR desistir injustificadamente da aquisição ou der causa à resolução do contrato por inadimplemento de obrigação que lhe seja atribuível, o VENDEDOR poderá considerar resolvido o negócio.</p>
+<p><strong>4.2.</strong> Nessa hipótese: a) o VENDEDOR reterá o valor de {{valor_sinal_vendedor}} ({{valor_sinal_vendedor_extenso}}) recebido a título de arras confirmatórias, nos termos do artigo 418 do Código Civil; b) a comissão de {{valor_comissao}} ({{valor_comissao_extenso}}) paga à INTERMEDIÁRIA não será devolvida, por ter sido alcançado o resultado útil da intermediação (artigo 725 do Código Civil).</p>
+<p><strong>4.3.</strong> Se os prejuízos comprovadamente sofridos pelo VENDEDOR ultrapassarem o valor das arras, ele poderá pleitear indenização suplementar, conforme o artigo 419 do Código Civil.</p>
+<p><strong>4.4.</strong> Se a desistência ou o inadimplemento ocorrer antes do pagamento da entrada, não haverá retenção de valores não pagos, sem prejuízo de eventuais perdas e danos comprovados.</p>`
+  },
+  {
+    id: "clause-5",
+    type: "clause",
+    clauseTitle: "DA RESCISÃO POR INICIATIVA OU RESPONSABILIDADE DO VENDEDOR",
+    sectionCategory: "Rescisão e multas",
+    content: `<p><strong>5.1.</strong> Se o VENDEDOR desistir injustificadamente da negociação, recusar-se a cumprir as obrigações assumidas ou der causa à resolução do contrato por inadimplemento de obrigação que lhe seja atribuível — inclusive por vender ou prometer o imóvel a terceiro, deixar de apresentar os documentos necessários ao financiamento ou não entregar o imóvel no prazo —, o COMPRADOR poderá considerar resolvido o negócio.</p>
+<p><strong>5.2.</strong> Nessa hipótese, o VENDEDOR pagará ao COMPRADOR, em até 30 (trinta) dias, corrigidos pelo IPCA: a) <strong>{{valor_sinal_vendedor_dobro}} ({{valor_sinal_vendedor_dobro_extenso}})</strong>, correspondentes à devolução das arras mais o seu equivalente, nos termos do artigo 418 do Código Civil; b) <strong>{{valor_comissao}} ({{valor_comissao_extenso}})</strong>, em reembolso da comissão paga pelo COMPRADOR por conta do VENDEDOR, que permanece com a INTERMEDIÁRIA.</p>
+<p><strong>5.3.</strong> Se a entrada ainda não tiver sido paga, não haverá devolução em dobro de valor inexistente, sem prejuízo de eventuais perdas e danos comprovados.</p>`
+  },
+  {
+    id: "clause-6",
+    type: "clause",
+    clauseTitle: "DA NÃO CONCLUSÃO DO FINANCIAMENTO",
+    sectionCategory: "Financiamento",
+    content: `<p><strong>6.1.</strong> O COMPRADOR é responsável por cumprir todas as exigências documentais, cadastrais e financeiras necessárias à formalização do financiamento junto à {{banco_financiamento}}.</p>
+<p><strong>6.2.</strong> Se o financiamento não for aprovado, for reduzido ou não for liberado por motivo atribuível ao COMPRADOR — como restrição cadastral, insuficiência de renda, omissão de informações ou falta de documentos —, ele continuará obrigado a providenciar os recursos necessários para completar o preço de {{valor_venda}}.</p>
+<p><strong>6.3.</strong> Se o COMPRADOR não complementar os recursos em até 60 (sessenta) dias da negativa ou da redução, aplica-se a Cláusula 4ª.</p>
+<p><strong>6.4.</strong> Se a não conclusão do financiamento decorrer de pendência documental ou registral do imóvel ou do VENDEDOR, aplica-se a Cláusula 5ª.</p>
+<p><strong>6.5.</strong> Se o financiamento não puder ser concluído por motivo comprovadamente alheio às partes, inclusive impedimento definitivo da instituição financeira não provocado por qualquer delas, o contrato será resolvido sem multa. Nesse caso, o VENDEDOR devolverá ao COMPRADOR os {{valor_sinal_vendedor}} recebidos, corrigidos pelo IPCA, em até 30 (trinta) dias. A comissão observará o item 8.4.</p>`
+  },
+  {
+    id: "clause-7",
+    type: "clause",
+    clauseTitle: "DA RESCISÃO POR ACORDO ENTRE AS PARTES",
+    sectionCategory: "Rescisão e multas",
+    content: `<p><strong>7.1.</strong> O contrato poderá ser encerrado por mútuo acordo entre VENDEDOR e COMPRADOR, mediante distrato escrito, com a participação da INTERMEDIÁRIA.</p>
+<p><strong>7.2.</strong> O distrato deverá estabelecer expressamente: a) o motivo do encerramento; b) os valores pagos; c) a forma e o prazo de eventual restituição; d) as obrigações financeiras pendentes; e) a situação da comissão de intermediação; f) a quitação das obrigações resolvidas.</p>`
+  },
+  {
+    id: "clause-8",
+    type: "clause",
+    clauseTitle: "DA COMISSÃO DE INTERMEDIAÇÃO IMOBILIÁRIA",
+    sectionCategory: "Intermediação",
+    content: `<p><strong>8.1.</strong> As partes ratificam que a comissão devida à {{nome_imobiliaria}} corresponde a {{comissao_percentual}} sobre o preço de {{valor_venda}}, totalizando {{valor_comissao}} ({{valor_comissao_extenso}}), de responsabilidade do VENDEDOR.</p>
+<p><strong>8.2.</strong> A comissão será paga diretamente pelo COMPRADOR à INTERMEDIÁRIA, por conta do VENDEDOR, junto com a entrada, conforme a alínea "b" do item 2.1. Essa forma substitui a forma de pagamento prevista no Contrato Principal.</p>
+<p><strong>8.3.</strong> A desistência, o arrependimento ou o inadimplemento de qualquer das partes não obriga a INTERMEDIÁRIA a devolver a comissão, por ter sido alcançado o resultado útil da intermediação (artigo 725 do Código Civil). A parte que der causa à rescisão responderá perante a outra pelo valor da comissão, nos termos das Cláusulas 4ª e 5ª.</p>
+<p><strong>8.4.</strong> Na hipótese do item 6.5, a comissão permanece com a INTERMEDIÁRIA, e o VENDEDOR reembolsará ao COMPRADOR o valor de {{valor_comissao}} em até 30 (trinta) dias, por se tratar de obrigação própria do VENDEDOR paga pelo COMPRADOR.</p>
+<p><strong>8.5.</strong> O presente instrumento não altera o percentual nem o valor da comissão originalmente contratada.</p>`
+  },
+  {
+    id: "clause-9",
+    type: "clause",
+    clauseTitle: "DAS NOTIFICAÇÕES",
+    sectionCategory: "Disposições gerais",
+    content: `<p><strong>9.1.</strong> A parte que identificar descumprimento de obrigação contratual deverá comunicar formalmente a outra, descrevendo a obrigação não cumprida e concedendo prazo de 5 (cinco) dias úteis para regularização, quando a natureza da obrigação permitir sua correção.</p>
+<p><strong>9.2.</strong> Não sendo sanado o descumprimento no prazo, a parte prejudicada poderá adotar as medidas contratuais e legais cabíveis.</p>
+<p><strong>9.3.</strong> As comunicações poderão ser feitas por escrito, inclusive por e-mail ou aplicativo de mensagens, desde que seja possível comprovar o envio e o recebimento.</p>`
+  },
+  {
+    id: "clause-10",
+    type: "clause",
+    clauseTitle: "DA RATIFICAÇÃO E VIGÊNCIA",
+    sectionCategory: "Disposições gerais",
+    content: `<p><strong>10.1.</strong> Permanecem ratificadas todas as disposições do Contrato Principal e dos termos aditivos anteriores que não tenham sido expressamente alteradas pelo presente instrumento.</p>
+<p><strong>10.2.</strong> Em caso de divergência, prevalecem as disposições deste Termo Aditivo quanto às matérias aqui tratadas.</p>
+<p><strong>10.3.</strong> O presente Termo Aditivo passa a integrar o Contrato Principal para todos os efeitos, respeitada a condição de eficácia ligada ao pagamento da entrada.</p>`
+  },
+  {
+    id: "clause-11",
+    type: "clause",
+    clauseTitle: "DO FORO",
+    sectionCategory: "Disposições gerais",
+    content: `<p><strong>11.1.</strong> Permanece eleito o foro da <strong>{{cidade_foro}}</strong>, ressalvadas as hipóteses legais de competência obrigatória.</p>`
+  },
+  {
+    id: "block-signatures",
+    type: "signatures",
+    clauseTitle: "LOCAL, DATA E ASSINATURAS",
+    sectionCategory: "Assinaturas e testemunhas",
+    content: `<p style="text-align:center">E, por estarem justos e contratados, firmam o presente Termo Aditivo em 3 (três) vias de igual teor e forma, juntamente com duas testemunhas.</p>
+<p class="text-center italic text-slate-600 my-6">{{data_atual_extenso}}</p>`,
+    metadata: {
+      assinaturas: {
+        linhas: [
+          { nome: "{{nome_locador}}", papel: "VENDEDOR(A)", doc: "CPF/CNPJ: {{cpf_locador}}" },
+          { nome: "{{nome_locatario}}", papel: "COMPRADOR(A)", doc: "CPF/CNPJ: {{cpf_locatario}}" },
+          { nome: "{{nome_imobiliaria}}", papel: "INTERMEDIÁRIA", doc: "CRECI {{creci_imobiliaria}}" }
+        ],
+        testemunhas: 2
+      }
+    }
+  }
+];
+
+
 // Termo em que o cliente reconhece que foi atendido pelo corretor (proteção da
 // comissão, arts. 722 a 729 do Código Civil). Só o cliente assina.
 export const TERMO_INTERMEDIACAO_BLOCKS: ContractBlock[] = [
@@ -1060,6 +1220,21 @@ export const INITIAL_PREDEFINED_TEMPLATES: ContratoModelo[] = [
     isPadrao: false,
     categoria: "Aditivos",
     blocks: ADITIVO_PROJETO_FECHADO_BLOCKS,
+    styleSettings: DEFAULT_STYLE_SETTINGS,
+    criadoPorUid: "system",
+    criadoPorNome: "Ponto Chave",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+  {
+    id: "modelo-aditivo-venda-entrada",
+    companyId: "global",
+    nome: "Termo Aditivo – Entrada, Prazo de Entrega e Rescisão (Venda com Financiamento)",
+    descricao: "Aditivo a um contrato de venda com financiamento: entrada dividida (sinal ao vendedor e comissão direto à imobiliária), prazo de entrega, multa por desistência de comprador e vendedor, financiamento não concluído e comissão. Valores vêm do contrato principal.",
+    tipoLocacao: "residencial",
+    isPadrao: false,
+    categoria: "Aditivos",
+    blocks: ADITIVO_VENDA_ENTRADA_BLOCKS,
     styleSettings: DEFAULT_STYLE_SETTINGS,
     criadoPorUid: "system",
     criadoPorNome: "Ponto Chave",
