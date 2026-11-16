@@ -52,6 +52,8 @@ export interface UserProfile {
   permProcessos?: boolean;
   perm_processos?: boolean;
   permEnergia?: boolean;
+  permAvaliacao?: boolean;
+  perm_avaliacao?: boolean;
   perm_energia?: boolean;
   permPonto?: boolean;        // true para "colaborador" por padrão
   perm_ponto?: boolean;
