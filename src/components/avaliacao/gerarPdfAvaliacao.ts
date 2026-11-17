@@ -1,371 +1,204 @@
-import { jsPDF } from "jspdf";
+// Relatório da avaliação para levar ao proprietário: até 2 páginas, com logo,
+// corretor e só o que sustenta a conversa de preço. Gera uma página HTML e abre
+// a impressão do navegador ("Salvar como PDF"), no mesmo padrão do Simulador.
 import { brl, num, pct, descricaoCurta, aluguelSeAplica, type ImovelAvaliado } from "./calculos";
 
 type Dados = {
   imovel: ImovelAvaliado;
   resultados: any;
   investimento: any;
-  empresa?: { name?: string };
+  empresa?: { name?: string; logoUrl?: string; creci?: string; phone?: string; city?: string };
   corretor?: { nome?: string; creci?: string };
   data: Date;
 };
 
-// Remove caracteres fora do Latin-1 (a fonte padrão do jsPDF não tem).
-const t = (s: any) =>
-  String(s ?? "")
-    .replace(/[–—−]/g, "-")
-    .replace(/[“”]/g, '"')
-    .replace(/[‘’]/g, "'")
-    .replace(/…/g, "...")
-    .replace(/²/g, "2")
-    .replace(/[ºª]/g, (m) => (m === "º" ? "o" : "a"))
-    .replace(/[^\x00-\xFF]/g, "");
+const esc = (s: any) =>
+  String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-export function gerarPdfAvaliacao({ imovel, resultados, investimento, empresa, corretor, data }: Dados) {
-  const pdf = new jsPDF({ unit: "mm", format: "a4" });
-  const W = 210;
-  const M = 15;
-  const L = W - M * 2;
-  let y = M;
+const urlSegura = (u: any) => (typeof u === "string" && /^https?:\/\//i.test(u) ? esc(u) : "");
 
-  const novaPagina = () => {
-    pdf.addPage();
-    y = M;
-  };
-  const garantir = (h: number) => {
-    if (y + h > 282) novaPagina();
-  };
-  const titulo = (s: string) => {
-    if (y > M + 5) y += 4;
-    garantir(14);
-    pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(13);
-    pdf.setTextColor(15, 23, 42);
-    pdf.text(t(s), M, y);
-    y += 2;
-    pdf.setDrawColor(37, 99, 235);
-    pdf.setLineWidth(0.6);
-    pdf.line(M, y, M + 30, y);
-    y += 6;
-  };
-  const sub = (s: string) => {
-    garantir(9);
-    pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(10);
-    pdf.setTextColor(30, 41, 59);
-    pdf.text(t(s), M, y);
-    y += 5;
-  };
-  const texto = (s: string, opt: { tam?: number; cor?: [number, number, number]; negrito?: boolean } = {}) => {
-    if (!s) return;
-    pdf.setFont("helvetica", opt.negrito ? "bold" : "normal");
-    pdf.setFontSize(opt.tam ?? 9);
-    pdf.setTextColor(...(opt.cor ?? [51, 65, 85]));
-    const linhas = pdf.splitTextToSize(t(s), L);
-    for (const l of linhas) {
-      garantir(5);
-      pdf.text(l, M, y);
-      y += (opt.tam ?? 9) * 0.45;
-    }
-    y += 1.5;
-  };
-  const par = (rotulo: string, valor: string) => {
-    garantir(6);
-    pdf.setFont("helvetica", "normal");
-    pdf.setFontSize(9);
-    pdf.setTextColor(100, 116, 139);
-    pdf.text(t(rotulo), M, y);
-    pdf.setFont("helvetica", "bold");
-    pdf.setTextColor(15, 23, 42);
-    pdf.text(t(valor), M + 70, y);
-    y += 5;
-  };
-  const tabela = (cab: string[], linhas: string[][], larguras: number[]) => {
-    const alt = 6;
-    const desenharCab = () => {
-      pdf.setFillColor(241, 245, 249);
-      pdf.rect(M, y - 4, L, alt, "F");
-      pdf.setFont("helvetica", "bold");
-      pdf.setFontSize(7.5);
-      pdf.setTextColor(51, 65, 85);
-      let x = M + 1;
-      cab.forEach((c, i) => {
-        pdf.text(t(c), x, y);
-        x += larguras[i];
-      });
-      y += alt;
-    };
-    garantir(alt * 2);
-    desenharCab();
-    pdf.setFont("helvetica", "normal");
-    for (const linha of linhas) {
-      if (y + alt > 282) {
-        novaPagina();
-        desenharCab();
-        pdf.setFont("helvetica", "normal");
-      }
-      pdf.setFontSize(7.5);
-      pdf.setTextColor(30, 41, 59);
-      let x = M + 1;
-      linha.forEach((c, i) => {
-        const cel = pdf.splitTextToSize(t(c), larguras[i] - 2)[0] || "";
-        pdf.text(cel, x, y);
-        x += larguras[i];
-      });
-      pdf.setDrawColor(226, 232, 240);
-      pdf.setLineWidth(0.2);
-      pdf.line(M, y + 2, M + L, y + 2);
-      y += alt;
-    }
-    y += 3;
-  };
-
+export function montarHtmlAvaliacao({ imovel, resultados, investimento, empresa, corretor, data }: Dados): string {
   const comp = resultados?.comparaveis;
   const alug = resultados?.aluguel;
   const merc = resultados?.mercado;
-  const bairro = resultados?.bairro;
   const loc = resultados?.localizacao;
   const sint = resultados?.sintese;
+  const u = comp?.unidade === "ha" ? "ha" : "m²";
+  const azul = "#0f3a6b";
 
-  // ---------- Página 1: capa e resumo ----------
-  pdf.setFillColor(15, 23, 42);
-  pdf.rect(0, 0, W, 38, "F");
-  pdf.setTextColor(255, 255, 255);
-  pdf.setFont("helvetica", "bold");
-  pdf.setFontSize(16);
-  pdf.text("Estudo de Mercado do Imóvel", M, 16);
-  pdf.setFont("helvetica", "normal");
-  pdf.setFontSize(9);
-  pdf.text(t(descricaoCurta(imovel)), M, 24, { maxWidth: L });
-  pdf.text(
-    t(`${empresa?.name || ""}${corretor?.nome ? "  |  " + corretor.nome : ""}${corretor?.creci ? "  |  CRECI " + corretor.creci : ""}  |  ${data.toLocaleDateString("pt-BR")}`),
-    M,
-    32
-  );
-  y = 50;
+  const logo = empresa?.logoUrl
+    ? `<img src="${urlSegura(empresa.logoUrl)}" alt="Logo" style="max-height:46px;max-width:180px;object-fit:contain" referrerpolicy="no-referrer" />`
+    : `<div style="border:2px solid ${azul};color:${azul};font-weight:900;padding:6px 12px;border-radius:6px;letter-spacing:.05em">FIDELITÉ</div>`;
 
-  if (sint?.notaFinal != null) {
-    pdf.setFillColor(239, 246, 255);
-    pdf.roundedRect(M, y - 6, 45, 24, 3, 3, "F");
-    pdf.setTextColor(37, 99, 235);
-    pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(24);
-    pdf.text(String(sint.notaFinal), M + 6, y + 9);
-    pdf.setFontSize(8);
-    pdf.text("NOTA DE 0 A 100", M + 6, y + 15);
-  }
-  const xr = M + 55;
-  pdf.setTextColor(15, 23, 42);
-  pdf.setFont("helvetica", "bold");
-  pdf.setFontSize(10);
-  if (comp?.valor) {
-    pdf.text(t(`Valor provável: ${brl(comp.valor.provavel)}`), xr, y);
-    pdf.setFont("helvetica", "normal");
-    pdf.setFontSize(9);
-    pdf.text(t(`Faixa: ${brl(comp.valor.minimo)} a ${brl(comp.valor.maximo)}`), xr, y + 6);
-    pdf.text(t(`Base: ${comp.estatisticas.quantidade} comparáveis | confiança ${comp.confianca}`), xr, y + 12);
-    if (comp.diferencaPedidoPct != null)
-      pdf.text(t(`Preço pedido ${brl(imovel.precoPedido)}: ${comp.diferencaPedidoPct >= 0 ? "+" : ""}${num(comp.diferencaPedidoPct, 1)}% vs valor provável`), xr, y + 18);
-  } else {
-    pdf.text("Valor: sem base suficiente de comparáveis", xr, y);
-  }
-  y += 30;
+  const nomeCorretor = (corretor?.nome || "").trim();
+  const creci = (corretor?.creci || "").trim();
 
-  if (sint) {
-    titulo("Resumo");
-    if (sint.argumento) texto(`Argumento principal: ${sint.argumento}`, { negrito: true, cor: [15, 23, 42] });
-    sub("Pontos fortes");
-    (sint.forcas || []).forEach((f: string) => texto(`- ${f}`));
-    sub("Riscos");
-    (sint.riscos || []).forEach((f: string) => texto(`- ${f}`));
-    sub("Notas por frente");
-    const rot: Record<string, string> = { valor: "Valor e comparáveis", renda: "Renda de aluguel", entorno: "Bairro e entorno", investimento: "Investimento", mercado: "Mercado" };
-    tabela(
-      ["Frente", "Peso", "Nota"],
-      Object.entries(sint.notas || {}).map(([k, v]: any) => [rot[k] || k, `${v.peso}%`, v.nota == null ? "sem dado" : String(v.nota)]),
-      [60, 30, 90]
-    );
-    Object.entries(sint.notas || {}).forEach(([k, v]: any) => v.justificativa && texto(`${rot[k] || k}: ${v.justificativa}`, { tam: 8 }));
-  }
+  // ---------- números principais ----------
+  const valor = comp?.valor;
+  const dif = comp?.diferencaPedidoPct;
+  const corDif = dif == null ? "#334155" : dif > 5 ? "#b91c1c" : dif < -5 ? "#047857" : "#334155";
+  const textoDif = dif == null ? "" : `${dif >= 0 ? "+" : ""}${num(dif, 1)}% ${dif >= 0 ? "acima" : "abaixo"} do valor provável`;
 
-  sub("Dados do imóvel");
-  par("Tipo / endereço", descricaoCurta(imovel));
-  if (imovel.areaConstruida) par("Área construída", `${num(imovel.areaConstruida)} m²`);
-  if (imovel.areaTerreno) par("Área do terreno", `${num(imovel.areaTerreno)} m²`);
-  if (imovel.areaHa) par("Área total", `${num(imovel.areaHa, 2)} ha`);
-  if (imovel.quartos != null) par("Quartos / suítes / vagas", `${imovel.quartos ?? "-"} / ${imovel.suites ?? "-"} / ${imovel.vagas ?? "-"}`);
-  if (imovel.padrao) par("Padrão / conservação", `${imovel.padrao || "-"} / ${imovel.conservacao || "-"}`);
+  const caixa = (rotulo: string, valorTxt: string, sub = "") => `
+    <div class="caixa"><div class="rot">${rotulo}</div><div class="val">${valorTxt}</div>${sub ? `<div class="sub">${sub}</div>` : ""}</div>`;
 
-  // ---------- Comparáveis ----------
-  novaPagina();
-  titulo("Comparáveis de venda");
-  if (comp?.itens?.length) {
-    const u = comp.unidade === "ha" ? "ha" : "m²";
-    tabela(
-      ["Imóvel", "Bairro", `Área (${u})`, "Preço", `R$/${u}`, "Fonte"],
-      comp.itens.map((c: any) => [c.titulo, c.bairro, num(c.area, u === "ha" ? 2 : 0), brl(c.preco), brl(c.precoUnidade), c.fonte]),
-      [52, 32, 18, 27, 23, 28]
-    );
-    // gráfico simples de barras de preço por unidade
-    const itens = comp.itens.slice(0, 14);
-    const max = Math.max(...itens.map((c: any) => c.precoUnidade));
-    const min = Math.min(...itens.map((c: any) => c.precoUnidade));
-    const piso = Math.max(0, min - (max - min) * 0.5 - max * 0.02);
-    const altura = (v: number) => 8 + ((v - piso) / (max - piso || 1)) * 37;
-    garantir(70);
-    sub(`Preço por ${u} de cada comparável (eixo começa em ${brl(piso)})`);
-    const base = y + 50;
-    const largura = L / itens.length;
-    itens.forEach((c: any, i: number) => {
-      const h = altura(c.precoUnidade);
-      pdf.setFillColor(96, 165, 250);
-      pdf.rect(M + i * largura + 1, base - h, largura - 2, h, "F");
-      pdf.setFontSize(6);
-      pdf.setTextColor(71, 85, 105);
-      pdf.text(String(i + 1), M + i * largura + largura / 2 - 1, base + 4);
-    });
-    if (comp.estatisticas?.mediana) {
-      const hm = altura(comp.estatisticas.mediana);
-      pdf.setDrawColor(220, 38, 38);
-      pdf.setLineWidth(0.4);
-      pdf.line(M, base - hm, M + L, base - hm);
-      pdf.setFontSize(7);
-      pdf.setTextColor(220, 38, 38);
-      pdf.text(t(`mediana ${brl(comp.estatisticas.mediana)}/${u}`), M + L - 45, base - hm - 1.5);
-    }
-    y = base + 10;
-    sub("Cálculo");
-    par(`Média R$/${u}`, brl(comp.estatisticas.media));
-    par(`Mediana R$/${u}`, brl(comp.estatisticas.mediana));
-    par("Fator de oferta", `${comp.fatorOferta.percentual}% - ${comp.fatorOferta.motivo || ""}`);
-    (comp.ajustes || []).forEach((a: any) => par(`Ajuste: ${a.fator}`, `${a.percentual > 0 ? "+" : ""}${a.percentual}% - ${a.motivo}`));
-    if (comp.valor) texto(comp.valor.calculo, { tam: 8 });
-  } else {
-    texto("Nenhum comparável válido foi encontrado.");
-  }
-  if (comp?.limitacoes) texto(`Limitações: ${comp.limitacoes}`, { tam: 8, cor: [180, 83, 9] });
+  const caixas: string[] = [];
+  caixas.push(caixa("Valor provável", valor ? brl(valor.provavel) : "sem base", valor ? `faixa ${brl(valor.minimo)} a ${brl(valor.maximo)}` : ""));
+  if (imovel.precoPedido) caixas.push(caixa("Preço pedido", brl(imovel.precoPedido), `<span style="color:${corDif};font-weight:700">${textoDif}</span>`));
+  caixas.push(caixa(`Mediana R$/${u}`, brl(comp?.estatisticas?.mediana), `${comp?.estatisticas?.quantidade ?? 0} imóveis comparados`));
+  if (aluguelSeAplica(imovel.tipo) && alug?.estimativa)
+    caixas.push(caixa("Aluguel estimado", brl(alug.estimativa.provavel), investimento?.renda ? `${pct(investimento.renda.liquidaPct, 1)} a.a. líquido` : ""));
 
-  // ---------- Aluguel e investimento ----------
-  novaPagina();
-  titulo("Aluguel");
-  if (!aluguelSeAplica(imovel.tipo)) texto("Não se aplica a este tipo de imóvel.");
-  else if (alug?.itens?.length) {
-    tabela(
-      ["Imóvel", "Bairro", "Área", "Aluguel", "Cond.", "Fonte"],
-      alug.itens.map((c: any) => [c.titulo, c.bairro, num(c.area), brl(c.aluguel), brl(c.condominio), c.fonte]),
-      [55, 35, 15, 25, 22, 28]
-    );
-    if (alug.estimativa) {
-      par("Aluguel estimado", `${brl(alug.estimativa.provavel)} (faixa ${brl(alug.estimativa.minimo)} a ${brl(alug.estimativa.maximo)})`);
-      texto(alug.estimativa.calculo, { tam: 8 });
-    }
-    if (alug.limitacoes) texto(`Limitações: ${alug.limitacoes}`, { tam: 8, cor: [180, 83, 9] });
-  } else texto("Nenhum anúncio de aluguel válido encontrado.");
+  const lista = (itens: string[]) => (itens?.length ? `<ul>${itens.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : `<p class="vazio">-</p>`);
 
-  titulo("Investimento (simulação)");
-  if (investimento) {
-    const i = investimento;
-    par("Preço considerado", brl(i.preco));
-    par("ITBI", brl(i.itbi));
-    par("Escritura e registro (estimativa)", brl(i.cartorio));
-    par("Custo total de aquisição", brl(i.custoAquisicao));
-    sub("Financiamento SAC");
-    par("Entrada", brl(i.financiamento.entrada));
-    par("Valor financiado", brl(i.financiamento.financiado));
-    par("Taxa / prazo", `${num(i.financiamento.taxaAnualPct, 2)}% a.a. / ${i.financiamento.n} meses`);
-    par("1ª parcela / última parcela", `${brl(i.financiamento.primeiraParcela)} / ${brl(i.financiamento.ultimaParcela)}`);
-    par("Total de juros", brl(i.financiamento.totalJuros));
-    if (i.renda) {
-      sub("Renda");
-      par("Rentabilidade bruta", pct(i.renda.brutaPct, 2) + " a.a.");
-      par("Rentabilidade líquida", pct(i.renda.liquidaPct, 2) + " a.a.");
-      if (i.renda.selicPct != null) par("Selic atual", pct(i.renda.selicPct, 2) + ` (${i.renda.comparacao})`);
-    }
-    if (i.revenda3a) {
-      sub("Revenda em 3 anos");
-      par("Valorização usada", `${pct(i.revenda3a.valorizacaoAnualPct, 2)} a.a. (${i.revenda3a.origem})`);
-      par("Valor projetado", brl(i.revenda3a.valor3a));
-    }
-    texto("Taxa de juros, cartório e entrada são parâmetros da simulação e devem ser confirmados com o banco e o cartório.", { tam: 8, cor: [100, 116, 139] });
-  } else texto("Sem preço base para simular.");
+  // ---------- comparáveis (até 10) ----------
+  const itens = (comp?.itens || []).slice(0, 10);
+  const linhasComp = itens
+    .map(
+      (c: any, i: number) => `<tr>
+        <td>${i + 1}</td>
+        <td>${esc(c.titulo)}${c.bairro ? `<span class="cinza"> · ${esc(c.bairro)}</span>` : ""}</td>
+        <td class="d">${num(c.area, u === "ha" ? 2 : 0)}</td>
+        <td class="d">${brl(c.preco)}</td>
+        <td class="d"><b>${brl(c.precoUnidade)}</b></td>
+        <td style="white-space:nowrap">${urlSegura(c.url) ? `<a href="${urlSegura(c.url)}">${esc(c.fonte || "ver")}</a>` : esc(c.fonte)}</td>
+      </tr>`
+    )
+    .join("");
 
-  // ---------- Entorno ----------
-  novaPagina();
-  titulo("Bairro e entorno");
-  if (loc?.encontrado) {
-    texto(`Localização encontrada (${loc.precisao}): ${loc.enderecoEncontrado}`, { tam: 8 });
-    if (loc.entorno) {
-      tabela(
-        ["Categoria", "Até 500 m", "Até 1 km", "Até 2 km", "Mais próximo"],
-        loc.entorno.map((c: any) => [c.rotulo, String(c.ate500m), String(c.ate1km), String(c.ate2km), c.maisProximos[0] ? `${c.maisProximos[0].nome} (${num(c.maisProximos[0].distanciaM)} m)` : "-"]),
-        [45, 18, 18, 18, 81]
-      );
-      texto(loc.fonteEntorno, { tam: 7.5, cor: [100, 116, 139] });
-    }
-  } else texto("Endereço não localizado no mapa.");
-  const blocoNoticias = (rot: string, lista: any[]) => {
-    if (!lista?.length) return;
-    sub(rot);
-    lista.forEach((n) => texto(`- ${n.titulo}${n.data ? " (" + n.data + ")" : ""}: ${n.resumo || ""}`, { tam: 8.5 }));
+  // ---------- entorno: só o que existe perto ----------
+  const entorno = (loc?.entorno || [])
+    .filter((c: any) => c.ate2km > 0)
+    .map((c: any) => {
+      const p = c.maisProximos?.[0];
+      return `<tr><td>${esc(c.rotulo)}</td><td class="d">${c.ate1km}</td><td>${p ? `${esc(p.nome)} (${num(p.distanciaM)} m)` : "-"}</td></tr>`;
+    })
+    .join("");
+
+  // ---------- mercado em poucas linhas ----------
+  const mercado: string[] = [];
+  if (merc?.classificacao && merc.classificacao !== "sem base")
+    mercado.push(`Mercado <b>${esc(merc.classificacao)}</b>${merc.motivoClassificacao ? `: ${esc(merc.motivoClassificacao)}` : ""}`);
+  if (merc?.estoque?.quantidade != null) mercado.push(`${num(merc.estoque.quantidade)} anúncios parecidos ativos (${esc(merc.estoque.portal)})`);
+  if (merc?.fipezap?.venda12m != null) mercado.push(`FipeZap ${esc(merc.fipezap.local)}: ${pct(merc.fipezap.venda12m, 1)} em 12 meses`);
+  const selic = loc?.indicadores?.selic?.valor;
+  if (selic != null) mercado.push(`Selic ${pct(selic, 2)} (Banco Central)`);
+
+  const enderecoTxt = [imovel.endereco, imovel.bairro, imovel.cidade && `${imovel.cidade}${imovel.uf ? "/" + imovel.uf : ""}`].filter(Boolean).join(", ");
+  const caracteristicas = [
+    imovel.areaConstruida && `${num(imovel.areaConstruida)} m² construídos`,
+    imovel.areaTerreno && `terreno ${num(imovel.areaTerreno)} m²`,
+    imovel.areaHa && `${num(imovel.areaHa, 2)} ha`,
+    imovel.quartos != null && `${imovel.quartos} quartos`,
+    imovel.suites && `${imovel.suites} suíte(s)`,
+    imovel.vagas != null && `${imovel.vagas} vaga(s)`,
+    imovel.padrao && `padrão ${imovel.padrao}`,
+    imovel.conservacao && `conservação: ${imovel.conservacao}`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Estudo de mercado - ${esc(imovel.bairro || imovel.cidade || "imóvel")}</title>
+<style>
+  @page { size: A4; margin: 14mm 14mm 16mm; }
+  * { box-sizing: border-box; }
+  body { font-family: Inter, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; color: #0f172a; font-size: 9.5pt; line-height: 1.45; margin: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid ${azul}; padding-bottom: 8px; }
+  header .dir { text-align: right; font-size: 8.5pt; color: #475569; }
+  header .dir b { color: #0f172a; font-size: 10pt; }
+  h1 { font-size: 15pt; color: ${azul}; margin: 14px 0 2px; }
+  h2 { font-size: 10pt; color: ${azul}; text-transform: uppercase; letter-spacing: .04em; margin: 16px 0 6px; border-bottom: 1px solid #e2e8f0; padding-bottom: 3px; }
+  .end { color: #334155; margin: 0; }
+  .carac { color: #64748b; font-size: 8.5pt; margin: 2px 0 0; }
+  .caixas { display: grid; grid-template-columns: repeat(${caixas.length}, 1fr); gap: 8px; margin-top: 12px; }
+  .caixa { border: 1px solid #cbd5e1; border-radius: 8px; padding: 8px 10px; }
+  .caixa:first-child { border-color: ${azul}; background: #f1f5fb; }
+  .rot { font-size: 7.5pt; text-transform: uppercase; color: #64748b; letter-spacing: .04em; }
+  .val { font-size: 14pt; font-weight: 800; margin-top: 2px; }
+  .sub { font-size: 8pt; color: #475569; }
+  .argumento { margin-top: 12px; padding: 8px 12px; border-left: 3px solid ${azul}; background: #f8fafc; font-size: 10pt; }
+  .duas { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  ul { margin: 0; padding-left: 16px; } li { margin-bottom: 3px; }
+  table { width: 100%; border-collapse: collapse; font-size: 8.5pt; }
+  th { text-align: left; font-size: 7.5pt; text-transform: uppercase; color: #64748b; border-bottom: 1px solid #cbd5e1; padding: 4px 5px; }
+  td { padding: 4px 5px; border-bottom: 1px solid #eef2f7; vertical-align: top; }
+  .d { text-align: right; white-space: nowrap; }
+  .cinza { color: #94a3b8; }
+  a { color: #1d4ed8; text-decoration: none; }
+  .nota { font-size: 7.5pt; color: #64748b; margin-top: 4px; }
+  .vazio { color: #94a3b8; }
+  .quebra { break-before: page; }
+  footer { margin-top: 18px; padding-top: 6px; border-top: 1px solid #e2e8f0; font-size: 7.5pt; color: #64748b; }
+  .ass { margin-top: 30px; text-align: center; font-size: 9pt; }
+  .ass .linha { width: 260px; margin: 0 auto 4px; border-top: 1px solid #0f172a; }
+</style></head><body>
+
+<header>
+  ${logo}
+  <div class="dir">
+    ${nomeCorretor ? `<b>${esc(nomeCorretor)}</b><br>` : ""}
+    ${creci ? `Corretor de imóveis · CRECI ${esc(creci)}<br>` : ""}
+    ${esc(empresa?.name || "Fidelité Negócios Imobiliários")}${empresa?.phone ? ` · ${esc(empresa.phone)}` : ""}<br>
+    ${data.toLocaleDateString("pt-BR")}
+  </div>
+</header>
+
+<h1>Estudo de mercado do imóvel</h1>
+<p class="end"><b>${esc(descricaoCurta(imovel).split(" - ")[0])}</b> · ${esc(enderecoTxt)}</p>
+${caracteristicas ? `<p class="carac">${esc(caracteristicas)}</p>` : ""}
+
+<div class="caixas">${caixas.join("")}</div>
+
+${sint?.argumento ? `<div class="argumento">${esc(sint.argumento)}</div>` : ""}
+
+${sint ? `<div class="duas">
+  <div><h2>Pontos fortes</h2>${lista(sint.forcas)}</div>
+  <div><h2>Pontos de atenção</h2>${lista(sint.riscos)}</div>
+</div>` : ""}
+
+${entorno ? `<h2>O que tem perto</h2>
+<table><thead><tr><th>Categoria</th><th class="d">Até 1 km</th><th>Mais próximo</th></tr></thead><tbody>${entorno}</tbody></table>
+<p class="nota">Distâncias em linha reta, pelo OpenStreetMap. Em cidades menores o mapa pode não ter todos os estabelecimentos.</p>` : ""}
+
+${mercado.length ? `<h2>Mercado</h2><ul>${mercado.map((m) => `<li>${m}</li>`).join("")}</ul>` : ""}
+
+${itens.length ? `<div class="quebra"></div>
+<h2>Imóveis comparados</h2>
+<table><thead><tr><th>#</th><th>Imóvel</th><th class="d">Área (${u})</th><th class="d">Preço</th><th class="d">R$/${u}</th><th>Fonte</th></tr></thead><tbody>${linhasComp}</tbody></table>
+<p class="nota">Preços anunciados nos portais na data da pesquisa.${
+    comp?.valor
+      ? ` Valor provável = mediana do R$/${u} × área do imóvel, com desconto de ${comp.fatorOferta?.percentual ?? 0}% entre preço anunciado e preço fechado${comp.ajusteTotal ? ` e ajuste de ${comp.ajusteTotal > 0 ? "+" : ""}${comp.ajusteTotal}% pelas diferenças do imóvel` : ""}.`
+      : ""
+  }</p>` : ""}
+
+<div class="ass"><div class="linha"></div>${esc(nomeCorretor || "Corretor responsável")}${creci ? ` · CRECI ${esc(creci)}` : ""}</div>
+
+<footer>Estudo de mercado para apoio à negociação, feito com anúncios públicos e dados oficiais. Não é laudo de avaliação (NBR 14653) nem PTAM.</footer>
+
+</body></html>`;
+}
+
+export function gerarPdfAvaliacao(dados: Dados) {
+  const janela = window.open("", "_blank", "width=900,height=1100");
+  if (!janela) throw new Error("O navegador bloqueou a janela do PDF. Permita pop-ups para o Ponto Chave.");
+  janela.document.open();
+  janela.document.write(montarHtmlAvaliacao(dados));
+  janela.document.close();
+  let feito = false;
+  const imprimir = () => {
+    if (feito) return;
+    feito = true;
+    janela.focus();
+    janela.print();
   };
-  blocoNoticias("Segurança", bairro?.seguranca);
-  blocoNoticias("Infraestrutura e obras", bairro?.infraestrutura);
-  blocoNoticias("Vetores de crescimento", bairro?.crescimento);
-  blocoNoticias("Pontos de atenção", bairro?.negativos);
-  if (bairro?.limitacoes) texto(`Limitações: ${bairro.limitacoes}`, { tam: 8, cor: [180, 83, 9] });
-
-  // ---------- Mercado ----------
-  titulo("Mercado");
-  if (merc) {
-    par("Classificação", `${merc.classificacao}${merc.motivoClassificacao ? " - " + merc.motivoClassificacao : ""}`);
-    if (merc.estoque) par("Estoque de ofertas", `${num(merc.estoque.quantidade)} anúncios (${merc.estoque.portal})`);
-    if (merc.fipezap) par(`FipeZap ${merc.fipezap.local}`, `venda ${pct(merc.fipezap.venda12m, 2)} em 12m (${merc.fipezap.periodo})`);
-    if (merc.itbi) par("ITBI do município", pct(merc.itbi.aliquotaPct, 2));
-    blocoNoticias("Notícias do mercado local", merc.noticias);
+  // espera a logo carregar antes de abrir a impressão
+  const img = janela.document.querySelector("img") as HTMLImageElement | null;
+  if (img && !img.complete) {
+    img.addEventListener("load", imprimir);
+    img.addEventListener("error", imprimir);
+    setTimeout(imprimir, 4000);
+  } else {
+    setTimeout(imprimir, 300);
   }
-  const ind = loc?.indicadores;
-  if (ind?.selic) par("Selic meta", `${pct(ind.selic.valor, 2)} (${ind.selic.data}, Banco Central)`);
-  if (ind?.ipca12m) par("IPCA 12 meses", `${pct(ind.ipca12m.valor, 2)} (${ind.ipca12m.data}, Banco Central)`);
-
-  // ---------- Metodologia e fontes ----------
-  novaPagina();
-  titulo("Metodologia e fontes");
-  texto(
-    "Comparáveis e aluguéis foram levantados por busca na internet em portais imobiliários. Só entram itens com link de origem aberto na pesquisa; itens sem preço, sem área ou fora da curva (regra do intervalo interquartil) são descartados. O valor provável usa a mediana do preço por unidade, aplica o fator de oferta (diferença entre preço anunciado e preço fechado) e os ajustes listados. A faixa usa o 1º e o 3º quartil. Equipamentos próximos vêm do OpenStreetMap; Selic e IPCA da API oficial do Banco Central."
-  );
-  sub("Links");
-  const links: { rot: string; url: string }[] = [];
-  comp?.itens?.forEach((c: any, i: number) => links.push({ rot: `Comparável ${i + 1}`, url: c.url }));
-  alug?.itens?.forEach((c: any, i: number) => links.push({ rot: `Aluguel ${i + 1}`, url: c.url }));
-  if (merc?.itbi?.url) links.push({ rot: "ITBI", url: merc.itbi.url });
-  if (merc?.fipezap?.url) links.push({ rot: "FipeZap", url: merc.fipezap.url });
-  if (merc?.estoque?.url) links.push({ rot: "Estoque", url: merc.estoque.url });
-  [...(merc?.noticias || []), ...(bairro?.seguranca || []), ...(bairro?.infraestrutura || []), ...(bairro?.crescimento || []), ...(bairro?.negativos || [])].forEach((n: any) =>
-    links.push({ rot: "Notícia", url: n.url })
-  );
-  links.forEach((l) => {
-    garantir(5);
-    pdf.setFontSize(7);
-    pdf.setTextColor(37, 99, 235);
-    const s = t(`${l.rot}: ${l.url}`);
-    pdf.textWithLink(pdf.splitTextToSize(s, L)[0], M, y, { url: l.url });
-    y += 4;
-  });
-  y += 4;
-  texto(
-    "Estudo de mercado para apoio à negociação. Não é laudo de avaliação (NBR 14653) nem PTAM, e não é recomendação de investimento. Os dados de anúncios refletem preços pedidos na data da pesquisa.",
-    { tam: 8, cor: [100, 116, 139] }
-  );
-
-  // numeração
-  const total = pdf.getNumberOfPages();
-  for (let p = 1; p <= total; p++) {
-    pdf.setPage(p);
-    pdf.setFontSize(7);
-    pdf.setTextColor(148, 163, 184);
-    pdf.text(`${p}/${total}`, W - M, 292, { align: "right" });
-  }
-
-  const nomeBairro = (imovel.bairro || imovel.cidade || "imovel").normalize("NFD").replace(/[^\w]+/g, "-");
-  pdf.save(`ESTUDO-${nomeBairro}-${data.toISOString().slice(0, 10)}.pdf`);
 }

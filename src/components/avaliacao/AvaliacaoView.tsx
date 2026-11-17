@@ -171,8 +171,18 @@ export const AvaliacaoView: React.FC<Props> = ({ isAdmin, user, profile, company
   const [params, setParams] = useState<ParametrosInvestimento>(paramsPadrao());
   const [aba, setAba] = useState<"resumo" | "comparaveis" | "aluguel" | "investimento" | "entorno" | "mercado" | "anuncio">("resumo");
   const [excluir, setExcluir] = useState<any | null>(null);
+  // Corretor e CRECI do PDF: lembrados neste navegador; aproveita o que já foi
+  // digitado no Termo de Intermediação, e por último o nome do usuário.
+  const salvoTermo = (() => {
+    try { return JSON.parse(localStorage.getItem("pc_termo_corretor") || "{}"); } catch { return {}; }
+  })();
   const [creci, setCreci] = useState<string>(() => {
-    try { return localStorage.getItem("avaliacao_creci") || ""; } catch { return ""; }
+    try { return localStorage.getItem("avaliacao_creci") || salvoTermo.corretorCreci || ""; } catch { return ""; }
+  });
+  const [corretorNome, setCorretorNome] = useState<string>(() => {
+    try {
+      return localStorage.getItem("avaliacao_corretor") || salvoTermo.corretorNome || profile?.displayName || profile?.name || user?.displayName || "";
+    } catch { return ""; }
   });
 
   const set = <K extends keyof ImovelAvaliado>(k: K, v: ImovelAvaliado[K]) => setImovel((p) => ({ ...p, [k]: v }));
@@ -326,17 +336,26 @@ export const AvaliacaoView: React.FC<Props> = ({ isAdmin, user, profile, company
   const rodando = Object.values(status).some((s) => s === "rodando" || s === "aguardando");
 
   const baixarPdf = () => {
+    if (!corretorNome.trim()) {
+      toast.error("Informe o nome do corretor para sair no PDF.");
+      return;
+    }
     try {
-      localStorage.setItem("avaliacao_creci", creci);
+      localStorage.setItem("avaliacao_creci", creci.trim());
+      localStorage.setItem("avaliacao_corretor", corretorNome.trim());
     } catch {}
-    gerarPdfAvaliacao({
-      imovel,
-      resultados,
-      investimento,
-      empresa: companySettings,
-      corretor: { nome: profile?.displayName || user?.displayName || "", creci },
-      data: new Date(),
-    });
+    try {
+      gerarPdfAvaliacao({
+        imovel,
+        resultados,
+        investimento,
+        empresa: companySettings,
+        corretor: { nome: corretorNome, creci },
+        data: new Date(),
+      });
+    } catch (e: any) {
+      toast.error(e?.message || "Não foi possível gerar o PDF.");
+    }
   };
 
   const copiar = (s: string) => {
@@ -536,7 +555,8 @@ export const AvaliacaoView: React.FC<Props> = ({ isAdmin, user, profile, company
           <ArrowLeft className="h-4 w-4" /> Avaliações
         </button>
         <div className="flex items-center gap-2">
-          <input className={cn(inputCls, "w-32 py-1.5 text-xs")} placeholder="CRECI no PDF" value={creci} onChange={(e) => setCreci(e.target.value)} />
+          <input className={cn(inputCls, "w-44 py-1.5 text-xs")} placeholder="Corretor no PDF" aria-label="Nome do corretor no PDF" value={corretorNome} onChange={(e) => setCorretorNome(e.target.value)} />
+          <input className={cn(inputCls, "w-24 py-1.5 text-xs")} placeholder="CRECI" aria-label="CRECI no PDF" value={creci} onChange={(e) => setCreci(e.target.value)} />
           <button
             disabled={rodando}
             onClick={baixarPdf}
