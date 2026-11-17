@@ -213,6 +213,26 @@ export interface ContratoLocacao {
   // Termo de reconhecimento de intermediação: corretor que atendeu o cliente
   corretorNome?: string;
   corretorCreci?: string;
+
+  // Ficha de visita: dados preenchidos no formulário rápido
+  visita?: FichaVisitaDados;
+}
+
+export interface FichaVisitaDados {
+  clienteNome: string;
+  clienteCpf: string;
+  clienteTelefone: string;
+  proprietarioNome: string;
+  proprietarioCpf: string;
+  proprietarioTelefone: string;
+  codigoImovel: string;
+  tipoImovel: string;
+  endereco: string; // endereço completo, já montado
+  finalidade: "venda" | "locacao";
+  valor: number; // 0 = não informado
+  data: string; // YYYY-MM-DD
+  hora: string; // HH:MM
+  observacoes: string;
 }
 
 export interface ContratoModelo {

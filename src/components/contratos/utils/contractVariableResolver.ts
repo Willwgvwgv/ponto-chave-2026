@@ -26,6 +26,21 @@ export const DYNAMIC_VARIABLES_CATALOG: DynamicVariableDefinition[] = [
   { key: "estado_imovel", label: "Estado do Imóvel (UF)", category: "imovel", description: "Sigla do Estado", exampleValue: "GO" },
   { key: "corretor_nome", label: "Nome do Corretor", category: "imobiliaria", description: "Corretor que atendeu o cliente (termo de intermediação)", exampleValue: "NOME DO CORRETOR" },
   { key: "corretor_creci", label: "CRECI do Corretor", category: "imobiliaria", description: "CRECI do corretor que atendeu", exampleValue: "00000" },
+  // Ficha de visita
+  { key: "visita_cliente_nome", label: "Visita: Cliente", category: "locatario", description: "Nome do cliente que visitou", exampleValue: "NOME DO CLIENTE" },
+  { key: "visita_cliente_cpf", label: "Visita: CPF do Cliente", category: "locatario", description: "CPF do cliente", exampleValue: "000.000.000-00" },
+  { key: "visita_cliente_telefone", label: "Visita: Telefone do Cliente", category: "locatario", description: "Telefone/WhatsApp do cliente", exampleValue: "(62) 90000-0000" },
+  { key: "visita_proprietario_nome", label: "Visita: Proprietário", category: "locador", description: "Nome do proprietário do imóvel", exampleValue: "NOME DO PROPRIETÁRIO" },
+  { key: "visita_proprietario_cpf", label: "Visita: CPF do Proprietário", category: "locador", description: "CPF/CNPJ do proprietário", exampleValue: "000.000.000-00" },
+  { key: "visita_proprietario_telefone", label: "Visita: Telefone do Proprietário", category: "locador", description: "Telefone do proprietário", exampleValue: "(62) 90000-0000" },
+  { key: "visita_codigo", label: "Visita: Código do Imóvel", category: "imovel", description: "Código/referência do anúncio", exampleValue: "FID-123" },
+  { key: "visita_tipo_imovel", label: "Visita: Tipo do Imóvel", category: "imovel", description: "Casa, lote, apartamento...", exampleValue: "Casa" },
+  { key: "visita_endereco", label: "Visita: Endereço do Imóvel", category: "imovel", description: "Endereço completo do imóvel visitado", exampleValue: "Rua 10, Qd 5 Lt 12, Centro, Bela Vista de Goiás - GO" },
+  { key: "visita_finalidade", label: "Visita: Finalidade", category: "comercial", description: "Venda ou Locação", exampleValue: "Venda" },
+  { key: "visita_valor", label: "Visita: Valor do Imóvel", category: "comercial", description: "Preço de venda ou aluguel informado", exampleValue: "R$ 380.000,00" },
+  { key: "visita_data", label: "Visita: Data", category: "datas", description: "Data da visita", exampleValue: "17/11/2026" },
+  { key: "visita_hora", label: "Visita: Horário", category: "datas", description: "Horário da visita", exampleValue: "14:30" },
+  { key: "visita_observacoes", label: "Visita: Observações", category: "comercial", description: "Observações anotadas no formulário", exampleValue: "" },
   { key: "empreendimento_imovel", label: "Empreendimento", category: "imovel", description: "Empreendimento apresentado ao cliente", exampleValue: "RESIDENCIAL EXEMPLO" },
   { key: "unidade_imovel", label: "Unidade", category: "imovel", description: "Unidade do empreendimento (ou A ESCOLHER)", exampleValue: "A ESCOLHER" },
   { key: "numero_contrato_principal", label: "Nº do Contrato Principal", category: "datas", description: "Contrato que o aditivo altera", exampleValue: "VEN-2026-1234" },
@@ -408,6 +423,31 @@ export function buildVariableMap(
     // Termo de reconhecimento de intermediação
     corretor_nome: contract.corretorNome || "______________",
     corretor_creci: contract.corretorCreci || "______",
+    // Ficha de visita: campo vazio vira linha para preencher à mão
+    ...(() => {
+      const v = contract.visita;
+      const L = "____________________";
+      const txt = (x?: string) => (x && x.trim() ? x.trim() : L);
+      const curto = (x?: string) => (x && x.trim() ? x.trim() : "______________");
+      return {
+        visita_cliente_nome: txt(v?.clienteNome),
+        visita_cliente_cpf: curto(v?.clienteCpf),
+        visita_cliente_telefone: curto(v?.clienteTelefone),
+        visita_proprietario_nome: txt(v?.proprietarioNome),
+        visita_proprietario_cpf: curto(v?.proprietarioCpf),
+        visita_proprietario_telefone: curto(v?.proprietarioTelefone),
+        visita_codigo: curto(v?.codigoImovel),
+        visita_tipo_imovel: txt(v?.tipoImovel),
+        visita_endereco: txt(v?.endereco),
+        visita_finalidade: v?.finalidade === "locacao" ? "Locação" : v?.finalidade === "venda" ? "Venda" : L,
+        visita_valor: v?.valor && v.valor > 0
+          ? `${formatCurrencyBRL(v.valor)}${v.finalidade === "locacao" ? " por mês" : ""}`
+          : `R$ ${L}`,
+        visita_data: v?.data ? format(new Date(v.data + "T12:00:00"), "dd/MM/yyyy") : "____/____/______",
+        visita_hora: v?.hora ? v.hora : "____:____",
+        visita_observacoes: v?.observacoes?.trim() ? v.observacoes.trim() : ""
+      };
+    })(),
     empreendimento_imovel: im.endereco || "______________",
     unidade_imovel: im.complemento || "A ESCOLHER",
     papel_parte_1: (contract.contratoPrincipalTipo || contract.tipoDocumento) === "venda" ? "VENDEDOR" : "LOCADOR",

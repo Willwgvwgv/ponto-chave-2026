@@ -1000,6 +1000,72 @@ export const ADITIVO_VENDA_ENTRADA_BLOCKS: ContractBlock[] = [
 ];
 
 
+// Ficha de visita: registra quem visitou, qual imóvel, quando e com qual corretor.
+// Cliente, proprietário e corretor assinam. Protege a comissão (arts. 725 e 727 do CC).
+export const FICHA_VISITA_BLOCKS: ContractBlock[] = [
+  {
+    id: "block-title",
+    type: "title",
+    content: "FICHA DE VISITA A IMÓVEL",
+    isLocked: true
+  },
+  {
+    id: "block-visita-dados",
+    type: "paragraph",
+    sectionCategory: "Objeto",
+    content: `<p><strong>Data da visita:</strong> {{visita_data}} &nbsp;&nbsp; <strong>Horário:</strong> {{visita_hora}} &nbsp;&nbsp; <strong>Finalidade:</strong> {{visita_finalidade}} &nbsp;&nbsp; <strong>Valor:</strong> {{visita_valor}}</p>
+<p><strong>Imóvel:</strong> {{visita_tipo_imovel}} &nbsp;&nbsp; <strong>Código:</strong> {{visita_codigo}}</p>
+<p><strong>Endereço:</strong> {{visita_endereco}}</p>`
+  },
+  {
+    id: "block-visita-partes",
+    type: "paragraph",
+    sectionCategory: "Identificação das partes",
+    content: `<p><strong>PARTICIPANTES</strong></p>
+<p style="text-align:left"><strong>CLIENTE (VISITANTE):</strong> {{visita_cliente_nome}}, CPF {{visita_cliente_cpf}}, telefone {{visita_cliente_telefone}}.</p>
+<p style="text-align:left"><strong>PROPRIETÁRIO(A):</strong> {{visita_proprietario_nome}}, CPF/CNPJ {{visita_proprietario_cpf}}, telefone {{visita_proprietario_telefone}}.</p>
+<p style="text-align:left"><strong>CORRETOR(A):</strong> {{corretor_nome}}, CRECI {{corretor_creci}}, pela imobiliária <strong>{{nome_imobiliaria}}</strong>, CRECI {{creci_imobiliaria}}.</p>`
+  },
+  {
+    id: "block-visita-declaracoes",
+    type: "paragraph",
+    sectionCategory: "Objeto",
+    content: `<p><strong>DECLARAÇÕES</strong></p>
+<p><strong>1.</strong> O CLIENTE declara que visitou o imóvel acima na data e no horário indicados e que o imóvel lhe foi apresentado pelo CORRETOR da {{nome_imobiliaria}}.</p>
+<p><strong>2.</strong> Qualquer proposta ou negociação sobre este imóvel será feita por intermédio da {{nome_imobiliaria}}. Se o negócio for fechado diretamente com o PROPRIETÁRIO, por outro corretor ou por terceiros, em razão desta apresentação, a comissão de corretagem continuará devida à {{nome_imobiliaria}} (arts. 725 e 727 do Código Civil).</p>
+<p><strong>3.</strong> O PROPRIETÁRIO declara que autorizou a visita e reconhece que o CLIENTE foi apresentado pela {{nome_imobiliaria}}.</p>
+<p><strong>4.</strong> Esta ficha não obriga ninguém a comprar, vender ou alugar. Serve para registrar a visita e a intermediação.</p>`
+  },
+  {
+    id: "block-visita-observacoes",
+    type: "paragraph",
+    sectionCategory: "Disposições gerais",
+    content: `<p><strong>Observações e impressões do cliente:</strong> {{visita_observacoes}}</p>
+<p>__________________________________________________________________________________________</p>
+<p style="text-align:center; margin-top:10px"><em>{{data_atual_extenso}}</em></p>`
+  },
+  {
+    id: "block-signatures",
+    type: "signatures",
+    clauseTitle: "ASSINATURAS",
+    sectionCategory: "Assinaturas e testemunhas",
+    content: "",
+    metadata: {
+      assinaturas: {
+        linhas: [
+          { nome: "{{visita_cliente_nome}}", papel: "CLIENTE (VISITANTE)", doc: "CPF: {{visita_cliente_cpf}}" },
+          { nome: "{{visita_proprietario_nome}}", papel: "PROPRIETÁRIO(A)", doc: "CPF/CNPJ: {{visita_proprietario_cpf}}" },
+          { nome: "{{corretor_nome}}", papel: "CORRETOR(A)", doc: "CRECI {{corretor_creci}}" }
+        ],
+        testemunhas: 0,
+        espacoAssinarPx: 30,
+        espacoEntrePx: 6
+      }
+    }
+  }
+];
+
+
 // Termo em que o cliente reconhece que foi atendido pelo corretor (proteção da
 // comissão, arts. 722 a 729 do Código Civil). Só o cliente assina.
 export const TERMO_INTERMEDIACAO_BLOCKS: ContractBlock[] = [
@@ -1251,6 +1317,21 @@ export const INITIAL_PREDEFINED_TEMPLATES: ContratoModelo[] = [
     categoria: "Termos",
     blocks: TERMO_INTERMEDIACAO_BLOCKS,
     styleSettings: DEFAULT_STYLE_SETTINGS,
+    criadoPorUid: "system",
+    criadoPorNome: "Ponto Chave",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+  {
+    id: "modelo-ficha-visita",
+    companyId: "global",
+    nome: "Ficha de Visita a Imóvel",
+    descricao: "Registra a visita: cliente, proprietário, corretor, imóvel, data e horário. Os três assinam. Protege a comissão caso o negócio seja fechado sem a imobiliária.",
+    tipoLocacao: "residencial",
+    isPadrao: false,
+    categoria: "Termos",
+    blocks: FICHA_VISITA_BLOCKS,
+    styleSettings: { ...DEFAULT_STYLE_SETTINGS, marginType: "estreita" },
     criadoPorUid: "system",
     criadoPorNome: "Ponto Chave",
     createdAt: new Date().toISOString(),

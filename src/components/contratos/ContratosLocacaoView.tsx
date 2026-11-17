@@ -66,13 +66,17 @@ import { toast } from "sonner";
 const TITULO_PROCURACAO = "Procuração – Troca de Titularidade";
 const TITULO_ADITIVO = "Termo Aditivo";
 const TITULO_TERMO_INTERMEDIACAO = "Termo de Reconhecimento de Intermediação";
-const TITULOS_PADRAO = ["", "Contrato de Locação Residencial", "Contrato de Compra e Venda", TITULO_PROCURACAO, TITULO_ADITIVO, TITULO_TERMO_INTERMEDIACAO];
+const TITULO_FICHA_VISITA = "Ficha de Visita";
+const TITULOS_PADRAO = ["", "Contrato de Locação Residencial", "Contrato de Compra e Venda", TITULO_PROCURACAO, TITULO_ADITIVO, TITULO_TERMO_INTERMEDIACAO, TITULO_FICHA_VISITA];
 
 // Termo de reconhecimento de intermediação: só o cliente, o empreendimento e o corretor.
 const ehModeloTermoIntermediacao = (m?: ContratoModelo) =>
   !!m && m.id.startsWith("modelo-termo-intermediacao");
+// Ficha de visita: cliente, proprietário, corretor e imóvel visitado; os três assinam.
+const ehModeloFichaVisita = (m?: ContratoModelo) =>
+  !!m && m.id.startsWith("modelo-ficha-visita");
 // Documentos que não são contratos de imóvel (não recebem aditivo)
-const ehDocumentoAvulso = (numero?: string) => /^(PRO|TRI)-/.test(numero || "");
+const ehDocumentoAvulso = (numero?: string) => /^(PRO|TRI|VIS)-/.test(numero || "");
 
 // Aditivo: altera um contrato já existente; partes e imóvel vêm do contrato principal.
 const ehModeloAditivo = (m?: ContratoModelo) =>
@@ -94,6 +98,7 @@ const ehModeloProcuracao = (m?: ContratoModelo) =>
 const tituloPadraoDoModelo = (m?: ContratoModelo) =>
   ehModeloAditivo(m) ? TITULO_ADITIVO
     : ehModeloTermoIntermediacao(m) ? TITULO_TERMO_INTERMEDIACAO
+    : ehModeloFichaVisita(m) ? TITULO_FICHA_VISITA
     : m?.tipoDocumento === "venda" ? "Contrato de Compra e Venda"
     : ehModeloProcuracao(m) ? TITULO_PROCURACAO
     : "Contrato de Locação Residencial";
@@ -213,6 +218,34 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
       cidade: salvo.cidade || companySettings?.city || ""
     };
   });
+
+  const isFichaVisita = ehModeloFichaVisita(modeloSelecionado);
+  const visitaVazia = () => {
+    const agora = new Date();
+    const local = new Date(agora.getTime() - agora.getTimezoneOffset() * 60000).toISOString();
+    return {
+      clienteNome: "",
+      clienteCpf: "",
+      clienteTelefone: "",
+      proprietarioNome: "",
+      proprietarioCpf: "",
+      proprietarioTelefone: "",
+      codigoImovel: "",
+      tipoImovel: "Casa",
+      rua: "",
+      numero: "",
+      bairro: "",
+      cidade: companySettings?.city || "",
+      estado: "GO",
+      finalidade: "venda" as "venda" | "locacao",
+      valor: 0,
+      data: local.slice(0, 10),
+      hora: local.slice(11, 16),
+      observacoes: ""
+    };
+  };
+  const [visitaForm, setVisitaForm] = useState(visitaVazia);
+  const setV = (campo: string, valor: any) => setVisitaForm((f) => ({ ...f, [campo]: valor }));
 
   // 1. Subscribe to Contratos in Firestore
   useEffect(() => {
@@ -463,6 +496,128 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
       } catch (err) {
         console.error("Erro ao criar termo:", err);
         toast.error("Erro ao salvar o termo no banco de dados.");
+      }
+      return;
+    }
+
+    if (ehModeloFichaVisita(chosenTemplate)) {
+      const v = visitaForm;
+      const t = termoForm; // corretor, CRECI e cidade lembrados no navegador
+      const faltando = [
+        !v.clienteNome.trim() && "nome do cliente",
+        !v.rua.trim() && "endereço do imóvel",
+        !v.data && "data da visita",
+        !t.corretorNome.trim() && "nome do corretor",
+        !t.corretorCreci.trim() && "CRECI do corretor"
+      ].filter(Boolean);
+      if (faltando.length) {
+        toast.error(`Preencha: ${faltando.join(", ")}.`);
+        return;
+      }
+      try {
+        localStorage.setItem("pc_termo_corretor", JSON.stringify({ corretorNome: t.corretorNome.trim(), corretorCreci: t.corretorCreci.trim(), cidade: t.cidade.trim() }));
+      } catch { /* ignora */ }
+      const cidade = v.cidade.trim() || t.cidade.trim() || companySettings?.city || "Goiânia";
+      const endereco = enderecoImovelTexto({
+        imovelEndereco: v.rua, imovelNumero: v.numero, imovelComplemento: "",
+        imovelBairro: v.bairro, imovelCidade: cidade, imovelEstado: v.estado
+      });
+      const ficha: Omit<ContratoLocacao, "id"> = {
+        companyId,
+        numeroContrato: `VIS-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
+        titulo: TITULOS_PADRAO.includes(novoContratoForm.titulo.trim())
+          ? `${TITULO_FICHA_VISITA} – ${v.clienteNome.trim()}${v.rua.trim() ? ` – ${v.rua.trim()}` : ""}`
+          : novoContratoForm.titulo.trim(),
+        tipoLocacao: "residencial",
+        tipoDocumento: v.finalidade === "locacao" ? "locacao" : "venda",
+        status: "rascunho",
+        modeloOrigemId: chosenTemplate.id,
+        modeloOrigemNome: chosenTemplate.nome,
+        locador: {
+          id: `loc_${Date.now()}`,
+          role: "locador",
+          nome: v.proprietarioNome.trim(),
+          cpfCnpj: v.proprietarioCpf.trim(),
+          telefone: v.proprietarioTelefone.trim()
+        },
+        locatarios: [{
+          id: `locat_${Date.now()}`,
+          role: "locatario",
+          nome: v.clienteNome.trim(),
+          cpfCnpj: v.clienteCpf.trim(),
+          telefone: v.clienteTelefone.trim()
+        }],
+        fiadores: [],
+        imovel: {
+          endereco: v.rua.trim(),
+          numero: v.numero.trim(),
+          complemento: "",
+          bairro: v.bairro.trim(),
+          cidade,
+          estado: v.estado.trim() || "GO",
+          cep: "",
+          tipoImovel: v.tipoImovel.trim(),
+          destinacao: "residencial"
+        },
+        condicoes: {
+          valorAluguel: v.finalidade === "locacao" ? Number(v.valor) || 0 : 0,
+          valorVenda: v.finalidade === "venda" ? Number(v.valor) || 0 : 0,
+          diaVencimento: 0,
+          dataInicio: v.data,
+          dataTermino: v.data,
+          prazoMeses: 0,
+          indiceReajuste: "IPCA",
+          modalidadeGarantia: "sem_garantia",
+          multaAtrasoPercent: 0,
+          jurosMoraPercent: 0,
+          multaRescisoriaMeses: 0,
+          cidadeForo: cidade,
+          estadoForo: "Goiás"
+        },
+        corretorNome: t.corretorNome.trim(),
+        corretorCreci: t.corretorCreci.trim(),
+        visita: {
+          clienteNome: v.clienteNome.trim(),
+          clienteCpf: v.clienteCpf.trim(),
+          clienteTelefone: v.clienteTelefone.trim(),
+          proprietarioNome: v.proprietarioNome.trim(),
+          proprietarioCpf: v.proprietarioCpf.trim(),
+          proprietarioTelefone: v.proprietarioTelefone.trim(),
+          codigoImovel: v.codigoImovel.trim(),
+          tipoImovel: v.tipoImovel.trim(),
+          endereco,
+          finalidade: v.finalidade,
+          valor: Number(v.valor) || 0,
+          data: v.data,
+          hora: v.hora,
+          observacoes: v.observacoes.trim()
+        },
+        blocks: chosenTemplate.blocks,
+        styleSettings: chosenTemplate.styleSettings || DEFAULT_STYLE_SETTINGS,
+        versoes: [{
+          id: `v_init_${Date.now()}`,
+          versionNumber: 1,
+          createdAt: new Date().toISOString(),
+          createdByUid: user?.uid || "system",
+          createdByName: profile?.displayName || "Usuário",
+          description: `Criação a partir do modelo ${chosenTemplate.nome}`,
+          blocksSnapshot: chosenTemplate.blocks,
+          styleSettingsSnapshot: chosenTemplate.styleSettings || DEFAULT_STYLE_SETTINGS
+        }],
+        criadoPorUid: user?.uid || "system",
+        criadoPorNome: profile?.displayName || "Usuário",
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      };
+      try {
+        const docRef = await addDoc(collection(db, "contratos_locacao"), ficha);
+        setIsNewContractModalOpen(false);
+        setVisitaForm(visitaVazia());
+        toast.success("Ficha criada. Abrindo editor para revisar, assinar e baixar o PDF...");
+        setActiveEditingContract({ id: docRef.id, ...ficha });
+      } catch (err) {
+        console.error("Erro ao criar ficha de visita:", err);
+        toast.error("Erro ao salvar a ficha no banco de dados.");
       }
       return;
     }
@@ -1098,10 +1253,12 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
                 </div>
                 <div>
                   <h2 className="text-base font-black text-slate-900">
-                    {isTermoIntermediacao ? "Novo Termo de Intermediação" : isAditivo ? "Novo Termo Aditivo" : isVenda ? "Novo Contrato de Compra e Venda" : isProcuracao ? "Nova Procuração – Troca de Titularidade" : "Novo Contrato de Locação"}
+                    {isFichaVisita ? "Nova Ficha de Visita" : isTermoIntermediacao ? "Novo Termo de Intermediação" : isAditivo ? "Novo Termo Aditivo" : isVenda ? "Novo Contrato de Compra e Venda" : isProcuracao ? "Nova Procuração – Troca de Titularidade" : "Novo Contrato de Locação"}
                   </h2>
                   <p className="text-xs text-slate-500">
-                    {isTermoIntermediacao
+                    {isFichaVisita
+                      ? "Registra a visita: cliente, proprietário, corretor e imóvel. Os três assinam."
+                      : isTermoIntermediacao
                       ? "O cliente reconhece que foi atendido pelo corretor. Preencha os dados dele e o empreendimento."
                       : isAditivo
                       ? "Escolha o contrato principal: as partes e o imóvel vêm dele."
@@ -1161,7 +1318,146 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
                 />
               </div>
 
-              {isTermoIntermediacao ? (
+              {isFichaVisita ? (
+              <div className="space-y-3">
+                <p className="pt-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">Cliente (visitante)</p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <label htmlFor="vis-cli-nome" className="block text-slate-800 font-bold mb-1">Nome completo*</label>
+                    <input id="vis-cli-nome" type="text" value={visitaForm.clienteNome}
+                      onChange={(e) => setV("clienteNome", e.target.value)}
+                      placeholder="Como no documento" className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                  </div>
+                  <div>
+                    <label htmlFor="vis-cli-cpf" className="block text-slate-800 font-bold mb-1">CPF</label>
+                    <input id="vis-cli-cpf" type="text" inputMode="numeric" value={visitaForm.clienteCpf}
+                      onChange={(e) => setV("clienteCpf", e.target.value)}
+                      placeholder="000.000.000-00" className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                  </div>
+                  <div>
+                    <label htmlFor="vis-cli-tel" className="block text-slate-800 font-bold mb-1">Telefone</label>
+                    <input id="vis-cli-tel" type="text" inputMode="tel" value={visitaForm.clienteTelefone}
+                      onChange={(e) => setV("clienteTelefone", e.target.value)}
+                      placeholder="(62) 90000-0000" className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                  </div>
+                </div>
+                <p className="pt-3 border-t border-slate-200 text-[11px] font-bold uppercase tracking-wide text-slate-500">Proprietário</p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <label htmlFor="vis-pro-nome" className="block text-slate-800 font-bold mb-1">Nome</label>
+                    <input id="vis-pro-nome" type="text" value={visitaForm.proprietarioNome}
+                      onChange={(e) => setV("proprietarioNome", e.target.value)}
+                      placeholder="" className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                  </div>
+                  <div>
+                    <label htmlFor="vis-pro-cpf" className="block text-slate-800 font-bold mb-1">CPF/CNPJ</label>
+                    <input id="vis-pro-cpf" type="text" inputMode="numeric" value={visitaForm.proprietarioCpf}
+                      onChange={(e) => setV("proprietarioCpf", e.target.value)}
+                      placeholder="" className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                  </div>
+                  <div>
+                    <label htmlFor="vis-pro-tel" className="block text-slate-800 font-bold mb-1">Telefone</label>
+                    <input id="vis-pro-tel" type="text" inputMode="tel" value={visitaForm.proprietarioTelefone}
+                      onChange={(e) => setV("proprietarioTelefone", e.target.value)}
+                      placeholder="" className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                  </div>
+                </div>
+                <p className="pt-3 border-t border-slate-200 text-[11px] font-bold uppercase tracking-wide text-slate-500">Imóvel visitado</p>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <div className="md:col-span-2">
+                    <label htmlFor="vis-rua" className="block text-slate-800 font-bold mb-1">Endereço (rua, quadra, lote)*</label>
+                    <input id="vis-rua" type="text" value={visitaForm.rua}
+                      onChange={(e) => setV("rua", e.target.value)}
+                      placeholder="Rua 10, Qd 5 Lt 12" className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                  </div>
+                  <div>
+                    <label htmlFor="vis-num" className="block text-slate-800 font-bold mb-1">Número</label>
+                    <input id="vis-num" type="text" value={visitaForm.numero}
+                      onChange={(e) => setV("numero", e.target.value)}
+                      placeholder="" className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                  </div>
+                  <div>
+                    <label htmlFor="vis-cod" className="block text-slate-800 font-bold mb-1">Código do imóvel</label>
+                    <input id="vis-cod" type="text" value={visitaForm.codigoImovel}
+                      onChange={(e) => setV("codigoImovel", e.target.value)}
+                      placeholder="" className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                  </div>
+                  <div>
+                    <label htmlFor="vis-bairro" className="block text-slate-800 font-bold mb-1">Bairro / loteamento</label>
+                    <input id="vis-bairro" type="text" value={visitaForm.bairro}
+                      onChange={(e) => setV("bairro", e.target.value)}
+                      placeholder="" className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                  </div>
+                  <div>
+                    <label htmlFor="vis-cidade" className="block text-slate-800 font-bold mb-1">Cidade</label>
+                    <input id="vis-cidade" type="text" value={visitaForm.cidade}
+                      onChange={(e) => setV("cidade", e.target.value)}
+                      placeholder="" className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                  </div>
+                  <div>
+                    <label htmlFor="vis-uf" className="block text-slate-800 font-bold mb-1">UF</label>
+                    <input id="vis-uf" type="text" value={visitaForm.estado}
+                      onChange={(e) => setV("estado", e.target.value)}
+                      placeholder="" className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                  </div>
+                  <div>
+                    <label htmlFor="vis-tipo" className="block text-slate-800 font-bold mb-1">Tipo</label>
+                    <select id="vis-tipo" value={visitaForm.tipoImovel} onChange={(e) => setV("tipoImovel", e.target.value)}
+                      className="w-full p-2 border border-slate-300 rounded-xl outline-none bg-white">
+                      {["Casa", "Apartamento", "Lote", "Lote em condomínio", "Chácara", "Sítio / Fazenda", "Sala comercial", "Galpão"].map((t) => <option key={t}>{t}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="vis-fin" className="block text-slate-800 font-bold mb-1">Finalidade</label>
+                    <select id="vis-fin" value={visitaForm.finalidade} onChange={(e) => setV("finalidade", e.target.value)}
+                      className="w-full p-2 border border-slate-300 rounded-xl outline-none bg-white">
+                      <option value="venda">Venda</option>
+                      <option value="locacao">Locação</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="vis-valor" className="block text-slate-800 font-bold mb-1">{visitaForm.finalidade === "locacao" ? "Aluguel (R$)" : "Valor (R$)"}</label>
+                    <input id="vis-valor" type="number" inputMode="decimal" min={0} value={visitaForm.valor || ""}
+                      onChange={(e) => setV("valor", e.target.value === "" ? 0 : Number(e.target.value))}
+                      className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                  </div>
+                  <div>
+                    <label htmlFor="vis-data" className="block text-slate-800 font-bold mb-1">Data da visita*</label>
+                    <input id="vis-data" type="date" value={visitaForm.data}
+                      onChange={(e) => setV("data", e.target.value)}
+                      className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                  </div>
+                  <div>
+                    <label htmlFor="vis-hora" className="block text-slate-800 font-bold mb-1">Horário</label>
+                    <input id="vis-hora" type="time" value={visitaForm.hora}
+                      onChange={(e) => setV("hora", e.target.value)}
+                      className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                  </div>
+                </div>
+                <div>
+                  <label htmlFor="vis-obs" className="block text-slate-800 font-bold mb-1">Observações</label>
+                  <textarea id="vis-obs" value={visitaForm.observacoes} onChange={(e) => setV("observacoes", e.target.value)}
+                    placeholder="Opcional. Se ficar vazio, a ficha sai com linhas para anotar à mão."
+                    className="w-full p-2 border border-slate-300 rounded-xl outline-none min-h-[60px]" />
+                </div>
+                <p className="pt-3 border-t border-slate-200 text-[11px] font-bold uppercase tracking-wide text-slate-500">Corretor</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label htmlFor="vis-corretor" className="block text-slate-800 font-bold mb-1">Nome do corretor*</label>
+                    <input id="vis-corretor" type="text" value={termoForm.corretorNome}
+                      onChange={(e) => setTermoForm({ ...termoForm, corretorNome: e.target.value })}
+                      className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                  </div>
+                  <div>
+                    <label htmlFor="vis-creci" className="block text-slate-800 font-bold mb-1">CRECI*</label>
+                    <input id="vis-creci" type="text" inputMode="numeric" value={termoForm.corretorCreci}
+                      onChange={(e) => setTermoForm({ ...termoForm, corretorCreci: e.target.value })}
+                      className="w-full p-2 border border-slate-300 rounded-xl outline-none" />
+                  </div>
+                </div>
+                <p className="text-xs text-slate-500">Campos vazios saem na ficha como linha para preencher à mão. Corretor e CRECI ficam salvos neste navegador.</p>
+              </div>
+              ) : isTermoIntermediacao ? (
               <div className="space-y-3">
                 <p className="pt-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">Cliente (declarante)</p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1706,7 +2002,7 @@ export const ContratosLocacaoView: React.FC<ContratosLocacaoViewProps> = ({
                 className="px-5 py-2.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-md rounded-xl cursor-pointer transition-all flex items-center gap-2"
               >
                 <Sparkles className="w-4 h-4" />
-                {isTermoIntermediacao ? "Gerar Termo" : isAditivo ? "Gerar Aditivo" : isProcuracao ? "Gerar Procuração" : "Criar e Abrir no Editor Visual"}
+                {isFichaVisita ? "Gerar Ficha" : isTermoIntermediacao ? "Gerar Termo" : isAditivo ? "Gerar Aditivo" : isProcuracao ? "Gerar Procuração" : "Criar e Abrir no Editor Visual"}
               </button>
             </div>
           </div>
