@@ -76,7 +76,8 @@ import {
   Sparkles,
   MessageCircle,
   Monitor,
-  Droplet
+  Droplet,
+  SearchCheck,
 } from "lucide-react";
 import { format, addDays, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, isToday, parseISO, isBefore, startOfDay } from "date-fns";
 
@@ -107,6 +108,7 @@ const VistoriaView = lazy(() => import('./components/VistoriaView').then(m => ({
 const DespejoView = lazy(() => import('./components/DespejoView').then(m => ({ default: m.DespejoView })));
 const ComissoesView = lazy(() => import('./components/ComissoesView').then(m => ({ default: m.ComissoesView })));
 const SimuladorView = lazy(() => import('./components/SimuladorView').then(m => ({ default: m.SimuladorView })));
+const AvaliacaoView = lazy(() => import('./components/avaliacao/AvaliacaoView').then(m => ({ default: m.AvaliacaoView })));
 const FinanceiroView = lazy(() => import('./components/FinanceiroView').then(m => ({ default: m.FinanceiroView })));
 const PontoView = lazy(() => import('./components/ponto/PontoView').then(m => ({ default: m.PontoView })));
 const HidrometroView = lazy(() => import('./components/hidrometro/HidrometroView').then(m => ({ default: m.HidrometroView })));
@@ -1132,6 +1134,9 @@ const UserManagement = ({
     } else if (permission === "energia") {
       updates.permEnergia = hasPerm;
       updates.perm_energia = hasPerm;
+    } else if (permission === "avaliacao") {
+      updates.permAvaliacao = hasPerm;
+      updates.perm_avaliacao = hasPerm;
     }
 
     try {
@@ -1320,6 +1325,8 @@ const UserManagement = ({
         perm_processos: permissions.includes("processos"),
         permEnergia: permissions.includes("energia"),
         perm_energia: permissions.includes("energia"),
+        permAvaliacao: permissions.includes("avaliacao"),
+        perm_avaliacao: permissions.includes("avaliacao"),
         permPonto: editingUserProfile.permPonto ?? true,
         perm_ponto: editingUserProfile.permPonto ?? true,
         jornadaDiariaMinutos: finalDiariaMinutos,
@@ -2247,7 +2254,8 @@ const UserManagement = ({
                       { id: "vistorias", label: "Vistorias", color: "text-blue-500", icon: ClipboardCheck },
                       { id: "financeiro", label: "Financeiro", color: "text-amber-500", icon: Wallet },
                       { id: "processos", label: "Processos", color: "text-purple-500", icon: FileText },
-                      { id: "energia", label: "Energia", color: "text-amber-500", icon: Zap }
+                      { id: "energia", label: "Energia", color: "text-amber-500", icon: Zap },
+                      { id: "avaliacao", label: "Avaliação de Imóvel", color: "text-sky-500", icon: SearchCheck }
                     ].map((perm) => {
                       const isAtivo = editingUserProfile.permissions?.includes(perm.id) || false;
                       const Icon = perm.icon;
@@ -3169,7 +3177,7 @@ const getManualDataForTool = (name: string, url: string) => {
 
 function AppContent() {
   const { user, profile, isAdmin, companySettings } = useAuth();
-  const [activeTab, setActiveTab] = useState<"dashboard" | "calendar" | "processes" | "process_config" | "users" | "profile" | "settings" | "contratos" | "vistorias" | "comissoes" | "simulador" | "financeiro" | "ponto" | "hidrometro" | "energia">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "calendar" | "processes" | "process_config" | "users" | "profile" | "settings" | "contratos" | "vistorias" | "comissoes" | "simulador" | "avaliacao" | "financeiro" | "ponto" | "hidrometro" | "energia">("dashboard");
   const [contractsSubTab, setContractsSubTab] = useState<"locacao" | "vistorias" | "despejos" | "proposta_bella" | "cidade_jardim">("locacao");
   const [isSidebarOpen, setIsSidebarOpen] = useState(() => window.innerWidth > 1024);
   const [viewingManualTool, setViewingManualTool] = useState<Tool | null>(null);
@@ -3961,6 +3969,11 @@ function AppContent() {
     }
 
     items.push({ id: "simulador" as const, label: "Simulador", icon: Calculator });
+
+    const permAvaliacao = isUserAdmin || profile?.permAvaliacao === true || profile?.perm_avaliacao === true || profile?.permissions?.includes("avaliacao");
+    if (permAvaliacao) {
+      items.push({ id: "avaliacao" as const, label: "Avaliação de Imóvel", icon: SearchCheck });
+    }
 
     items.push({ id: "hidrometro" as const, label: "Hidrômetro", icon: Droplet });
 
@@ -4780,6 +4793,15 @@ function AppContent() {
             <SimuladorView 
               companySettings={companySettings} 
               currentUser={{ displayName: user?.displayName || undefined, email: user?.email || undefined }} 
+            />
+          </Suspense>
+        ) : activeTab === "avaliacao" ? (
+          <Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">Carregando avaliação de imóvel...</div>}>
+            <AvaliacaoView
+              isAdmin={isAdmin}
+              user={user}
+              profile={profile}
+              companySettings={companySettings}
             />
           </Suspense>
         ) : activeTab === "hidrometro" ? (

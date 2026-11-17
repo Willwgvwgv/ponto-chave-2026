@@ -47,6 +47,12 @@
   "functions": {
     "api/scaza/webhook.ts": {
       "maxDuration": 60
+    },
+    "api/avaliacao/pesquisar.ts": {
+      "maxDuration": 300
+    },
+    "api/avaliacao/localizar.ts": {
+      "maxDuration": 60
     }
   }
 }
