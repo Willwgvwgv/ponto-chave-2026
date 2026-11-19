@@ -72,6 +72,12 @@ service cloud.firestore {
         'permAvaliacao', 'perm_avaliacao'];
     }
 
+    // O e-mail gravado no próprio perfil tem que ser o do login (ou ficar vazio).
+    function emailDoProprioLogin() {
+      return !('email' in request.resource.data) ||
+        request.resource.data.email == request.auth.token.email;
+    }
+
     // Collection: users
     match /users/{userId} {
       allow read: if isSuperAdmin() || (
@@ -91,18 +97,29 @@ service cloud.firestore {
       ) || (
         isSignedIn() && resource.data.email == request.auth.token.email
       );
+      // Admin/gerente cria usuários só na própria empresa e nunca como superadmin.
       allow create: if isSuperAdmin() || (
-        isSignedIn() && isCompanyAdmin(request.resource.data.companyId)
+        isSignedIn() && isCompanyAdmin(request.resource.data.companyId) &&
+        request.resource.data.get('role', '') != 'superadmin'
       ) || (
         isSignedIn() && request.auth.uid == userId && request.resource.data.uid == userId &&
+        emailDoProprioLogin() &&
         request.resource.data.role != 'admin' && request.resource.data.role != 'superadmin' && request.resource.data.role != 'manager' &&
         request.resource.data.status != 'active' && request.resource.data.status != 'APPROVED' && request.resource.data.status != 'APPROVED_BY_ADMIN' &&
         !request.resource.data.keys().hasAny(permissionFields())
       );
       allow update: if isSuperAdmin() || (
         isSignedIn() && !isDeletedUser() && (
-          isCompanyAdmin(resource.data.companyId) || (
+          (
+            // Admin/gerente: não promove ninguém a superadmin, não mexe em superadmin
+            // e não muda o usuário de empresa.
+            isCompanyAdmin(resource.data.companyId) &&
+            request.resource.data.get('role', '') != 'superadmin' &&
+            resource.data.get('role', '') != 'superadmin' &&
+            request.resource.data.get('companyId', '') == resource.data.get('companyId', '')
+          ) || (
             request.auth.uid == userId &&
+            (request.resource.data.get('email', null) == resource.data.get('email', null) || emailDoProprioLogin()) &&
             request.resource.data.role == resource.data.role &&
             request.resource.data.status == resource.data.status &&
             request.resource.data.companyId == resource.data.companyId &&

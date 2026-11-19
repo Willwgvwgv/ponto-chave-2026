@@ -33,7 +33,9 @@ export default async function handler(req: any, res: any) {
     const requesterDoc = await adminDb.collection("users").doc(requesterUid).get();
     const requesterData = requesterDoc.exists ? requesterDoc.data() : null;
 
-    const isMasterAdmin = decodedToken.email === "williangyn10@gmail.com" || requesterData?.email === "williangyn10@gmail.com";
+    // Dono só pelo e-mail verificado do próprio login. O campo email do perfil no
+    // Firestore pode ser editado pelo usuário, então não serve para isso.
+    const isMasterAdmin = decodedToken.email === "williangyn10@gmail.com" && decodedToken.email_verified === true;
     const isAdminRole = requesterData?.role === "admin" || requesterData?.role === "superadmin";
     const isActive = requesterData?.status === "active";
 
@@ -69,6 +71,14 @@ export default async function handler(req: any, res: any) {
       const targetCompanyId = targetData?.companyId;
       if (!requesterCompanyId || requesterCompanyId !== targetCompanyId) {
         return res.status(403).json({ error: "Acesso negado: Você só pode redefinir senhas de usuários da mesma empresa." });
+      }
+    }
+
+    // Ninguém além do dono redefine a senha do dono ou de um superadmin.
+    if (!isMasterAdmin) {
+      const targetAuth = await adminAuthInstance.getUser(targetUid).catch(() => null);
+      if (targetData?.role === "superadmin" || targetAuth?.email === "williangyn10@gmail.com") {
+        return res.status(403).json({ error: "Acesso negado: esta conta só pode ter a senha redefinida pelo dono." });
       }
     }
 
