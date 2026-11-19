@@ -314,6 +314,8 @@ export interface Vistoria {
   companySubtitle?: string;
   tipo?: 'entrada' | 'saida';
   vistoriaEntradaId?: string | null;
+  contratoId?: string | null;      // contrato de locação vinculado (vistoria de saída)
+  contratoNumero?: string | null;
   vistoriadorNome?: string;
   descricaoGeral?: string;
   fotosGerais?: string[];

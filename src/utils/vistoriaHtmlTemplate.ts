@@ -521,7 +521,7 @@ export const generateVistoriaFullHTML = (
         ${logoHtml}
       </div>
       <div class="header-title">TERMO DE VISTORIA E ENTREGA DE CHAVES</div>
-      <div class="header-subtitle">VISTORIA DE ENTRADA / ENTREGA DE CHAVES</div>
+      <div class="header-subtitle">${vistoria.tipo === 'saida' ? 'VISTORIA DE SAÍDA / DEVOLUÇÃO DE CHAVES' : 'VISTORIA DE ENTRADA / ENTREGA DE CHAVES'}</div>
       <div class="header-divider"></div>
     </header>
 
