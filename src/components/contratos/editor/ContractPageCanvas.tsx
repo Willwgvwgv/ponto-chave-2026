@@ -28,6 +28,7 @@ import {
 import { RichHtmlBlockEditor } from "./RichHtmlBlockEditor";
 import { assinaturasDoBloco, assinaturasPadrao, ConfigAssinaturas, espacosAssinatura, ASSINATURA_PADRAO } from "../utils/contractSignatures";
 
+import { sanitizarHtmlRico } from "../../../utils/htmlSeguro";
 // Divide o HTML em trechos de nível superior (parágrafo, lista, tabela...).
 // Texto solto entre eles vira um trecho próprio.
 function dividirHtmlEmTrechos(html: string): string[] {
@@ -128,7 +129,7 @@ export const ContractPageCanvas: React.FC<ContractPageCanvasProps> = ({
   // No modo preenchido, o que for digitado fica gravado com os valores fixos nesta cláusula.
   const [editarComVariaveis, setEditarComVariaveis] = useState(false);
   const htmlParaEditar = (content: string) =>
-    editarComVariaveis ? content : resolveContractText(content, variableMap, { highlightVariables: false });
+    sanitizarHtmlRico(editarComVariaveis ? content : resolveContractText(content, variableMap, { highlightVariables: false }));
   const alternarModoEdicao = (
     <div className="flex justify-end mb-1">
       <button
@@ -167,7 +168,7 @@ export const ContractPageCanvas: React.FC<ContractPageCanvasProps> = ({
     const mapa: Record<string, string[]> = {};
     contract.blocks.forEach((b) => {
       if (b.type !== "clause" && b.type !== "paragraph") return;
-      mapa[b.id] = dividirHtmlEmTrechos(resolveContractText(b.content, variableMap, { highlightVariables: highlightAtivo }));
+      mapa[b.id] = dividirHtmlEmTrechos(sanitizarHtmlRico(resolveContractText(b.content, variableMap, { highlightVariables: highlightAtivo })));
     });
     return mapa;
     // variableMap é recriado a cada render; o conteúdo dele depende do contrato
@@ -521,9 +522,9 @@ export const ContractPageCanvas: React.FC<ContractPageCanvasProps> = ({
                     // Resolve text with dynamic tags
                     const resolvedContent = ehFragmento && !isActive
                       ? (trechosPorBloco[block.id] || []).slice(partStart, partEnd).map((t) => `<div>${t}</div>`).join("")
-                      : resolveContractText(block.content, variableMap, {
+                      : sanitizarHtmlRico(resolveContractText(block.content, variableMap, {
                           highlightVariables: highlightVariables || isReadOnly
-                        });
+                        }));
 
                     return (
                       <div key={`${block.id}-${partStart ?? "todo"}`} className="relative">

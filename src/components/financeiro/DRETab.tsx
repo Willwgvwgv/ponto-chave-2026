@@ -1,3 +1,4 @@
+import { escaparHtml, corSegura } from "../../utils/htmlSeguro";
 import React, { useState, useMemo } from 'react';
 import { 
   Building2, 
@@ -224,8 +225,8 @@ export const DRETab: React.FC<DRETabProps> = ({ categories, transactions, onShow
       return cats.map(cat => `
         <tr style="border-bottom: 1px solid #f1f5f9; font-size: 11px; color: #475569;">
           <td style="padding: 6px 12px; ${indentClass === 'pl-8' ? 'padding-left: 32px;' : 'padding-left: 48px;'} text-align: left;">
-            <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background-color: ${cat.color || '#94a3b8'}; margin-right: 6px;"></span>
-            ${cat.nome || cat.name}
+            <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background-color: ${corSegura(cat.color)}; margin-right: 6px;"></span>
+            ${escaparHtml(cat.nome || cat.name)}
           </td>
           ${months.map((_, mIdx) => {
             const val = dreMatrix[cat.id] ? dreMatrix[cat.id][mIdx] : 0;

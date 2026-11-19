@@ -4,6 +4,8 @@ import { UserProfile, PontoRegistro, CompanySettings } from "../../types";
 import { formatMinutesToHHMM, formatMinutesToHoursFriendly } from "./MeuEspelho";
 import { getJornadaDescription, getExpectedDailyMinutes } from "../../utils/jornadaUtils";
 import { calcularHoras, saidaAlmocoExibida } from "../../hooks/useQueries";
+import { escaparHtml } from "../../utils/htmlSeguro";
+
 
 interface FolhaPontoPrintProps {
   collaborator: UserProfile | null;
@@ -178,7 +180,7 @@ export const FolhaPontoPrint: React.FC<FolhaPontoPrintProps> = ({
       <html lang="pt-BR">
         <head>
           <meta charset="utf-8" />
-          <title>Espelho de Ponto - ${collaboratorName} (${formattedMonthName}/${year})</title>
+          <title>Espelho de Ponto - ${escaparHtml(collaboratorName)} (${escaparHtml(formattedMonthName)}/${year})</title>
           <style>
             @page {
               size: A4 portrait;

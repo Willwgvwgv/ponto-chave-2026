@@ -1,3 +1,4 @@
+import { escaparHtml } from "../../utils/htmlSeguro";
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   DollarSign, 
@@ -843,8 +844,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     const rowsHtml = invoiceTransactions.map(t => `
       <tr style="border-bottom: 1px solid #e2e8f0; font-size: 13px;">
         <td style="padding: 10px 0; color: #475569;">${t.date.split('-').reverse().join('/')}</td>
-        <td style="padding: 10px 0; font-weight: 500; color: #1e293b;">${t.description}</td>
-        <td style="padding: 10px 0; color: #475569;">${t.categoryName || 'Sem categoria'}</td>
+        <td style="padding: 10px 0; font-weight: 500; color: #1e293b;">${escaparHtml(t.description)}</td>
+        <td style="padding: 10px 0; color: #475569;">${escaparHtml(t.categoryName || 'Sem categoria')}</td>
         <td style="padding: 10px 0; text-align: right; font-weight: 600; color: #ef4444;">- R$ ${t.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
       </tr>
     `).join('');
@@ -852,7 +853,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     printWindow.document.write(`
       <html>
         <head>
-          <title>Fatura ${selectedCardForInvoice.name} - ${titleMonth}</title>
+          <title>Fatura ${escaparHtml(selectedCardForInvoice.name)} - ${titleMonth}</title>
           <style>
             body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 40px; color: #1e293b; }
             .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #e2e8f0; padding-bottom: 20px; margin-bottom: 30px; }
@@ -875,7 +876,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               <div class="sub">ImobiFlow Financial System</div>
             </div>
             <div style="text-align: right;">
-              <div class="val" style="font-size: 18px;">${selectedCardForInvoice.name}</div>
+              <div class="val" style="font-size: 18px;">${escaparHtml(selectedCardForInvoice.name)}</div>
               <div class="sub">Competência: ${titleMonth}</div>
             </div>
           </div>
@@ -883,7 +884,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
           <div class="card-info">
             <div>
               <div class="label">Bandeira</div>
-              <div class="val">${selectedCardForInvoice.cardBrand || 'VISA'}</div>
+              <div class="val">${escaparHtml(selectedCardForInvoice.cardBrand || 'VISA')}</div>
             </div>
             <div>
               <div class="label">Status</div>
@@ -891,7 +892,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             </div>
             <div>
               <div class="label">Dia de Vencimento</div>
-              <div class="val">Dia ${selectedCardForInvoice.dueDay || 15}</div>
+              <div class="val">Dia ${escaparHtml(selectedCardForInvoice.dueDay || 15)}</div>
             </div>
           </div>
 
