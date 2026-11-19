@@ -242,6 +242,17 @@ export const VistoriaView = ({ isAdmin, user, profile, companySettings }: { isAd
   };
 
   const [textoContrato, setTextoContrato] = useState('');
+  // Textos padrão da declaração: entrada (recebe as chaves) e saída (devolve as chaves e encerra a locação)
+  const TEXTO_CONTRATO_ENTRADA_PADRAO = `O(A) LOCATÁRIO(A), acima qualificado(a), declara, para os devidos fins, que nesta data recebeu as chaves do imóvel locado, passando a ter a posse do referido bem.
+
+Declara, ainda, que teve ciência das condições do imóvel, conforme laudo de vistoria elaborado pela imobiliária, o qual foi devidamente apresentado, acompanhado e conferido, concordando integralmente com seu estado de conservação no ato da entrega.
+
+O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guarda, conservação e demais obrigações previstas no contrato de locação.`;
+  const TEXTO_CONTRATO_SAIDA_PADRAO = `O(A) LOCATÁRIO(A), acima qualificado(a), declara, para os devidos fins, que nesta data devolveu as chaves do imóvel locado à imobiliária, encerrando a posse do referido bem, e que a locação fica finalizada a partir desta data.
+
+Declara, ainda, que o imóvel foi vistoriado na sua presença, conforme laudo de vistoria de saída elaborado pela imobiliária, o qual registra o estado de conservação do imóvel no ato da devolução e servirá de base para comparação com a vistoria de entrada.
+
+A entrega das chaves não dá quitação de aluguéis, encargos, contas de consumo, reparos ou demais obrigações do contrato de locação que estejam pendentes ou que venham a ser apuradas a partir deste laudo.`;
   const [textoLaudo, setTextoLaudo] = useState('');
   const [styleContrato, setStyleContrato] = useState({ fontSize: 9, textAlign: 'justify' as const, isBold: false });
   const [styleLaudo, setStyleLaudo] = useState({ fontSize: 9, textAlign: 'justify' as const, isBold: false });
@@ -671,7 +682,14 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
                       <button
                         key={valor}
                         type="button"
-                        onClick={() => setTipoVistoria(valor)}
+                        onClick={() => {
+                          setTipoVistoria(valor);
+                          // Troca o texto da declaração só se ele ainda for o padrão (não apaga texto editado)
+                          const entradaPadrao = brandDefaultTexto || companySettings?.defaultTextoContrato || TEXTO_CONTRATO_ENTRADA_PADRAO;
+                          const atual = (textoContrato || '').trim();
+                          const ehPadrao = !atual || atual === entradaPadrao.trim() || atual === TEXTO_CONTRATO_ENTRADA_PADRAO.trim() || atual === TEXTO_CONTRATO_SAIDA_PADRAO.trim();
+                          if (ehPadrao) setTextoContrato(valor === 'saida' ? TEXTO_CONTRATO_SAIDA_PADRAO : entradaPadrao);
+                        }}
                         className={cn(
                           "inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer",
                           tipoVistoria === valor ? "bg-white text-blue-700 shadow-sm" : "text-slate-500 hover:text-slate-700"
