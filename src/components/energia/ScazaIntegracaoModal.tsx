@@ -211,7 +211,7 @@ export const ScazaIntegracaoModal: React.FC<Props> = ({ onClose, companyId, loca
                     type="button"
                     onClick={sincronizar}
                     disabled={sincronizando || !dados.loginConfigurado || dados.empresaConfigurada === false}
-                    className="h-9 px-3 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white text-sm font-medium flex items-center gap-1.5 disabled:opacity-40"
+                    className="h-9 px-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium flex items-center gap-1.5 disabled:opacity-40"
                   >
                     <RefreshCw className={`w-4 h-4 ${sincronizando ? "animate-spin" : ""}`} />
                     {sincronizando ? "Atualizando…" : "Atualizar agora"}
@@ -294,7 +294,7 @@ export const ScazaIntegracaoModal: React.FC<Props> = ({ onClose, companyId, loca
                                         type="button"
                                         onClick={() => reprocessar(ev.id, selecionada.id)}
                                         disabled={reprocessando === ev.id}
-                                        className="h-8 px-3 rounded-lg bg-zinc-900 text-white text-xs font-medium hover:bg-zinc-800 disabled:opacity-40"
+                                        className="h-8 px-3 rounded-lg bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 disabled:opacity-40"
                                       >
                                         Vincular e aplicar
                                       </button>

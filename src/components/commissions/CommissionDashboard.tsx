@@ -617,7 +617,7 @@ export const CommissionDashboard: React.FC<CommissionDashboardProps> = ({
                 onClick={() => setCaixaPeriod(pVal.id as any)}
                 className={`px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer border ${
                   caixaPeriod === pVal.id
-                    ? "bg-slate-800 text-white border-slate-800 shadow-sm"
+                    ? "bg-blue-600 text-white border-blue-600 shadow-sm"
                     : "bg-slate-50 hover:bg-slate-100 text-slate-600 border-slate-200"
                 }`}
               >

@@ -642,7 +642,7 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
               className={cn(
                 "px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all",
                 formStep === idx 
-                  ? "bg-slate-900 text-white shadow-lg shadow-slate-200" 
+                  ? "bg-blue-600 text-white shadow-lg shadow-blue-200" 
                   : "bg-slate-100 text-slate-400 hover:bg-slate-200"
               )}
             >
@@ -1161,7 +1161,7 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
                 <p className="text-sm font-bold text-slate-700">Adicionar novos cômodos à vistoria</p>
                 <button
                   onClick={() => setIsAddingComodo(true)}
-                  className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition-all shadow-md"
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 transition-all shadow-md"
                 >
                   <Plus className="w-4 h-4" /> Adicionar Cômodo
                 </button>
@@ -1446,7 +1446,7 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <button
                   onClick={handleSave}
-                  className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-slate-800 transition-all shadow-xl shadow-slate-200 flex items-center justify-center gap-2 cursor-pointer"
+                  className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-200 flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <Save className="w-5 h-5" />
                   Salvar Vistoria
@@ -1527,7 +1527,7 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
           )}
           <button 
             onClick={() => setIsCreating(true)}
-            className="bg-slate-900 text-white px-8 py-4 rounded-2xl font-bold flex items-center gap-3 hover:bg-slate-800 transition-all shadow-xl shadow-slate-200 active:scale-95"
+            className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-bold flex items-center gap-3 hover:bg-blue-700 transition-all shadow-xl shadow-blue-200 active:scale-95"
           >
             <Plus className="w-5 h-5" /> Nova Vistoria
           </button>
@@ -1577,7 +1577,7 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
           <p className="text-slate-400 font-medium mb-8 max-w-xs mx-auto">Comece agora criando seu primeiro contrato de vistoria.</p>
           <button 
             onClick={() => setIsCreating(true)}
-            className="bg-slate-900 text-white px-8 py-3 rounded-2xl font-bold text-sm"
+            className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-bold text-sm"
           >
             Criar Minha Primeira Vistoria
           </button>
@@ -1722,7 +1722,7 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
                         <ImageIcon className="w-8 h-8 text-slate-200" />
                       )}
                     </div>
-                    <label className="absolute -bottom-2 -right-2 w-10 h-10 bg-slate-900 text-white rounded-xl shadow-lg border-4 border-white flex items-center justify-center cursor-pointer hover:scale-110 transition-all">
+                    <label className="absolute -bottom-2 -right-2 w-10 h-10 bg-blue-600 text-white rounded-xl shadow-lg border-4 border-white flex items-center justify-center cursor-pointer hover:scale-110 transition-all">
                       <Upload className="w-5 h-5" />
                       <input type="file" className="hidden" accept="image/*" onChange={handleLogoUpload} />
                     </label>
@@ -1864,7 +1864,7 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
                   <button
                     onClick={handleSaveConfig}
                     disabled={isSavingConfig}
-                    className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-slate-200 hover:bg-slate-800 disabled:opacity-50 transition-all sticky bottom-0"
+                    className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-blue-200 hover:bg-blue-700 disabled:opacity-50 transition-all sticky bottom-0"
                   >
                     {isSavingConfig ? "Salvando..." : "Salvar Configurações de Marca"}
                   </button>

@@ -2528,7 +2528,7 @@ const UserManagement = ({
                                 toast.error("Falha ao copiar.");
                               }
                             }}
-                            className="px-3 py-1.5 bg-slate-900 text-white rounded-lg font-bold text-[10px] uppercase tracking-wider hover:bg-slate-800 transition shrink-0 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="px-3 py-1.5 bg-blue-600 text-white rounded-lg font-bold text-[10px] uppercase tracking-wider hover:bg-blue-700 transition shrink-0 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             Copiar
                           </button>
@@ -5537,7 +5537,7 @@ function AppContent() {
                     />
                     <button 
                       onClick={handleRescheduleTask}
-                      className="px-6 py-3 bg-slate-900 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-slate-800 active:scale-95 transition-all"
+                      className="px-6 py-3 bg-blue-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-blue-700 active:scale-95 transition-all"
                     >
                       Confirmar
                     </button>
@@ -5948,7 +5948,7 @@ const CalendarView = ({ selectedDate, setSelectedDate, tasks, allTasks, onAddTas
                 <button
                   onClick={() => downloadIcalFile(tasksForSelectedDate, `tarefas-${format(selectedDate, 'yyyy-MM-dd')}.ics`, `Tarefas - ${format(selectedDate, 'dd/MM/yyyy')}`)}
                   title="Exportar tarefas do dia para Apple Calendar / iCal"
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 text-white hover:bg-slate-800 rounded-xl transition-all shadow-sm cursor-pointer"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white hover:bg-blue-700 rounded-xl transition-all shadow-sm cursor-pointer"
                 >
                   <AppleIcon className="w-3.5 h-3.5 text-white" />
                   <span className="text-[10px] font-bold uppercase tracking-wider">iCal</span>
@@ -9006,7 +9006,7 @@ const ProfileView = ({ profile, user, onOpenSettings, onNavigate, tasks, onOpenC
                         const userTasks = tasks.filter(t => t.uid === user?.uid && !t.completed);
                         downloadIcalFile(userTasks, "tarefas-apple-calendar.ics", "Minhas Tarefas - Apple");
                       }}
-                      className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer shadow-sm flex items-center gap-1.5"
+                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer shadow-sm flex items-center gap-1.5"
                     >
                       <Download className="w-3.5 h-3.5 text-white" />
                       Baixar .ICS (Apple)
@@ -9225,7 +9225,7 @@ const ProfileView = ({ profile, user, onOpenSettings, onNavigate, tasks, onOpenC
                     <div className="mt-5 pt-3 border-t border-slate-100 flex justify-end">
                       <button
                         onClick={() => setShowGCalTutorial(false)}
-                        className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-slate-800 cursor-pointer"
+                        className="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-blue-700 cursor-pointer"
                       >
                         Entendido
                       </button>
@@ -9282,7 +9282,7 @@ const ProfileView = ({ profile, user, onOpenSettings, onNavigate, tasks, onOpenC
                     <div className="mt-5 pt-3 border-t border-slate-100 flex justify-end">
                       <button
                         onClick={() => setShowAppleTutorial(false)}
-                        className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-slate-800 cursor-pointer"
+                        className="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-blue-700 cursor-pointer"
                       >
                         Entendido
                       </button>
@@ -10793,7 +10793,7 @@ export default function App() {
               setContaExcluidaEmail(null);
               window.location.reload();
             }}
-            className="w-full py-4 bg-slate-900 text-white rounded-2xl font-bold uppercase tracking-widest text-xs hover:bg-slate-800 transition-all cursor-pointer"
+            className="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold uppercase tracking-widest text-xs hover:bg-blue-700 transition-all cursor-pointer"
           >
             Voltar ao Login
           </button>
@@ -10821,7 +10821,7 @@ export default function App() {
               setNaoAutorizadoEmail(null);
               window.location.reload();
             }}
-            className="w-full py-4 bg-slate-900 text-white rounded-2xl font-bold uppercase tracking-widest text-xs hover:bg-slate-800 transition-all cursor-pointer"
+            className="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold uppercase tracking-widest text-xs hover:bg-blue-700 transition-all cursor-pointer"
           >
             Voltar ao login
           </button>
@@ -10849,7 +10849,7 @@ export default function App() {
               setAguardandoAprovacaoEmail(null);
               window.location.reload();
             }}
-            className="w-full py-4 bg-slate-900 text-white rounded-2xl font-bold uppercase tracking-widest text-xs hover:bg-slate-800 transition-all cursor-pointer"
+            className="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold uppercase tracking-widest text-xs hover:bg-blue-700 transition-all cursor-pointer"
           >
             Voltar ao login
           </button>
@@ -10923,7 +10923,7 @@ export default function App() {
                 </p>
                 <button 
                   onClick={() => auth.signOut()}
-                  className="w-full py-4 bg-slate-900 text-white rounded-2xl font-bold uppercase tracking-widest text-xs shadow-lg hover:bg-slate-800 transition-all"
+                  className="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold uppercase tracking-widest text-xs shadow-lg hover:bg-blue-700 transition-all"
                 >
                   Voltar para o Login
                 </button>

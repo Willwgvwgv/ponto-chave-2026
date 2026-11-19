@@ -1969,7 +1969,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                       role="radio"
                       aria-checked={!clientePagouForm}
                       onClick={() => setClientePagouForm(false)}
-                      className={`px-3 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${!clientePagouForm ? "bg-slate-900 text-white" : "text-slate-500 hover:text-slate-800"}`}
+                      className={`px-3 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${!clientePagouForm ? "bg-blue-600 text-white" : "text-slate-500 hover:text-slate-800"}`}
                     >
                       Não
                     </button>
@@ -3111,7 +3111,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                       <button key={m} type="button"
                         onClick={() => { setQuitarMeses(prev => { const n = new Set(prev); if (n.has(m)) n.delete(m); else n.add(m); return n; }); setQuitarDesmarcadas(new Set()); }}
                         aria-pressed={ativo}
-                        className={`h-8 px-3 rounded-full border text-xs font-medium ${ativo ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50"}`}>
+                        className={`h-8 px-3 rounded-full border text-xs font-medium ${ativo ? "bg-blue-600 text-white border-blue-600" : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50"}`}>
                         {formatMesReferencia(m)}
                       </button>
                     );
