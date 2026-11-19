@@ -32,8 +32,9 @@ import {
   CheckCheck,
   X
 } from "lucide-react";
-import { Comissao, RateioComissao, PagamentoCorretor, ComissoneUser, UserProfile } from "../../types";
+import { Comissao, RateioComissao, PagamentoCorretor, ComissoneUser, UserProfile, RepasseExcluido, ReaberturaRepasses } from "../../types";
 import { ConfirmModal } from "../ui/ConfirmModal";
+import { ConfirmarComSenhaModal } from "../common/ConfirmarComSenhaModal";
 import { toast } from "sonner";
 import { 
   toViewModel, 
@@ -695,6 +696,14 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
     confirmColor: "red",
     onConfirm: () => {}
   });
+
+  // Ações sobre pagamentos já feitos: exigem senha + motivo
+  const [acaoProtegida, setAcaoProtegida] = useState<{
+    titulo: string;
+    mensagem: string;
+    textoConfirmar: string;
+    executar: (motivo: string) => void;
+  } | null>(null);
 
   const [payBrokerId, setPayBrokerId] = useState("");
   const [payBrokerName, setPayBrokerName] = useState("");
@@ -1380,8 +1389,17 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
     toast.success("Pagamento registrado com sucesso");
   };
 
-  const handleDeletePayment = (paymentId: string) => {
+  const handleDeletePayment = (paymentId: string, motivo: string) => {
     if (!selectedRental) return;
+    const removido = (selectedRental.legacyDoc.pagamentosCorretores || []).find(p => p.id === paymentId);
+    if (!removido) return;
+    const registroExclusao: RepasseExcluido = {
+      ...removido,
+      excluidoPorUid: userProfile.uid,
+      excluidoPorNome: userProfile.displayName || userProfile.email || "Usuário",
+      excluidoEm: new Date().toISOString(),
+      motivo
+    };
     const nextPayments = (selectedRental.legacyDoc.pagamentosCorretores || []).filter(p => p.id !== paymentId);
 
     const updatedRateio = selectedRental.legacyDoc.rateio.map(rt => {
@@ -1409,6 +1427,7 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
     const updatedRental: Comissao = {
       ...selectedRental.legacyDoc,
       pagamentosCorretores: nextPayments,
+      repassesExcluidos: [...(selectedRental.legacyDoc.repassesExcluidos || []), registroExclusao],
       rateio: updatedRateio,
       jaPagoCorretores: checksAllPaid,
       status: checksAllPaid ? "pago" : "pendente",
@@ -1417,7 +1436,24 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
     };
 
     onUpdateRental(updatedRental);
-    toast.success("Lançamento de repasse removido.");
+    toast.success("Lançamento removido. A exclusão ficou registrada.");
+  };
+
+  const handleReabrirRepasses = (motivo: string) => {
+    if (!selectedRental) return;
+    const registro: ReaberturaRepasses = {
+      reabertoPorUid: userProfile.uid,
+      reabertoPorNome: userProfile.displayName || userProfile.email || "Usuário",
+      reabertoEm: new Date().toISOString(),
+      motivo
+    };
+    onUpdateRental({
+      ...selectedRental.legacyDoc,
+      statusFinanceiro: "repasses_pendentes",
+      historicoReaberturas: [...(selectedRental.legacyDoc.historicoReaberturas || []), registro],
+      updatedAt: new Date().toISOString()
+    });
+    toast.success("Repasses reabertos. A reabertura ficou registrada.");
   };
 
   // Altera a data prevista de repasse de UM participante direto no detalhe da locação
@@ -2450,6 +2486,13 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                               <button
                                 type="button"
                                 onClick={() => {
+                                  // Locação com repasse pago (ou com exclusões registradas) não pode sumir:
+                                  // apagaria o histórico de quem pagou e de quem excluiu.
+                                  const temHistorico = (r.legacyDoc.pagamentosCorretores || []).length > 0 || (r.legacyDoc.repassesExcluidos || []).length > 0;
+                                  if (temHistorico) {
+                                    toast.error("Esta locação tem repasses pagos ou exclusões registradas e não pode ser apagada. Para corrigir valores, remova o repasse no extrato (pede senha).");
+                                    return;
+                                  }
                                   if (window.confirm(`Excluir a locação de ${r.imovel}? Essa ação não pode ser desfeita.`)) {
                                     onDeleteRental(r.id);
                                   }
@@ -2599,7 +2642,12 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                                       ) : (
                                         <button
                                           type="button"
-                                          onClick={() => handleUpdateStatusFinanceiro("repasses_pendentes")}
+                                          onClick={() => setAcaoProtegida({
+                                            titulo: "Reabrir Repasses",
+                                            mensagem: "Esta comissão já foi encerrada. Para reabrir, confirme sua identidade e informe o motivo.",
+                                            textoConfirmar: "Reabrir",
+                                            executar: handleReabrirRepasses
+                                          })}
                                           className="flex items-center gap-1.5 px-3.5 py-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl text-xs font-bold transition-all cursor-pointer bg-white border border-slate-200"
                                         >
                                           <ArrowRightLeft className="w-3.5 h-3.5" />
@@ -2938,15 +2986,11 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                                                       <button
                                                         type="button"
                                                         onClick={() => {
-                                                          setConfirmState({
-                                                            open: true,
-                                                            title: "Remover Repasse",
-                                                            message: `Deseja estornar/excluir este lançamento de ${formatCurrency(pay.valor)} para ${pay.corretorNome}?`,
-                                                            confirmColor: "red",
-                                                            onConfirm: () => {
-                                                              setConfirmState(prev => ({ ...prev, open: false }));
-                                                              handleDeletePayment(pay.id);
-                                                            }
+                                                          setAcaoProtegida({
+                                                            titulo: "Remover Repasse",
+                                                            mensagem: `Estornar/excluir o lançamento de ${formatCurrency(pay.valor)} para ${pay.corretorNome}? A exclusão fica registrada com seu nome, data e motivo.`,
+                                                            textoConfirmar: "Excluir",
+                                                            executar: (motivo) => handleDeletePayment(pay.id, motivo)
                                                           });
                                                         }}
                                                         title="Excluir lançamento"
@@ -2981,6 +3025,29 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
                                               );
                                             })}
                                           </div>
+                                        )}
+
+                                        {((selectedRental.legacyDoc.repassesExcluidos || []).length > 0 || (selectedRental.legacyDoc.historicoReaberturas || []).length > 0) && (
+                                          <details className="border-t border-slate-100 pt-3 group">
+                                            <summary className="text-xs font-bold text-slate-500 cursor-pointer select-none">
+                                              Exclusões e reaberturas ({(selectedRental.legacyDoc.repassesExcluidos || []).length + (selectedRental.legacyDoc.historicoReaberturas || []).length})
+                                            </summary>
+                                            <ul className="mt-2 space-y-2">
+                                              {(selectedRental.legacyDoc.repassesExcluidos || []).map((ex, i) => (
+                                                <li key={"ex-" + ex.id + "-" + i} className="text-[11px] text-slate-600 bg-red-50/60 border border-red-100 rounded-xl p-2.5">
+                                                  <span className="font-bold text-red-700">Excluído:</span> {formatCurrency(ex.valor)} de {formatPersonName(ex.corretorNome)}
+                                                  <span className="block text-slate-500">
+                                                    Por {ex.excluidoPorNome} em {new Date(ex.excluidoEm).toLocaleString("pt-BR")} — {ex.motivo}
+                                                  </span>
+                                                </li>
+                                              ))}
+                                              {(selectedRental.legacyDoc.historicoReaberturas || []).map((r, i) => (
+                                                <li key={"re-" + i} className="text-[11px] text-slate-600 bg-amber-50/60 border border-amber-100 rounded-xl p-2.5">
+                                                  <span className="font-bold text-amber-700">Reaberto</span> por {r.reabertoPorNome} em {new Date(r.reabertoEm).toLocaleString("pt-BR")} — {r.motivo}
+                                                </li>
+                                              ))}
+                                            </ul>
+                                          </details>
                                         )}
                                       </div>
                                     </div>
@@ -3281,6 +3348,19 @@ export const RentalCommissions: React.FC<RentalCommissionsProps> = ({
         confirmColor={confirmState.confirmColor}
         onConfirm={confirmState.onConfirm}
         onCancel={() => setConfirmState(prev => ({ ...prev, open: false }))}
+      />
+
+      <ConfirmarComSenhaModal
+        open={!!acaoProtegida}
+        titulo={acaoProtegida?.titulo || ""}
+        mensagem={acaoProtegida?.mensagem || ""}
+        textoConfirmar={acaoProtegida?.textoConfirmar}
+        onCancelar={() => setAcaoProtegida(null)}
+        onConfirmar={(motivo) => {
+          const acao = acaoProtegida;
+          setAcaoProtegida(null);
+          acao?.executar(motivo);
+        }}
       />
     </div>
   );

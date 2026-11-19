@@ -11,7 +11,10 @@ import {
   confirmPasswordReset as realConfirmPasswordReset,
   verifyPasswordResetCode as realVerifyPasswordResetCode,
   updatePassword as realUpdatePassword,
-  updateProfile as realUpdateProfile
+  updateProfile as realUpdateProfile,
+  reauthenticateWithCredential,
+  reauthenticateWithPopup,
+  EmailAuthProvider
 } from 'firebase/auth';
 import type { User } from 'firebase/auth';
 import { 
@@ -1165,6 +1168,30 @@ export const loginWithEmail = isDemoMode ? async (email: string, pass: string) =
   triggerAuthListeners(loggedUser);
   return { user: loggedUser };
 } : (email: string, pass: string) => signInWithEmailAndPassword(auth, email, pass);
+
+// Confirmação de identidade antes de ações sensíveis (excluir/estornar pagamentos).
+// Conta com senha: pede a senha. Conta só Google: abre a confirmação do Google.
+export const metodoConfirmacaoIdentidade = (): "senha" | "google" => {
+  if (isDemoMode) return "senha";
+  const provedores = (auth.currentUser?.providerData || []).map((p: any) => p.providerId);
+  return provedores.includes("password") ? "senha" : "google";
+};
+
+export const confirmarIdentidade = async (senha?: string): Promise<void> => {
+  if (isDemoMode) {
+    if (!senha) throw new Error("Informe a senha.");
+    return; // modo simulação: não há servidor de login
+  }
+  const usuario = auth.currentUser;
+  if (!usuario) throw new Error("Sessão expirada. Entre novamente.");
+  if (metodoConfirmacaoIdentidade() === "senha") {
+    if (!senha) throw new Error("Informe a senha.");
+    if (!usuario.email) throw new Error("Conta sem e-mail cadastrado.");
+    await reauthenticateWithCredential(usuario, EmailAuthProvider.credential(usuario.email, senha));
+  } else {
+    await reauthenticateWithPopup(usuario, googleProvider);
+  }
+};
 
 export const registerWithEmail = isDemoMode ? async (email: string, pass: string) => {
   return loginWithEmail(email, pass);
