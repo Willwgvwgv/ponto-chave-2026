@@ -1,3 +1,4 @@
+import { escaparProfundo, escaparHtml } from "../utils/htmlSeguro";
 import React, { useState, useEffect } from "react";
 import { motion } from "motion/react";
 import { 
@@ -569,6 +570,8 @@ export const PropostaBellaWhiteView: React.FC<PropostaBellaWhiteProps> = ({ comp
     const p1DateFormatted = comprador1.dataNascimento ? formatDateLabel(comprador1.dataNascimento) : "___/___/_____";
     const p2DateFormatted = comprador2.dataNascimento ? formatDateLabel(comprador2.dataNascimento) : "___/___/_____";
     const dataEmissaoCustom = dataProposta ? format(new Date(dataProposta + "T12:00:00"), "dd 'de' MMMM 'de' yyyy", { locale: ptBR }) : "___ de ___________ de 202_";
+    // Textos digitados entram na impressão como texto puro (sem virar código).
+    const E = escaparProfundo({ apartamento, bloco, cidadeData, comissaoDestinoGerente, comissaoPctCorretor, comissaoPctGerente, comissaoPctImobiliaria, comprador1, comprador2, corretorCreci, corretorNome, dataEmissaoCustom, fgtsValor, finConstrutoraData, finConstrutoraParcelas, gerenteCreci, gerenteNome, imobiliariaCreci, imobiliariaNome, intermediariasData, intermediariasParcelas, intermediariasTipo, observacoes, p1DateFormatted, regimeCasamento, sinalDataPrimeira, sinalParcelas, subsidioMunicipalValor, subsidioValor });
 
     let printWindow: Window | null = null;
     if (!exportToWord) {
@@ -874,71 +877,71 @@ export const PropostaBellaWhiteView: React.FC<PropostaBellaWhiteProps> = ({ comp
         <tr>
           <td colspan="4">
             <span class="grid-cell-label">NOME DO INTERESSADO (1):</span>
-            <div class="grid-cell-value">${comprador1.nome || "Não informado"}</div>
+            <div class="grid-cell-value">${E.comprador1.nome || "Não informado"}</div>
           </td>
         </tr>
         <tr>
           <td style="width: 28%;">
             <span class="grid-cell-label">NACIONALIDADE</span>
-            <div class="grid-cell-value">${comprador1.nacionalidade || "brasileiro(a)"}</div>
+            <div class="grid-cell-value">${E.comprador1.nacionalidade || "brasileiro(a)"}</div>
           </td>
           <td style="width: 25%;">
             <span class="grid-cell-label">ESTADO CIVIL</span>
-            <div class="grid-cell-value">${comprador1.estadoCivil || "solteiro(a)"}</div>
+            <div class="grid-cell-value">${E.comprador1.estadoCivil || "solteiro(a)"}</div>
           </td>
           <td colspan="2">
             <span class="grid-cell-label">DATA NASCIMENTO</span>
-            <div class="grid-cell-value">${p1DateFormatted}</div>
+            <div class="grid-cell-value">${E.p1DateFormatted}</div>
           </td>
         </tr>
         <tr>
           <td>
             <span class="grid-cell-label">PROFISSÃO</span>
-            <div class="grid-cell-value">${comprador1.profissao || "Não especificada"}</div>
+            <div class="grid-cell-value">${E.comprador1.profissao || "Não especificada"}</div>
           </td>
           <td>
             <span class="grid-cell-label">IDENTIDADE</span>
-            <div class="grid-cell-value">${comprador1.identidade || "______-___"}</div>
+            <div class="grid-cell-value">${E.comprador1.identidade || "______-___"}</div>
           </td>
           <td colspan="2">
             <span class="grid-cell-label">CPF</span>
-            <div class="grid-cell-value">${comprador1.cpf || "___.___.___-__"}</div>
+            <div class="grid-cell-value">${E.comprador1.cpf || "___.___.___-__"}</div>
           </td>
         </tr>
         <tr>
           <td colspan="2">
             <span class="grid-cell-label">ENDEREÇO</span>
-            <div class="grid-cell-value">${comprador1.endereco || "Não preenchido"}</div>
+            <div class="grid-cell-value">${E.comprador1.endereco || "Não preenchido"}</div>
           </td>
           <td colspan="2">
             <span class="grid-cell-label">BAIRRO</span>
-            <div class="grid-cell-value">${comprador1.bairro || "________________"}</div>
+            <div class="grid-cell-value">${E.comprador1.bairro || "________________"}</div>
           </td>
         </tr>
         <tr>
           <td>
             <span class="grid-cell-label">CEP</span>
-            <div class="grid-cell-value">${comprador1.cep || "_____-___"}</div>
+            <div class="grid-cell-value">${E.comprador1.cep || "_____-___"}</div>
           </td>
           <td>
             <span class="grid-cell-label">CIDADE</span>
-            <div class="grid-cell-value">${comprador1.cidade || "________________"}</div>
+            <div class="grid-cell-value">${E.comprador1.cidade || "________________"}</div>
           </td>
           <td colspan="2">
             <span class="grid-cell-label">ESTADO</span>
-            <div class="grid-cell-value">${comprador1.estado || "____"}</div>
+            <div class="grid-cell-value">${E.comprador1.estado || "____"}</div>
           </td>
         </tr>
         <tr>
           <td colspan="4">
             <span class="grid-cell-label">TELEFONES (CELULAR E FIXO) + TELEFONE DE CONTATO(S)</span>
-            <div class="grid-cell-value">${comprador1.telefones || "________________"}</div>
+            <div class="grid-cell-value">${E.comprador1.telefones || "________________"}</div>
           </td>
         </tr>
         <tr>
           <td colspan="2">
             <span class="grid-cell-label">E-MAIL:</span>
-            <div class="grid-cell-value">${comprador1.email || "________________"}</div>
+            <div class="grid-cell-value">${E.comprador1.email || "________________"}</div>
           </td>
           <td>
             <span class="grid-cell-label">RENDA BRUTA INDIVIDUAL:</span>
@@ -959,80 +962,80 @@ export const PropostaBellaWhiteView: React.FC<PropostaBellaWhiteProps> = ({ comp
         <tr>
           <td colspan="4">
             <span class="grid-cell-label">NOME INTERESTADO (2) OU CÔNJUGE:</span>
-            <div class="grid-cell-value">${comprador2.nome || "Não se aplica / Em branco"}</div>
+            <div class="grid-cell-value">${E.comprador2.nome || "Não se aplica / Em branco"}</div>
           </td>
         </tr>
         <tr>
           <td style="width: 28%;">
             <span class="grid-cell-label">NACIONALIDADE</span>
-            <div class="grid-cell-value">${comprador2.nome ? (comprador2.nacionalidade || "brasileiro(a)") : ""}</div>
+            <div class="grid-cell-value">${E.comprador2.nome ? (comprador2.nacionalidade || "brasileiro(a)") : ""}</div>
           </td>
           <td style="width: 25%;">
             <span class="grid-cell-label">ESTADO CIVIL</span>
-            <div class="grid-cell-value">${comprador2.nome ? (comprador2.estadoCivil || "solteiro(a)") : ""}</div>
+            <div class="grid-cell-value">${E.comprador2.nome ? (comprador2.estadoCivil || "solteiro(a)") : ""}</div>
           </td>
           <td colspan="2">
             <span class="grid-cell-label">DATA NASCIMENTO</span>
-            <div class="grid-cell-value">${comprador2.nome ? p2DateFormatted : ""}</div>
+            <div class="grid-cell-value">${E.comprador2.nome ? escaparHtml(p2DateFormatted) : ""}</div>
           </td>
         </tr>
         <tr>
           <td>
             <span class="grid-cell-label">PROFISSÃO</span>
-            <div class="grid-cell-value">${comprador2.nome ? (comprador2.profissao || "_________________") : ""}</div>
+            <div class="grid-cell-value">${E.comprador2.nome ? (comprador2.profissao || "_________________") : ""}</div>
           </td>
           <td>
             <span class="grid-cell-label">IDENTIDADE</span>
-            <div class="grid-cell-value">${comprador2.nome ? (comprador2.identidade || "_________________") : ""}</div>
+            <div class="grid-cell-value">${E.comprador2.nome ? (comprador2.identidade || "_________________") : ""}</div>
           </td>
           <td colspan="2">
             <span class="grid-cell-label">CPF</span>
-            <div class="grid-cell-value">${comprador2.nome ? (comprador2.cpf || "___.___.___-__") : ""}</div>
+            <div class="grid-cell-value">${E.comprador2.nome ? (comprador2.cpf || "___.___.___-__") : ""}</div>
           </td>
         </tr>
         <tr>
           <td colspan="2">
             <span class="grid-cell-label">ENDEREÇO</span>
-            <div class="grid-cell-value">${comprador2.nome ? (comprador2.endereco || "_________________") : ""}</div>
+            <div class="grid-cell-value">${E.comprador2.nome ? (comprador2.endereco || "_________________") : ""}</div>
           </td>
           <td colspan="2">
             <span class="grid-cell-label">BAIRRO</span>
-            <div class="grid-cell-value">${comprador2.nome ? (comprador2.bairro || "_________________") : ""}</div>
+            <div class="grid-cell-value">${E.comprador2.nome ? (comprador2.bairro || "_________________") : ""}</div>
           </td>
         </tr>
         <tr>
           <td>
             <span class="grid-cell-label">CEP</span>
-            <div class="grid-cell-value">${comprador2.nome ? (comprador2.cep || "_____-___") : ""}</div>
+            <div class="grid-cell-value">${E.comprador2.nome ? (comprador2.cep || "_____-___") : ""}</div>
           </td>
           <td>
             <span class="grid-cell-label">CIDADE</span>
-            <div class="grid-cell-value">${comprador2.nome ? (comprador2.cidade || "_________________") : ""}</div>
+            <div class="grid-cell-value">${E.comprador2.nome ? (comprador2.cidade || "_________________") : ""}</div>
           </td>
           <td colspan="2">
             <span class="grid-cell-label">ESTADO</span>
-            <div class="grid-cell-value">${comprador2.nome ? (comprador2.estado || "___") : ""}</div>
+            <div class="grid-cell-value">${E.comprador2.nome ? (comprador2.estado || "___") : ""}</div>
           </td>
         </tr>
         <tr>
           <td colspan="4">
             <span class="grid-cell-label">TELEFONES DE CONTATO</span>
-            <div class="grid-cell-value">${comprador2.nome ? (comprador2.telefones || "_________________") : ""}</div>
+            <div class="grid-cell-value">${E.comprador2.nome ? (comprador2.telefones || "_________________") : ""}</div>
           </td>
         </tr>
         <tr>
           <td colspan="2">
             <span class="grid-cell-label">E-MAIL</span>
-            <div class="grid-cell-value">${comprador2.nome ? (comprador2.email || "_________________") : ""}</div>
+            <div class="grid-cell-value">${E.comprador2.nome ? (comprador2.email || "_________________") : ""}</div>
           </td>
           <td>
             <span class="grid-cell-label">RENDA BRUTA INDIVIDUAL</span>
-            <div class="grid-cell-value">${comprador2.nome ? `R$ ${fmt(comprador2.rendaBruta)}` : ""}</div>
+            <div class="grid-cell-value">${E.comprador2.nome ? `R$ ${fmt(comprador2.rendaBruta)}` : ""}</div>
           </td>
           <td>
             <span class="grid-cell-label">TIPO DE RENDA</span>
             <div style="font-size:9.5px; font-weight:bold; margin-top:3px;">
-              ${comprador2.nome ? `${checkboxHtml(isFormalC2)} FORMAL &nbsp;&nbsp;&nbsp;&nbsp; ${checkboxHtml(isInformalC2)} INFORMAL` : ""}
+              ${E.comprador2.nome ? `${checkboxHtml(isFormalC2)} FORMAL &nbsp;&nbsp;&nbsp;&nbsp; ${checkboxHtml(isInformalC2)} INFORMAL` : ""}
             </div>
           </td>
         </tr>
@@ -1043,15 +1046,15 @@ export const PropostaBellaWhiteView: React.FC<PropostaBellaWhiteProps> = ({ comp
         <tr>
           <td style="width: 50%;">
             <span class="grid-cell-label">REGIME DE CASAMENTO:</span>
-            <div class="grid-cell-value">${regimeCasamento || "_________________"}</div>
+            <div class="grid-cell-value">${E.regimeCasamento || "_________________"}</div>
           </td>
           <td style="width: 25%;">
             <span class="grid-cell-label">BLOCO</span>
-            <div class="grid-cell-value" style="font-size:13px; font-weight:800;">${bloco || "_____"}</div>
+            <div class="grid-cell-value" style="font-size:13px; font-weight:800;">${E.bloco || "_____"}</div>
           </td>
           <td style="width: 25%;">
             <span class="grid-cell-label">APARTAMENTO</span>
-            <div class="grid-cell-value" style="font-size:13px; font-weight:800;">${apartamento || "_____"}</div>
+            <div class="grid-cell-value" style="font-size:13px; font-weight:800;">${E.apartamento || "_____"}</div>
           </td>
         </tr>
       </table>
@@ -1094,9 +1097,9 @@ export const PropostaBellaWhiteView: React.FC<PropostaBellaWhiteProps> = ({ comp
         <div class="payment-term">
           <h4>- SINAL de: R$ <strong>${fmt(sinalValor)}</strong></h4>
           <p>
-            A ser pago mediante <strong>${sinalParcelas}</strong> prestações mensais e consecutivas no valor de
+            A ser pago mediante <strong>${E.sinalParcelas}</strong> prestações mensais e consecutivas no valor de
             <strong>R$ ${fmt(sinalParcelaValor)}</strong> cada uma, vencendo a primeira parcela em 
-            <strong>${sinalDataPrimeira ? formatDateLabel(sinalDataPrimeira) : "__ /__ /____"}</strong> e as demais nos mesmos dias dos meses subsequentes.
+            <strong>${E.sinalDataPrimeira ? formatDateLabel(sinalDataPrimeira) : "__ /__ /____"}</strong> e as demais nos mesmos dias dos meses subsequentes.
           </p>
         </div>
 
@@ -1104,9 +1107,9 @@ export const PropostaBellaWhiteView: React.FC<PropostaBellaWhiteProps> = ({ comp
         <div class="payment-term">
           <h4>- FINANCIAMENTO CONSTRUTORA RIO MANSO de: R$ <strong>${fmt(finConstrutoraValor)}</strong></h4>
           <p>
-            A serem pagos mediante <strong>${finConstrutoraParcelas}</strong> prestações mensais e consecutivas no valor de
+            A serem pagos mediante <strong>${E.finConstrutoraParcelas}</strong> prestações mensais e consecutivas no valor de
             <strong>R$ ${fmt(finConstrutoraParcelaValor)}</strong> cada uma, vencendo a primeira parcela em 
-            <strong>${finConstrutoraData ? formatDateLabel(finConstrutoraData) : "__ /__ /____"}</strong> e as demais nos mesmos dias dos meses subsequentes, sujeitas à atualização monetária anual e reajustes descritos abaixo.
+            <strong>${E.finConstrutoraData ? formatDateLabel(finConstrutoraData) : "__ /__ /____"}</strong> e as demais nos mesmos dias dos meses subsequentes, sujeitas à atualização monetária anual e reajustes descritos abaixo.
           </p>
         </div>
 
@@ -1114,9 +1117,9 @@ export const PropostaBellaWhiteView: React.FC<PropostaBellaWhiteProps> = ({ comp
         <div class="payment-term">
           <h4>- PARCELAS INTERMEDIÁRIAS (se houver) de: R$ <strong>${fmt(intermediariasValor)}</strong></h4>
           <p>
-            Mediante <strong>${intermediariasParcelas}</strong> parcelas <strong>${intermediariasTipo}</strong> no valor de
+            Mediante <strong>${E.intermediariasParcelas}</strong> parcelas <strong>${E.intermediariasTipo}</strong> no valor de
             <strong>R$ ${fmt(intermediariasParcelaValor)}</strong> cada uma, vencendo a primeira parcela em
-            <strong>${intermediariasData ? formatDateLabel(intermediariasData) : "__ /__ /____"}</strong> e as demais parcelas nas mesmas datas, sujeitas a atualizações e juros legais.
+            <strong>${E.intermediariasData ? formatDateLabel(intermediariasData) : "__ /__ /____"}</strong> e as demais parcelas nas mesmas datas, sujeitas a atualizações e juros legais.
           </p>
         </div>
 
@@ -1125,7 +1128,7 @@ export const PropostaBellaWhiteView: React.FC<PropostaBellaWhiteProps> = ({ comp
           <h4>- FINANCIAMENTO BANCÁRIO, SUBSÍDIO E FGTS (se houver):</h4>
           <p style="font-size:11.5px; line-height: 1.5; margin-top:5px;">
             Valor correspondente de R$ <strong style="font-size:13px; color:#1b4d22;">${fmt(finBancarioValor)}</strong> 
-            ${(subsidioValor > 0 || subsidioMunicipalValor > 0 || fgtsValor > 0) ? `(sendo R$ <strong>${fmt(finBancarioValorOnly)}</strong> de Financiamento Bancário${subsidioValor > 0 ? `, R$ <strong>${fmt(subsidioValor)}</strong> de Subsídio Federal` : ""}${subsidioMunicipalValor > 0 ? `, R$ <strong>${fmt(subsidioMunicipalValor)}</strong> de Subsídio Municipal` : ""}${fgtsValor > 0 ? ` e R$ <strong>${fmt(fgtsValor)}</strong> de FGTS` : ""})` : ""}
+            ${(subsidioValor > 0 || subsidioMunicipalValor > 0 || fgtsValor > 0) ? `(sendo R$ <strong>${fmt(finBancarioValorOnly)}</strong> de Financiamento Bancário${E.subsidioValor > 0 ? `, R$ <strong>${fmt(subsidioValor)}</strong> de Subsídio Federal` : ""}${E.subsidioMunicipalValor > 0 ? `, R$ <strong>${fmt(subsidioMunicipalValor)}</strong> de Subsídio Municipal` : ""}${E.fgtsValor > 0 ? ` e R$ <strong>${fmt(fgtsValor)}</strong> de FGTS` : ""})` : ""}
             pagos mediante a contratação de financiamento bancário junto ao Agente Financeiro (CAIXA ECONÔMICA FEDERAL) no momento em que a Promitente Vendedora informar. Mencionados valores dependem de análise e aprovação cadastral e documental.
           </p>
         </div>
@@ -1167,32 +1170,32 @@ export const PropostaBellaWhiteView: React.FC<PropostaBellaWhiteProps> = ({ comp
         <tr>
           <td style="width: 70%;">
             <span class="grid-cell-label">IMOBILIÁRIA:</span>
-            <div class="grid-cell-value">${imobiliariaNome || "FIDELITÉ IMOBILIÁRIA"}</div>
+            <div class="grid-cell-value">${E.imobiliariaNome || "FIDELITÉ IMOBILIÁRIA"}</div>
           </td>
           <td style="width: 30%;">
             <span class="grid-cell-label">CRECI IMOBILIÁRIA:</span>
-            <div class="grid-cell-value">${imobiliariaCreci || "_____"}</div>
+            <div class="grid-cell-value">${E.imobiliariaCreci || "_____"}</div>
           </td>
         </tr>
         <tr>
           <td>
             <span class="grid-cell-label">CORRETOR (A) QUE INTERMEDIOU A VENDA:</span>
-            <div class="grid-cell-value">${corretorNome || "_________________"}</div>
+            <div class="grid-cell-value">${E.corretorNome || "_________________"}</div>
           </td>
           <td>
             <span class="grid-cell-label">CRECI CORRETOR:</span>
-            <div class="grid-cell-value">${corretorCreci || "_____"}</div>
+            <div class="grid-cell-value">${E.corretorCreci || "_____"}</div>
           </td>
         </tr>
-        ${gerenteNome ? `
+        ${E.gerenteNome ? `
         <tr>
           <td>
             <span class="grid-cell-label">GERENTE RESPONSÁVEL DA VENDA:</span>
-            <div class="grid-cell-value">${gerenteNome}</div>
+            <div class="grid-cell-value">${E.gerenteNome}</div>
           </td>
           <td>
             <span class="grid-cell-label">CRECI GERENTE:</span>
-            <div class="grid-cell-value">${gerenteCreci || "_____"}</div>
+            <div class="grid-cell-value">${E.gerenteCreci || "_____"}</div>
           </td>
         </tr>
         ` : ""}
@@ -1211,22 +1214,22 @@ export const PropostaBellaWhiteView: React.FC<PropostaBellaWhiteProps> = ({ comp
         <tr>
           <td>
             <span class="grid-cell-label">• IMOBILIÁRIA:</span>
-            <div class="grid-cell-value">R$ ${fmt(comissaoDestinoImobiliaria)} <span style="font-size:9.5px; font-weight:normal; color:#475569;">(${comissaoPctImobiliaria.toFixed(2)}%)</span></div>
+            <div class="grid-cell-value">R$ ${fmt(comissaoDestinoImobiliaria)} <span style="font-size:9.5px; font-weight:normal; color:#475569;">(${E.comissaoPctImobiliaria.toFixed(2)}%)</span></div>
             <div style="font-size: 8.5px; color:#555; margin-top:2px;">pagamento correspondente de responsabilidade do CLIENTE, destinado diretamente à Imobiliária.</div>
           </td>
         </tr>
         <tr>
           <td>
             <span class="grid-cell-label">• CORRETOR:</span>
-            <div class="grid-cell-value">R$ ${fmt(comissaoDestinoCorretor)} <span style="font-size:9.5px; font-weight:normal; color:#475569;">(${comissaoPctCorretor.toFixed(2)}%)</span></div>
+            <div class="grid-cell-value">R$ ${fmt(comissaoDestinoCorretor)} <span style="font-size:9.5px; font-weight:normal; color:#475569;">(${E.comissaoPctCorretor.toFixed(2)}%)</span></div>
             <div style="font-size: 8.5px; color:#555; margin-top:2px;">pagamento correspondente de responsabilidade do CLIENTE, destinado diretamente ao Corretores credenciados.</div>
           </td>
         </tr>
-        ${comissaoDestinoGerente > 0 ? `
+        ${E.comissaoDestinoGerente > 0 ? `
         <tr>
           <td>
             <span class="grid-cell-label">• GERENTE:</span>
-            <div class="grid-cell-value">R$ ${fmt(comissaoDestinoGerente)} <span style="font-size:9.5px; font-weight:normal; color:#475569;">(${comissaoPctGerente.toFixed(2)}%)</span></div>
+            <div class="grid-cell-value">R$ ${fmt(comissaoDestinoGerente)} <span style="font-size:9.5px; font-weight:normal; color:#475569;">(${E.comissaoPctGerente.toFixed(2)}%)</span></div>
             <div style="font-size: 8.5px; color:#555; margin-top:2px;">pagamento correspondente de responsabilidade do CLIENTE, destinado diretamente ao Gerente Responsável da Venda.</div>
           </td>
         </tr>
@@ -1260,7 +1263,7 @@ export const PropostaBellaWhiteView: React.FC<PropostaBellaWhiteProps> = ({ comp
       <table class="grid-table">
         <tr>
           <td style="min-height: 120px;">
-            <div style="font-size: 11px; white-space: pre-wrap; font-weight: 500; min-height:110px;">${observacoes || "Nenhuma observação acrescida."}</div>
+            <div style="font-size: 11px; white-space: pre-wrap; font-weight: 500; min-height:110px;">${E.observacoes || "Nenhuma observação acrescida."}</div>
           </td>
         </tr>
       </table>
@@ -1315,7 +1318,7 @@ export const PropostaBellaWhiteView: React.FC<PropostaBellaWhiteProps> = ({ comp
 
       <!-- LOCAL & DATA -->
       <div style="margin-top: 35px; font-weight:800; font-size: 11.5px; text-align: center;">
-        ${cidadeData}, ${dataEmissaoCustom}.
+        ${E.cidadeData}, ${E.dataEmissaoCustom}.
       </div>
 
       <!-- SIGNATURE LINES -->

@@ -198,6 +198,11 @@ const handleOpenAttachment = (url: string, name: string) => {
       toast.error("Erro ao abrir o arquivo.");
     }
   } else {
+    // Só abre links http(s)/blob; javascript: e outros esquemas são bloqueados.
+    if (!/^(https?:|blob:)/i.test(url.trim())) {
+      toast.error("Link do anexo inválido.");
+      return;
+    }
     window.open(url, '_blank', 'noopener,noreferrer');
   }
 };

@@ -1,3 +1,4 @@
+import { escaparHtml, urlSegura } from "../utils/htmlSeguro";
 import React, { useState, useMemo, useEffect } from "react";
 import { toast } from "sonner";
 import { cn } from "../lib/utils";
@@ -864,15 +865,15 @@ export const SimuladorView: React.FC<SimuladorViewProps> = ({ companySettings, c
 
   // HTML Print Window Trigger
   const imprimirProposta = (exportToWord: boolean = false) => {
-    const enterpriseName = empreendimento || "Empreendimento";
-    const userSales = corretorResponsavel || currentUser?.displayName || "Consultor de Vendas";
-    const nomeCliente = clienteNome.trim() || "Cliente Interessado";
-    const localizacaoTexto = loteInfo ? `${enterpriseName} — ${loteInfo}` : enterpriseName;
+    const enterpriseName = escaparHtml(empreendimento || "Empreendimento");
+    const userSales = escaparHtml(corretorResponsavel || currentUser?.displayName || "Consultor de Vendas");
+    const nomeCliente = escaparHtml(clienteNome.trim() || "Cliente Interessado");
+    const localizacaoTexto = loteInfo ? `${enterpriseName} — ${escaparHtml(loteInfo)}` : enterpriseName;
     const dataEmissao = format(new Date(), "dd/MM/yyyy", { locale: ptBR });
     
-    const logoSrc = (usarLogoEmpresa && companySettings?.logoUrl) 
+    const logoSrc = escaparHtml(urlSegura((usarLogoEmpresa && companySettings?.logoUrl) 
       ? companySettings.logoUrl 
-      : customLogoUrl;
+      : customLogoUrl));
 
     const logoHtml = logoSrc 
       ? `<div style="background-color: #ffffff; padding: 8px 18px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 6px; border: 1px solid #e2e8f0;"><img src="${logoSrc}" style="max-height: 42px; width: auto; max-width: 170px; display: block; object-fit: contain;" alt="Logo" /></div>`
@@ -891,7 +892,7 @@ export const SimuladorView: React.FC<SimuladorViewProps> = ({ companySettings, c
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url;
-            a.download = `Proposta_${modoSimulacao === 'bancario' ? 'Financiamento' : 'Livre'}_${nomeCliente.replace(/\s+/g, '_')}.doc`;
+            a.download = `Proposta_${modoSimulacao === 'bancario' ? 'Financiamento' : 'Livre'}_${(clienteNome.trim() || "Cliente Interessado").replace(/\s+/g, '_')}.doc`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -1240,8 +1241,8 @@ export const SimuladorView: React.FC<SimuladorViewProps> = ({ companySettings, c
       </div>
       <div class="empresa">
         ${logoHtml}
-        ${!companySettings?.logoUrl ? `<div class="nome">${companySettings?.name || "Fidelité"}</div>` : ''}
-        <div style="font-size: 9px; font-weight: 600; color: rgba(255,255,255,0.8); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 2px;">${companySettings?.subtitle || "Negócios Imobiliários"}</div>
+        ${!companySettings?.logoUrl ? `<div class="nome">${escaparHtml(companySettings?.name || "Fidelité")}</div>` : ''}
+        <div style="font-size: 9px; font-weight: 600; color: rgba(255,255,255,0.8); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 2px;">${escaparHtml(companySettings?.subtitle || "Negócios Imobiliários")}</div>
       </div>
     </div>
 
@@ -1626,8 +1627,8 @@ export const SimuladorView: React.FC<SimuladorViewProps> = ({ companySettings, c
       </div>
       <div class="empresa">
         ${logoHtml}
-        ${!companySettings?.logoUrl ? `<div class="nome">${companySettings?.name || "Fidelité"}</div>` : ''}
-        <div style="font-size: 9px; font-weight: 600; color: rgba(255,255,255,0.7); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 2px;">${companySettings?.subtitle || "Negócios Imobiliários"}</div>
+        ${!companySettings?.logoUrl ? `<div class="nome">${escaparHtml(companySettings?.name || "Fidelité")}</div>` : ''}
+        <div style="font-size: 9px; font-weight: 600; color: rgba(255,255,255,0.7); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 2px;">${escaparHtml(companySettings?.subtitle || "Negócios Imobiliários")}</div>
       </div>
     </div>
 

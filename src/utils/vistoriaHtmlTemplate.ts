@@ -1,4 +1,5 @@
 import { Vistoria, LocatarioVistoria, CompanySettings } from '../types';
+import { escaparProfundo } from './htmlSeguro';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -13,9 +14,12 @@ export const FIDELITE_LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBo
 </svg>`;
 
 export const generateVistoriaFullHTML = (
-  vistoria: Vistoria,
-  companySettings?: CompanySettings | null
+  vistoriaOriginal: Vistoria,
+  companySettingsOriginal?: CompanySettings | null
 ): string => {
+  // Textos do banco entram no HTML como texto puro (sem virar código). Não muda o layout.
+  const vistoria = escaparProfundo(vistoriaOriginal);
+  const companySettings = escaparProfundo(companySettingsOriginal);
   const locatariosList: LocatarioVistoria[] = (vistoria.locatarios && vistoria.locatarios.length > 0)
     ? vistoria.locatarios
     : (vistoria.locatario ? [vistoria.locatario] : [{

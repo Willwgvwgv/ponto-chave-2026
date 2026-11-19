@@ -3,7 +3,7 @@ import { CompanySettings } from "../../../types";
 import { buildVariableMap, resolveContractText } from "./contractVariableResolver";
 import { assinaturasDoBloco, espacosAssinatura } from "./contractSignatures";
 
-const escaparHtml = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+import { escaparHtml, sanitizarHtmlRico, urlSegura } from "../../../utils/htmlSeguro";
 
 /**
  * Triggers native high-fidelity vector printing for the contract.
@@ -38,7 +38,8 @@ export function printContractDocument(
   let runningClauseCount = 1;
 
   contract.blocks.forEach((block) => {
-    const resolvedContent = resolveContractText(block.content, variableMap);
+    // Texto do contrato pode ter formatação; scripts e eventos são removidos.
+    const resolvedContent = sanitizarHtmlRico(resolveContractText(block.content, variableMap));
     // Ajustes manuais do bloco: nova página, espaço acima e tamanho do texto
     if (block.pageBreakBefore) {
       bodyHtml += `<div style="page-break-before: always; break-before: page; height: 0;"></div>`;
@@ -65,7 +66,7 @@ export function printContractDocument(
       const num = block.clauseNumber || runningClauseCount;
       runningClauseCount = num + 1;
       const clauseNum = `CLÁUSULA ${num}ª - `;
-      const clauseTitle = block.clauseTitle ? block.clauseTitle.toUpperCase() : "";
+      const clauseTitle = block.clauseTitle ? escaparHtml(block.clauseTitle.toUpperCase()) : "";
       bodyHtml += `
         <div class="contract-clause-block" style="margin-bottom: ${styles.paragraphSpacingPx}px;">
           <h3 style="font-size: 11pt; font-weight: 700; color: ${primaryColor}; margin-bottom: 6px; text-transform: uppercase; page-break-after: avoid; break-after: avoid;">
@@ -80,7 +81,7 @@ export function printContractDocument(
       bodyHtml += `
         <div class="contract-parties-block" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 14px 18px; margin-bottom: ${styles.paragraphSpacingPx}px;">
           <h4 style="font-size: 10pt; font-weight: 800; color: ${primaryColor}; text-transform: uppercase; margin-bottom: 8px; letter-spacing: 0.5px;">
-            ${block.clauseTitle || "IDENTIFICAÇÃO DAS PARTES"}
+            ${escaparHtml(block.clauseTitle || "IDENTIFICAÇÃO DAS PARTES")}
           </h4>
           <div style="font-size: 10pt; line-height: 1.4; text-align: justify;">
             ${resolvedContent}
@@ -145,7 +146,7 @@ export function printContractDocument(
     <html lang="pt-BR">
     <head>
       <meta charset="UTF-8">
-      <title>${contract.titulo || "Contrato de Locação"}</title>
+      <title>${escaparHtml(contract.titulo || "Contrato de Locação")}</title>
       <style>
         /* Margem da folha feita por nós (cabeçalho/rodapé reservados em toda página).
            Com margem 0 o navegador também não imprime "about:blank", data e nº da página. */
@@ -252,7 +253,7 @@ export function printContractDocument(
       </style>
     </head>
     <body>
-      ${styles.showWatermark ? `<div class="watermark">${styles.watermarkText || "MINUTA"}</div>` : ""}
+      ${styles.showWatermark ? `<div class="watermark">${escaparHtml(styles.watermarkText || "MINUTA")}</div>` : ""}
 
       <table class="folha-layout">
         <thead><tr><td><div class="espaco-topo"></div></td></tr></thead>
@@ -261,15 +262,15 @@ export function printContractDocument(
       ${styles.showHeader ? `
         <div class="header-container">
           <div class="header-left">
-            ${logoUrl ? `<img src="${logoUrl}" class="company-logo" alt="Logo" />` : ""}
+            ${urlSegura(logoUrl) ? `<img src="${escaparHtml(urlSegura(logoUrl))}" class="company-logo" alt="Logo" />` : ""}
             <div class="company-info">
-              <h3>${companyName}</h3>
-              <p>${companyCreci} • ${companyPhone || companyAddress}</p>
+              <h3>${escaparHtml(companyName)}</h3>
+              <p>${escaparHtml(companyCreci)} • ${escaparHtml(companyPhone || companyAddress)}</p>
             </div>
           </div>
           <div class="header-right">
-            <div><strong>Contrato Nº:</strong> ${contract.numeroContrato || "---"}</div>
-            <div><strong>Data:</strong> ${variableMap.data_inicio || "---"}</div>
+            <div><strong>Contrato Nº:</strong> ${escaparHtml(contract.numeroContrato || "---")}</div>
+            <div><strong>Data:</strong> ${escaparHtml(variableMap.data_inicio || "---")}</div>
           </div>
         </div>
       ` : ""}
@@ -282,8 +283,8 @@ export function printContractDocument(
 
       ${styles.showFooter ? `
         <div class="footer-container">
-          <span>${companyName} • ${companyAddress}</span>
-          <span>${contract.numeroContrato || "LOC"}</span>
+          <span>${escaparHtml(companyName)} • ${escaparHtml(companyAddress)}</span>
+          <span>${escaparHtml(contract.numeroContrato || "LOC")}</span>
         </div>
       ` : ""}
 
