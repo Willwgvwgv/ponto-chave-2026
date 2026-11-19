@@ -262,6 +262,22 @@ export interface PagamentoCorretor {
   registradoEm: number;                                          // timestamp em ms (Date.now())
 }
 
+/** Lançamento de repasse removido: guarda a cópia do pagamento e quem excluiu. */
+export interface RepasseExcluido extends PagamentoCorretor {
+  excluidoPorUid: string;
+  excluidoPorNome: string;
+  excluidoEm: string;                                            // ISO
+  motivo: string;
+}
+
+/** Registro de quando uma comissão encerrada foi reaberta. */
+export interface ReaberturaRepasses {
+  reabertoPorUid: string;
+  reabertoPorNome: string;
+  reabertoEm: string;                                            // ISO
+  motivo: string;
+}
+
 export interface Comissao {
   id: string;
   companyId: string;
@@ -290,6 +306,9 @@ export interface Comissao {
   clientePagou?: boolean;
   // Dia combinado para pagar os honorários dos corretores (YYYY-MM-DD)
   dataPagamentoHonorarios?: string;
+  // Histórico de exclusões e reaberturas (só cresce; confirmadas com senha)
+  repassesExcluidos?: RepasseExcluido[];
+  historicoReaberturas?: ReaberturaRepasses[];
 }
 
 export interface LocatarioVistoria {
