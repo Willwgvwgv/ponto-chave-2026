@@ -22,7 +22,10 @@ import {
   Save,
   Printer,
   Upload,
-  Settings
+  Settings,
+  LogIn,
+  LogOut,
+  Link2
 } from 'lucide-react';
 import { 
   db, 
@@ -36,9 +39,11 @@ import {
   deleteDoc, 
   doc, 
   serverTimestamp,
-  limit
+  limit,
+  getDocs
 } from '../firebase';
 import { Vistoria, ComodoVistoria, ItemVistoria, CompanySettings, LocatarioVistoria } from '../types';
+import type { ContratoLocacao, ContractParty, ContractProperty } from './contratos/types/contractTypes';
 import { cn } from '../lib/utils';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -241,6 +246,73 @@ export const VistoriaView = ({ isAdmin, user, profile, companySettings }: { isAd
   const [styleContrato, setStyleContrato] = useState({ fontSize: 9, textAlign: 'justify' as const, isBold: false });
   const [styleLaudo, setStyleLaudo] = useState({ fontSize: 9, textAlign: 'justify' as const, isBold: false });
   const [imovel, setImovel] = useState({ endereco: '' });
+  // Tipo da vistoria e contrato de locação vinculado (vistoria de saída busca o contrato já lançado)
+  const [tipoVistoria, setTipoVistoria] = useState<'entrada' | 'saida'>('entrada');
+  const [contratoVinculado, setContratoVinculado] = useState<{ id: string; numero: string; titulo: string } | null>(null);
+  const [buscaContratoAberta, setBuscaContratoAberta] = useState(false);
+  const [contratosDisponiveis, setContratosDisponiveis] = useState<ContratoLocacao[]>([]);
+  const [carregandoContratos, setCarregandoContratos] = useState(false);
+  const [filtroContrato, setFiltroContrato] = useState('');
+
+  const enderecoDoContrato = (im?: Partial<ContractProperty>) => {
+    if (!im) return '';
+    const cidadeUf = [im.cidade, im.estado].filter(Boolean).join('/');
+    return [
+      [im.endereco, im.numero].filter(Boolean).join(', '),
+      im.complemento, im.bairro, cidadeUf, im.cep ? `CEP: ${im.cep}` : ''
+    ].filter(Boolean).join(', ');
+  };
+
+  const abrirBuscaContrato = async () => {
+    setBuscaContratoAberta(true);
+    if (!profile?.companyId) return;
+    setCarregandoContratos(true);
+    try {
+      const snap = await getDocs(query(collection(db, 'contratos_locacao'), where('companyId', '==', profile.companyId)));
+      const lista = snap.docs
+        .map((d: any) => ({ id: d.id, ...d.data() } as ContratoLocacao))
+        // só contratos de locação (sem venda, aditivo, procuração ou termo)
+        .filter(c => c.tipoDocumento !== 'venda' && !c.contratoPrincipalId && !/^(PRO|TRI)-/.test(c.numeroContrato || ''))
+        .sort((a, b) => String(b.numeroContrato || '').localeCompare(String(a.numeroContrato || '')));
+      setContratosDisponiveis(lista);
+    } catch (err) {
+      console.error('Erro ao buscar contratos:', err);
+      toast.error('Não foi possível carregar os contratos.');
+    } finally {
+      setCarregandoContratos(false);
+    }
+  };
+
+  const usarContrato = (c: ContratoLocacao) => {
+    const paraLocatario = (p: ContractParty): LocatarioVistoria => ({
+      ...DEFAULT_LOCATARIO,
+      nome: p.nome || '',
+      cpf: p.cpfCnpj || '',
+      rg: p.rg || '',
+      nacionalidade: p.nacionalidade || DEFAULT_LOCATARIO.nacionalidade,
+      endereco: [p.endereco, p.cidade && p.estado ? `${p.cidade}/${p.estado}` : p.cidade].filter(Boolean).join(', '),
+      cep: p.cep || '',
+      email: p.email || '',
+      telefone: p.telefone || ''
+    });
+    const inquilinos = (c.locatarios || []).filter(l => l && l.nome).map(paraLocatario);
+    if (inquilinos.length > 0) setLocatarios(inquilinos);
+    const end = enderecoDoContrato(c.imovel);
+    if (end) setImovel({ endereco: end });
+    setContratoVinculado({ id: c.id, numero: c.numeroContrato || '', titulo: c.titulo || '' });
+    setBuscaContratoAberta(false);
+    setFiltroContrato('');
+    toast.success(`Dados do contrato ${c.numeroContrato || ''} carregados. Confira antes de salvar.`);
+  };
+
+  const contratosFiltrados = useMemo(() => {
+    const termo = filtroContrato.trim().toLowerCase();
+    if (!termo) return contratosDisponiveis;
+    return contratosDisponiveis.filter(c => [
+      c.numeroContrato, c.titulo, enderecoDoContrato(c.imovel),
+      ...(c.locatarios || []).map(l => `${l.nome} ${l.cpfCnpj}`)
+    ].join(' ').toLowerCase().includes(termo));
+  }, [filtroContrato, contratosDisponiveis]);
   const [locador, setLocador] = useState({
     nome: companySettings?.name || 'FIDELITE NEGOCIOS IMOBILIARIOS LTDA',
     cnpj: companySettings?.name ? '' : '37.194.924/0001-86',
@@ -315,6 +387,9 @@ export const VistoriaView = ({ isAdmin, user, profile, companySettings }: { isAd
         styleLaudo,
         locatario: primaryLocatario,
         locatarios,
+        tipo: tipoVistoria,
+        contratoId: tipoVistoria === 'saida' ? (contratoVinculado?.id || null) : null,
+        contratoNumero: tipoVistoria === 'saida' ? (contratoVinculado?.numero || null) : null,
         imovel,
         locador,
         comodos: sanitizedComodos,
@@ -347,6 +422,8 @@ export const VistoriaView = ({ isAdmin, user, profile, companySettings }: { isAd
     setEditingVistoria(null);
     setStatusVistoria("Agendada");
     setFormStep(0);
+    setTipoVistoria('entrada');
+    setContratoVinculado(null);
     setStyleContrato({ fontSize: 9, textAlign: 'justify', isBold: false });
     setStyleLaudo({ fontSize: 9, textAlign: 'justify', isBold: false });
     setLocatarios([{ ...DEFAULT_LOCATARIO }]);
@@ -375,6 +452,8 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
 
   const handleEdit = (v: Vistoria) => {
     setEditingVistoria(v);
+    setTipoVistoria(v.tipo === 'saida' ? 'saida' : 'entrada');
+    setContratoVinculado(v.contratoId ? { id: v.contratoId, numero: v.contratoNumero || '', titulo: '' } : null);
     if (v.locatarios && Array.isArray(v.locatarios) && v.locatarios.length > 0) {
       setLocatarios(v.locatarios.map(l => ({ ...DEFAULT_LOCATARIO, ...l })));
     } else if (v.locatario) {
@@ -580,6 +659,103 @@ Vistoriado o imóvel acima descrito, foi constatado que o mesmo se encontra em b
         >
           {formStep === 0 && (
             <div className="grid gap-6">
+              {/* Tipo de vistoria: entrada ou saída (saída busca contrato já lançado) */}
+              <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h3 className="font-bold text-slate-900">Tipo de vistoria</h3>
+                    <p className="text-xs text-slate-400 font-medium">Na saída, busque o contrato de locação já lançado para preencher inquilino e imóvel.</p>
+                  </div>
+                  <div className="inline-flex rounded-xl bg-slate-100 p-1">
+                    {([['entrada', 'Entrada', LogIn], ['saida', 'Saída', LogOut]] as const).map(([valor, rotulo, Icone]) => (
+                      <button
+                        key={valor}
+                        type="button"
+                        onClick={() => setTipoVistoria(valor)}
+                        className={cn(
+                          "inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer",
+                          tipoVistoria === valor ? "bg-white text-blue-700 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                        )}
+                      >
+                        <Icone className="w-4 h-4" />
+                        {rotulo}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {tipoVistoria === 'saida' && (
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-amber-50/70 border border-amber-200/70 p-4">
+                    <div className="flex items-center gap-2 text-sm">
+                      <Link2 className="w-4 h-4 text-amber-700" />
+                      {contratoVinculado ? (
+                        <span className="text-slate-700">
+                          Contrato vinculado: <strong>{contratoVinculado.numero || 'sem número'}</strong>
+                          {contratoVinculado.titulo ? <span className="text-slate-500"> · {contratoVinculado.titulo}</span> : null}
+                        </span>
+                      ) : (
+                        <span className="text-slate-600">Nenhum contrato vinculado.</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {contratoVinculado && (
+                        <button type="button" onClick={() => setContratoVinculado(null)} className="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 hover:bg-white cursor-pointer">
+                          Remover vínculo
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={abrirBuscaContrato}
+                        className="inline-flex items-center gap-1.5 px-3 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
+                      >
+                        <Search className="w-4 h-4" />
+                        {contratoVinculado ? 'Trocar contrato' : 'Buscar contrato'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {buscaContratoAberta && (
+                <div className="fixed inset-0 z-[80] bg-slate-900/40 flex items-center justify-center p-4" onClick={() => setBuscaContratoAberta(false)}>
+                  <div className="bg-white w-full max-w-2xl rounded-3xl shadow-xl p-6 space-y-4 max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Buscar contrato de locação">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-bold text-slate-900">Buscar contrato de locação</h3>
+                      <button type="button" onClick={() => setBuscaContratoAberta(false)} className="p-2 rounded-xl hover:bg-slate-100 cursor-pointer" aria-label="Fechar">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <input
+                      autoFocus
+                      value={filtroContrato}
+                      onChange={e => setFiltroContrato(e.target.value)}
+                      placeholder="Nome do inquilino, CPF, número do contrato ou endereço"
+                      className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm outline-none focus:border-blue-400"
+                    />
+                    <div className="overflow-y-auto space-y-2 pr-1">
+                      {carregandoContratos && <p className="text-sm text-slate-400 py-6 text-center">Carregando contratos...</p>}
+                      {!carregandoContratos && contratosFiltrados.length === 0 && (
+                        <p className="text-sm text-slate-400 py-6 text-center">Nenhum contrato de locação encontrado.</p>
+                      )}
+                      {!carregandoContratos && contratosFiltrados.map(c => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => usarContrato(c)}
+                          className="w-full text-left p-4 rounded-2xl border border-slate-200 hover:border-blue-300 hover:bg-blue-50/40 transition-all cursor-pointer"
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="font-bold text-slate-900 text-sm">{c.numeroContrato || 'Sem número'}</span>
+                            <span className="text-[10px] font-bold uppercase text-slate-400">{c.status}</span>
+                          </div>
+                          <p className="text-sm text-slate-700 mt-1">{(c.locatarios || []).map(l => l.nome).filter(Boolean).join(' • ') || 'Sem inquilino'}</p>
+                          <p className="text-xs text-slate-400 mt-0.5">{enderecoDoContrato(c.imovel) || c.titulo}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Card de Locatários / Inquilinos */}
               <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-6">
                 <div className="flex items-center justify-between">
@@ -1455,6 +1631,11 @@ O(A) LOCATÁRIO(A) assume, a partir desta data, total responsabilidade pela guar
 
               <div className="space-y-3 mb-6">
                 <div>
+                  {vistoria.tipo === 'saida' && (
+                    <span className="inline-flex items-center gap-1 mb-1 px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 text-[10px] font-bold uppercase">
+                      Saída{vistoria.contratoNumero ? ` · ${vistoria.contratoNumero}` : ''}
+                    </span>
+                  )}
                   <h4 className="text-lg font-black text-slate-900 leading-tight group-hover:text-blue-600 transition-all">
                     {vistoria.locatarios && vistoria.locatarios.length > 0
                       ? vistoria.locatarios.map(l => l.nome).filter(Boolean).join(' • ') || vistoria.locatario?.nome || 'Sem nome'
