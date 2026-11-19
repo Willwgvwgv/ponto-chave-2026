@@ -410,7 +410,7 @@ export const InteressadosCidadeJardim: React.FC<Props> = ({ currentUser }) => {
         <div className="flex flex-wrap gap-1.5">
           {[{ id: "todos", label: "Todos" } as const, ...STATUS].map((s) => (
             <button key={s.id} type="button" onClick={() => setFiltroStatus(s.id as any)}
-              className={`h-8 px-3 rounded-full text-[13px] font-medium border transition-colors ${filtroStatus === s.id ? "bg-zinc-900 text-white border-zinc-900" : "bg-white text-zinc-700 border-zinc-300 hover:bg-zinc-50"}`}>
+              className={`h-8 px-3 rounded-full text-[13px] font-medium border transition-colors ${filtroStatus === s.id ? "bg-blue-600 text-white border-blue-600" : "bg-white text-zinc-700 border-zinc-300 hover:bg-zinc-50"}`}>
               {s.label} <span className="tabular-nums opacity-70">{contagem[s.id] || 0}</span>
             </button>
           ))}

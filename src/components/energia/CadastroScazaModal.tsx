@@ -103,7 +103,7 @@ export const CadastroScazaModal: React.FC<Props> = ({ energia, onClose }) => {
         </div>
         <div className="px-5 py-4 border-t border-zinc-200 flex justify-end gap-2">
           <button type="button" onClick={onClose} className="h-10 px-4 rounded-lg border border-zinc-300 text-sm font-medium hover:bg-zinc-50">Cancelar</button>
-          <button type="submit" disabled={salvando} className="h-10 px-4 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white text-sm font-medium disabled:opacity-50">
+          <button type="submit" disabled={salvando} className="h-10 px-4 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium disabled:opacity-50">
             {salvando ? "Cadastrando…" : "Cadastrar e buscar faturas"}
           </button>
         </div>

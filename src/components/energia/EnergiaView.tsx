@@ -702,11 +702,11 @@ export const EnergiaView: React.FC<EnergiaViewProps> = ({ isAdmin, profile, comp
         </div>
         <div className="flex flex-wrap gap-1.5">
           <button type="button" onClick={() => setFiltro("TODAS")}
-            className={`h-8 px-3 rounded-full text-[13px] font-medium border ${filtro === "TODAS" ? "bg-zinc-900 text-white border-zinc-900" : "bg-white text-zinc-700 border-zinc-300 hover:bg-zinc-50"}`}>
+            className={`h-8 px-3 rounded-full text-[13px] font-medium border ${filtro === "TODAS" ? "bg-blue-600 text-white border-blue-600" : "bg-white text-zinc-700 border-zinc-300 hover:bg-zinc-50"}`}>
             Transferidas <span className="opacity-70 tabular-nums">{transferidas.length}</span>
           </button>
           <button type="button" onClick={() => setFiltro("NAO_TRANSFERIDAS")}
-            className={`h-8 px-3 rounded-full text-[13px] font-medium border ${filtro === "NAO_TRANSFERIDAS" ? "bg-zinc-900 text-white border-zinc-900" : "bg-white text-zinc-700 border-zinc-300 hover:bg-zinc-50"}`}>
+            className={`h-8 px-3 rounded-full text-[13px] font-medium border ${filtro === "NAO_TRANSFERIDAS" ? "bg-blue-600 text-white border-blue-600" : "bg-white text-zinc-700 border-zinc-300 hover:bg-zinc-50"}`}>
             Ainda não transferidas <span className="opacity-70 tabular-nums">{naoTransferidas.length}</span>
           </button>
           {comContaVencida.length > 0 && (
