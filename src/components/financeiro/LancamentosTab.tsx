@@ -2309,7 +2309,7 @@ export const LancamentosTab: React.FC<LancamentosTabProps> = ({
                   }
                   setRecurrencePromptOpen(false);
                 }}
-                className="w-full py-3 bg-slate-800 hover:bg-slate-900 text-white rounded-2xl font-bold uppercase tracking-widest text-[10px] shadow-md transition-all text-center"
+                className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold uppercase tracking-widest text-[10px] shadow-md transition-all text-center"
               >
                 {recurrencePromptType === 'EDIT' ? 'Editar todos os próximos' : 'Excluir todos os próximos'}
               </button>

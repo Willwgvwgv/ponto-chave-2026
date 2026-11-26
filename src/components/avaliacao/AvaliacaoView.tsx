@@ -540,7 +540,7 @@ export const AvaliacaoView: React.FC<Props> = ({ isAdmin, user, profile, company
           <button
             disabled={rodando}
             onClick={baixarPdf}
-            className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-40"
+            className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-40"
           >
             <FileDown className="h-4 w-4" /> PDF
           </button>

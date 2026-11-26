@@ -563,7 +563,7 @@ export const DespejoView = ({ isAdmin, user, companySettings }: DespejoViewProps
                 onClick={() => setFilterStatus(st)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                   isActive 
-                    ? "bg-slate-800 text-white shadow-sm" 
+                    ? "bg-blue-600 text-white shadow-sm" 
                     : "text-slate-500 hover:text-slate-900 bg-slate-100/60 hover:bg-slate-100"
                 }`}
               >
@@ -1356,7 +1356,7 @@ export const DespejoView = ({ isAdmin, user, companySettings }: DespejoViewProps
                         <button
                           type="button"
                           onClick={handleAddIndenizacao}
-                          className="bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold px-4 py-2.5 rounded-xl cursor-pointer"
+                          className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl cursor-pointer"
                         >
                           Adicionar Indenização
                         </button>
@@ -1574,7 +1574,7 @@ export const DespejoView = ({ isAdmin, user, companySettings }: DespejoViewProps
                   <button
                     type="button"
                     onClick={handleNextStep}
-                    className="flex items-center gap-2 bg-slate-800 hover:bg-slate-900 text-white p-2 px-4 rounded-xl text-xs font-bold leading-tight cursor-pointer"
+                    className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white p-2 px-4 rounded-xl text-xs font-bold leading-tight cursor-pointer"
                   >
                     Próximo <ArrowRight className="w-4 h-4" />
                   </button>
