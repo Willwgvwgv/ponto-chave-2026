@@ -64,7 +64,7 @@ export const PontoView: React.FC<PontoViewProps> = ({ isAdmin, user, profile, co
   }
 
   return (
-    <div className="min-h-screen bg-slate-50/10 py-6 max-w-7xl mx-auto space-y-6 px-4">
+    <div className="min-h-screen bg-slate-50/10 py-6 space-y-6 px-4">
       
       {/* Cabeçalho */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-4 border-b border-slate-200 gap-4">

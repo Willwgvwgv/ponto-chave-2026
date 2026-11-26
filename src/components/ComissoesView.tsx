@@ -384,7 +384,7 @@ export const ComissoesView: React.FC<ComissoesViewProps> = ({
   }
 
   return (
-    <div className="p-4 md:p-8 space-y-6 max-w-7xl mx-auto font-sans text-slate-800">
+    <div className="p-4 md:p-8 space-y-6 font-sans text-slate-800">
       
       {/* Banner / Header Branding Módulo */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5 pb-5 border-b border-slate-100 shrink-0">

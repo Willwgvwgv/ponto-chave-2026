@@ -3184,7 +3184,23 @@ function AppContent() {
   const { user, profile, isAdmin, companySettings } = useAuth();
   const [activeTab, setActiveTab] = useState<"dashboard" | "calendar" | "processes" | "process_config" | "users" | "profile" | "settings" | "contratos" | "vistorias" | "comissoes" | "simulador" | "avaliacao" | "financeiro" | "ponto" | "hidrometro" | "energia">("dashboard");
   const [contractsSubTab, setContractsSubTab] = useState<"locacao" | "vistorias" | "despejos" | "proposta_bella" | "cidade_jardim">("locacao");
-  const [isSidebarOpen, setIsSidebarOpen] = useState(() => window.innerWidth > 1024);
+  // Tela grande: menu fixo ao lado, que encolhe para só ícones. Celular: menu por cima.
+  const [isDesktop, setIsDesktop] = useState(() => window.matchMedia("(min-width: 1024px)").matches);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const onChange = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
+    if (!window.matchMedia("(min-width: 1024px)").matches) return false;
+    try { return localStorage.getItem("pc_menu_recolhido") !== "1"; } catch { return true; }
+  });
+  useEffect(() => {
+    if (!isDesktop) return;
+    try { localStorage.setItem("pc_menu_recolhido", isSidebarOpen ? "0" : "1"); } catch { /* sem armazenamento */ }
+  }, [isSidebarOpen, isDesktop]);
+  const menuRecolhido = isDesktop && !isSidebarOpen;
   const [viewingManualTool, setViewingManualTool] = useState<Tool | null>(null);
   const [activeManualTab, setActiveManualTab] = useState<"overview" | "tutorial" | "dicas" | "faq">("overview");
   const [expandedStepIndex, setExpandedStepIndex] = useState<number | null>(null);
@@ -4026,7 +4042,7 @@ function AppContent() {
     <div className="h-screen bg-[#F8FAFC] text-[#1E293B] font-sans flex overflow-hidden">
       {/* Sidebar Mobile Overlay */}
       <AnimatePresence>
-        {isSidebarOpen && (
+        {isSidebarOpen && !isDesktop && (
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -4039,17 +4055,19 @@ function AppContent() {
 
       {/* Sidebar - Toggleable on all screens */}
       <aside className={cn(
-        "fixed inset-y-0 left-0 bg-white border-r border-slate-200 z-50 w-64 transform transition-all duration-300 shrink-0 flex flex-col shadow-xl",
-        isSidebarOpen ? "translate-x-0" : "-translate-x-full"
+        "bg-white border-r border-slate-200 transition-all duration-300 shrink-0 flex flex-col",
+        isDesktop
+          ? cn("relative h-screen", menuRecolhido ? "w-[76px]" : "w-64")
+          : cn("fixed inset-y-0 left-0 z-50 w-64 transform shadow-xl", isSidebarOpen ? "translate-x-0" : "-translate-x-full")
       )}>
-        <div className="p-6 border-b border-slate-100 mb-2 shrink-0">
+        <div className={cn("border-b border-slate-100 mb-2 shrink-0", menuRecolhido ? "p-4 flex justify-center" : "p-6")}>
           <div 
             className="relative group cursor-pointer" 
             onClick={() => setActiveTab("dashboard")}
           >
             <div className="relative flex items-center gap-3.5">
               <LogoImage size="h-11 w-11 shadow-blue-100" url={companySettings?.logoUrl} />
-              <div className="overflow-hidden">
+              <div className={cn("overflow-hidden", menuRecolhido && "hidden")}>
                 <h1 className="text-[13px] font-black tracking-tight text-slate-900 leading-none">
                   {companySettings?.name || "PONTO CHAVE"}
                 </h1>
@@ -4061,9 +4079,10 @@ function AppContent() {
           </div>
         </div>
         
-        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto custom-scrollbar">
+        <nav className={cn("flex-1 py-4 space-y-1 overflow-y-auto custom-scrollbar", menuRecolhido ? "px-2" : "px-3")}>
           {navItems.map((item: any, idx) => {
             if (item.type === "header") {
+              if (menuRecolhido) return <div key={`header-${idx}`} className="my-3 mx-3 border-t border-slate-100" />;
               return (
                 <div key={`header-${idx}`} className="px-4 pt-6 pb-2 text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">
                   {item.label}
@@ -4076,45 +4095,51 @@ function AppContent() {
                 key={item.id}
                 onClick={() => {
                   setActiveTab(item.id);
-                  setIsSidebarOpen(false);
+                  if (!isDesktop) setIsSidebarOpen(false);
                 }}
+                title={menuRecolhido ? item.label : undefined}
+                aria-label={item.label}
                 className={cn(
-                  "w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all group",
+                  "w-full flex items-center gap-3 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all group text-left",
+                  menuRecolhido ? "justify-center px-0" : "px-4",
                   activeTab === item.id 
                     ? "bg-blue-600 text-white shadow-lg shadow-blue-200" 
                     : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
                 )}
               >
-                <Icon className={cn("w-4 h-4", activeTab === item.id ? "text-white" : "text-slate-400 group-hover:text-blue-500")} />
-                {item.label}
+                <Icon className={cn("w-4 h-4 shrink-0", activeTab === item.id ? "text-white" : "text-slate-400 group-hover:text-blue-500")} />
+                {!menuRecolhido && item.label}
               </button>
             );
           })}
         </nav>
 
-        <div className="p-4 border-t border-slate-100 bg-slate-50/50 shrink-0">
+        <div className={cn("border-t border-slate-100 bg-slate-50/50 shrink-0", menuRecolhido ? "p-2" : "p-4")}>
           <button 
             onClick={logout}
+            title={menuRecolhido ? "Sair do Sistema" : undefined}
             className="w-full flex items-center justify-center gap-2 py-3 text-[10px] font-black text-red-500 hover:text-red-600 uppercase tracking-widest hover:bg-red-50 rounded-2xl transition-all border border-transparent hover:border-red-100"
           >
             <LogOut className="w-3.5 h-3.5" />
-            Sair do Sistema
+            {!menuRecolhido && "Sair do Sistema"}
           </button>
         </div>
       </aside>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-h-screen overflow-hidden">
+      <div className="flex-1 min-w-0 flex flex-col min-h-screen overflow-hidden">
         <header className="h-20 bg-white border-b border-slate-200 flex items-center justify-between px-6 sticky top-0 z-30 shrink-0">
           <div className="flex items-center gap-4">
             <button 
               onClick={() => setIsSidebarOpen(prev => !prev)}
+              aria-label={isSidebarOpen ? "Recolher menu" : "Abrir menu"}
+              title={isDesktop ? (isSidebarOpen ? "Recolher menu" : "Expandir menu") : undefined}
               className="p-2.5 text-slate-500 hover:bg-slate-100 rounded-xl transition-all border border-slate-100"
             >
               <Menu className="w-5 h-5" />
             </button>
             <div className="flex items-center gap-4">
-              {!isSidebarOpen && (
+              {!isSidebarOpen && !isDesktop && (
                 <div className="hidden xs:flex items-center gap-2 pr-4 border-r border-slate-100 mr-2 transition-all">
                   <LogoImage size="h-8 w-8" url={companySettings?.logoUrl} />
                   <span className="text-[11px] font-black tracking-tight text-slate-900 leading-none truncate max-w-[120px]">
@@ -4179,7 +4204,7 @@ function AppContent() {
         </header>
 
         <main className="flex-1 overflow-y-auto p-4 md:p-10 scroll-smooth custom-scrollbar">
-          <div className="max-w-7xl mx-auto transition-all duration-500">
+          <div className="w-full max-w-[1920px] mx-auto">
             <Toaster position="top-right" richColors />
             {isDemoMode && (
               <div id="demo-banner-box" className="mb-8 p-6 bg-gradient-to-r from-blue-600 to-indigo-700 text-white rounded-[32px] shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4 font-sans select-none border border-blue-500/10">
