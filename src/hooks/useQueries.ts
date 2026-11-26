@@ -4,6 +4,8 @@ import { db, collection, getDocs, query, where, orderBy, doc, addDoc, updateDoc,
 import { Sale, BrokerSplit, ComissoneUser, Comissao, RateioComissao, PagamentoCorretor, Despejo, PontoRegistro, SolicitacaoAjustePonto, UserProfile, EnergiaLocacao } from "../types";
 import { getExpectedDailyMinutes } from "../utils/jornadaUtils";
 import { toast } from "sonner";
+import { vendaNoFinanceiroNovo } from "../lib/financeiro/vinculos";
+import { sincronizarVenda, sincronizarLocacao } from "../lib/financeiro/sincronizarVinculos";
 
 // Lógica de arredondamento de duas casas decimais
 export const round2 = (num: number): number => {
@@ -551,8 +553,12 @@ export function useCreateSaleMutation() {
           return instInfo ? !snap.empty : hasRegularTx;
         };
 
-        // Criar transação de receita de comissão total
-        if (sale.status !== 'DRAFT' && sale.total_commission && sale.total_commission > 0) {
+        // Venda a partir do financeiro novo: lançamentos saem pelos vínculos (sem duplicar).
+        const vendaNova = vendaNoFinanceiroNovo(sale);
+        if (vendaNova) await sincronizarVenda(generatedSaleId, safeAgencyId);
+
+        // Criar transação de receita de comissão total (fluxo antigo, vendas anteriores)
+        if (!vendaNova && sale.status !== 'DRAFT' && sale.total_commission && sale.total_commission > 0) {
           const isDup = await checkDuplicate(generatedSaleId);
           if (!isDup) {
             const txId = `tx_auto_sale_${generatedSaleId}`;
@@ -575,7 +581,7 @@ export function useCreateSaleMutation() {
         }
 
         // Criar transações de parcelamento (Entrada e parcelas individuais, se houver)
-        if (sale.status !== 'DRAFT' && sale.is_installment) {
+        if (!vendaNova && sale.status !== 'DRAFT' && sale.is_installment) {
           // 1. Entrada
           if (sale.entrada_value && sale.entrada_value > 0) {
             const isDupEntrada = await checkDuplicate(generatedSaleId, "Entrada");
@@ -701,7 +707,14 @@ export function useUpdateSaleMutation() {
           });
         }
 
+        // Venda a partir do financeiro novo: sincroniza pelos vínculos e encerra aqui.
+        if (sale.sale_date && vendaNoFinanceiroNovo(sale as Sale)) {
+          await sincronizarVenda(saleId, safeAgencyId);
+          return { saleId };
+        }
+
         // 4. Apagar transações financeiras automáticas antigas vinculadas a essa venda
+        //    (as já conciliadas ficam: apagar perderia a conciliação)
         const txsRef = collection(db, "financial_transactions");
         const existingTxsQuery = query(
           txsRef,
@@ -711,6 +724,8 @@ export function useUpdateSaleMutation() {
         );
         const existingTxsSnap = await getDocs(existingTxsQuery);
         for (const txDoc of existingTxsSnap.docs) {
+          const st = (txDoc.data() as any)?.status;
+          if (st === "CONCILIADO" || (txDoc.data() as any)?.vinculoRef) continue;
           await deleteDoc(doc(db, "financial_transactions", txDoc.id));
         }
 
@@ -853,8 +868,27 @@ export function useUpdateSplitMutation() {
         // Tenta alterar no Firestore
         await updateDoc(doc(db, "broker_splits", splitId), updates);
 
+        // Venda do financeiro novo: a comissão do corretor é atualizada pelos vínculos.
+        let splitDeVendaNova = false;
+        try {
+          const spSnap = await getDoc(doc(db, "broker_splits", splitId));
+          const spData = spSnap.exists() ? (spSnap.data() as any) : null;
+          if (spData?.sale_id) {
+            const vSnap = await getDoc(doc(db, "sales", spData.sale_id));
+            const vData = vSnap.exists() ? (vSnap.data() as any) : null;
+            if (vData && vendaNoFinanceiroNovo(vData)) {
+              splitDeVendaNova = true;
+              if (newSplitToCreate) await addDoc(collection(db, "broker_splits"), newSplitToCreate);
+              await sincronizarVenda(spData.sale_id, agencyId);
+              return;
+            }
+          }
+        } catch (e) {
+          console.warn("[financeiro] verificação do split", e);
+        }
+
         // Se a atualização for para marcar como PAGO (PAID)
-        if (updates.status === 'PAID') {
+        if (!splitDeVendaNova && updates.status === 'PAID') {
           try {
             const splitSnap = await getDoc(doc(db, "broker_splits", splitId));
             if (splitSnap.exists()) {
@@ -1020,6 +1054,7 @@ export function useCreateRentalMutation() {
 
       try {
         await setDoc(doc(db, "comissoes", generatedId), docData);
+        await sincronizarLocacao(generatedId, docData.companyId, docData as Comissao);
         if (procId) {
           await updateDoc(doc(db, "processes", procId), {
             isCommissionLaunched: true,
@@ -1069,6 +1104,7 @@ export function useUpdateRentalMutation() {
         } else {
           await updateDoc(doc(db, "comissoes", rental.id), { ...rental });
         }
+        await sincronizarLocacao(rental.id, rental.companyId, rental);
       } catch (err) {
         // Mesma correção do create: isso alimenta handleSavePayment (registro de
         // pagamento de repasse) — um pagamento "salvo com sucesso" que na
@@ -1103,6 +1139,7 @@ export function useUpdateRentalsBulkMutation() {
           } else {
             await updateDoc(doc(db, "comissoes", rental.id), { ...rental });
           }
+          await sincronizarLocacao(rental.id, rental.companyId, rental);
         } catch (err) {
           handleFirestoreError(err, OperationType.UPDATE, `comissoes/${rental.id}`);
           throw err;
@@ -1135,6 +1172,7 @@ export function useDeleteRentalMutation() {
         } else {
           await deleteDoc(doc(db, "comissoes", id));
         }
+        await sincronizarLocacao(id, companyId, null);
       } catch (err) {
         handleFirestoreError(err, OperationType.DELETE, `comissoes/${id}`);
         throw err;
@@ -1181,8 +1219,12 @@ export function useDeleteSaleMutation() {
         );
         const existingTxsSnap = await getDocs(existingTxsQuery);
         for (const txDoc of existingTxsSnap.docs) {
+          const d = txDoc.data() as any;
+          if (d?.status === "CONCILIADO" || d?.vinculoRef) continue; // conciliado não some; vínculo novo é tratado abaixo
           await deleteDoc(doc(db, "financial_transactions", txDoc.id));
         }
+        // Financeiro novo: previsões saem, o que já aconteceu fica como CANCELADO.
+        await sincronizarVenda(saleId, companyId);
       } catch (err) {
         console.warn("Offline/local fallback para exclusão de venda:", err);
         const local = getStoredData();
@@ -1232,6 +1274,9 @@ export function useUpdateSaleStatusMutation() {
     mutationFn: async ({ saleId, status }: { saleId: string; status: 'ACTIVE' | 'CANCELLED' | 'DRAFT' }) => {
       try {
         await updateDoc(doc(db, "sales", saleId), { status });
+        const vs = await getDoc(doc(db, "sales", saleId));
+        const vd = vs.exists() ? (vs.data() as any) : null;
+        if (vd && vendaNoFinanceiroNovo(vd)) await sincronizarVenda(saleId, vd.companyId || vd.agency_id || "default_agency");
         return { saleId, status };
       } catch (err) {
         console.warn("Falha ao atualizar status da venda no Firestore, atualizando localmente:", err);
